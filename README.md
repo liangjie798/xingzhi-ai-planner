@@ -76,6 +76,10 @@ docker compose ps
 
 默认开放 80 端口。生产服务使用 MySQL 8.4；Spring JPA 首次运行创建表。部署到公网前应配置域名、HTTPS 和数据源授权。阿里云服务器需要放行 80/443 端口。
 
+### Ubuntu 服务器原生部署
+
+`deploy/native-setup.sh` 用于无 Docker 的 Ubuntu ECS：安装 Node.js 22、Java 21、MySQL 与 Nginx 后，将仓库文件放在 `/opt/shihou`，把后端 JAR 放在 `/opt/shihou/backend/app.jar`，以 root 执行脚本。脚本会创建独立服务用户、数据库账号、systemd 服务和 Nginx 配置，DeepSeek 密钥可在 `/etc/shihou/backend.env` 中设置。当前阿里云演示部署采用此方式。
+
 ## API
 
 - `GET /api/v1/cities`：城市演示快照。

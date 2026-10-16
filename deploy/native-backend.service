@@ -1,0 +1,20 @@
+[Unit]
+Description=Shihou Spring Boot API
+After=network-online.target mysql.service
+Wants=network-online.target
+Requires=mysql.service
+
+[Service]
+Type=simple
+User=shihou
+Group=shihou
+WorkingDirectory=/opt/shihou/backend
+Environment=SPRING_PROFILES_ACTIVE=prod
+EnvironmentFile=/etc/shihou/backend.env
+ExecStart=/usr/bin/java -Xms96m -Xmx384m -jar /opt/shihou/backend/app.jar --server.address=127.0.0.1
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
