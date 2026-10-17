@@ -18,6 +18,7 @@ interface MapInstance {
   remove(target: unknown): void;
   on(event: string, handler: (event: { lnglat: { getLng: () => number; getLat: () => number } }) => void): void;
   setFitView?(padding?: number[]): void;
+  setCenter?(position: [number, number]): void;
 }
 
 type OverlayCtor = new (options: Record<string, unknown>) => unknown;
@@ -74,6 +75,7 @@ function shadeFor(value: number, min: number, max: number): string {
 
 export function EnvironmentMap({ city, layer, onPointSelected, grid, route }: EnvironmentMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const initialCenterRef = useRef(city.center);
   const mapRef = useRef<MapInstance | null>(null);
   const amapRef = useRef<AMapNamespace | null>(null);
   const [mapState, setMapState] = useState<"loading" | "ready" | "coordinates" | "error">("loading");
@@ -116,7 +118,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, grid, route }: En
           viewMode: "3D",
           zoom: 11.2,
           pitch: 30,
-          center: city.center,
+          center: initialCenterRef.current,
           mapStyle: "amap://styles/whitesmoke",
           showLabel: true,
         });
@@ -138,7 +140,11 @@ export function EnvironmentMap({ city, layer, onPointSelected, grid, route }: En
       mapRef.current = null;
       amapRef.current = null;
     };
-  }, [amapKey, securityCode, serviceHost, city, onPointSelected]);
+  }, [amapKey, securityCode, serviceHost, onPointSelected]);
+
+  useEffect(() => {
+    if (mapState === "ready") mapRef.current?.setCenter?.(city.center);
+  }, [mapState, city.center]);
 
   // 图层着色：城市网格预报经高德 HeatMap 平滑插值，形成连续程度色带
   useEffect(() => {
