@@ -10,3 +10,4 @@
 **/.env.local
 *.log
 
+/deploy-artifacts/
