@@ -136,9 +136,11 @@ export function EnvironmentMap({ city, layer, onPointSelected, grid, route }: En
 
     return () => {
       cancelled = true;
-      mapRef.current?.destroy();
+      const mapToDestroy = mapRef.current;
       mapRef.current = null;
       amapRef.current = null;
+      // 让后续图层 effect 先从仍存活的地图解绑，再销毁底图实例。
+      window.setTimeout(() => mapToDestroy?.destroy(), 0);
     };
   }, [amapKey, securityCode, serviceHost, onPointSelected]);
 
