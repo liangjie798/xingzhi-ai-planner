@@ -249,12 +249,36 @@ export function DecisionDashboard() {
   };
 
   const locateCurrentCity = () => {
-    if (!navigator.geolocation) {
-      setError("当前浏览器不支持定位，请直接搜索所在市区");
-      return;
-    }
     setIsLocating(true);
     setError(null);
+    const applyLocation = (longitude: number, latitude: number, name: string, province: string, precise: boolean) => {
+      const option: CityOption = { id: "geo-current", name, province, adcode: "geo-current", center: [longitude, latitude] };
+      saveSelectedCity(option);
+      setCity(null);
+      setResult(null);
+      setRoute(null);
+      setIsLoadingCity(true);
+      setInput((current) => ({ ...current, cityId: option.id, cityName: name, province,
+        adcode: option.adcode, longitude, latitude,
+        locationName: `${precise ? "我的位置" : "IP城市中心"} ${longitude.toFixed(4)}, ${latitude.toFixed(4)}` }));
+      setIsLocating(false);
+    };
+    const locateByIp = async () => {
+      try {
+        const response = await fetch("https://api.bigdatacloud.net/data/reverse-geocode-client?localityLanguage=zh");
+        if (!response.ok) throw new Error("IP定位失败");
+        const place = await response.json() as { city?: string; locality?: string; principalSubdivision?: string; longitude?: number; latitude?: number };
+        if (place.longitude == null || place.latitude == null) throw new Error("IP定位缺少坐标");
+        applyLocation(place.longitude, place.latitude, place.city || place.locality || "当前城市", place.principalSubdivision || "中国", false);
+      } catch {
+        setIsLocating(false);
+        setError("自动定位失败，请直接搜索所在市区");
+      }
+    };
+    if (!navigator.geolocation || !window.isSecureContext) {
+      void locateByIp();
+      return;
+    }
     navigator.geolocation.getCurrentPosition(async ({ coords }) => {
       const longitude = +coords.longitude.toFixed(6);
       const latitude = +coords.latitude.toFixed(6);
@@ -268,18 +292,9 @@ export function DecisionDashboard() {
           province = place.principalSubdivision || province;
         }
       } catch { /* 坐标仍可用于环境预报 */ }
-      const option: CityOption = { id: "geo-current", name, province, adcode: "geo-current", center: [longitude, latitude] };
-      saveSelectedCity(option);
-      setCity(null);
-      setResult(null);
-      setRoute(null);
-      setIsLoadingCity(true);
-      setInput((current) => ({ ...current, cityId: option.id, cityName: name, province,
-        adcode: option.adcode, longitude, latitude, locationName: `我的位置 ${longitude.toFixed(4)}, ${latitude.toFixed(4)}` }));
-      setIsLocating(false);
-    }, (reason) => {
-      setIsLocating(false);
-      setError(reason.code === reason.PERMISSION_DENIED ? "定位权限被拒绝，请在浏览器地址栏允许位置权限" : "无法获取当前位置，请直接搜索所在市区");
+      applyLocation(longitude, latitude, name, province, true);
+    }, () => {
+      void locateByIp();
     }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 300000 });
   };
 
