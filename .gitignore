@@ -1,6 +1,7 @@
 /.next/
 /.runtime-config/
 /.playwright-cli/
+/output/
 /backend.zip
 **/node_modules/
 **/.next/

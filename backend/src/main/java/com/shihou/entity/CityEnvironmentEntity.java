@@ -62,6 +62,7 @@ public class CityEnvironmentEntity {
     public String getAdcode() { return adcode; }
     public double getLongitude() { return longitude; }
     public double getLatitude() { return latitude; }
+    public double[] getCenter() { return new double[]{longitude, latitude}; }
     public String getWeather() { return weather; }
     public double getTemperature() { return temperature; }
     public int getHumidity() { return humidity; }

@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.time.LocalDate;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -39,6 +40,7 @@ public class DecisionService {
     public ActivityDecisionResponse analyze(ActivityDecisionRequest request) {
         long stepStarted = System.nanoTime();
         CityEnvironmentEntity city = environmentService.getCity(request.cityId());
+        var forecast = environmentService.getForecast(request.cityId(), LocalDate.parse(request.date()));
         int environmentMs = elapsedMillis(stepStarted);
 
         stepStarted = System.nanoTime();
@@ -46,15 +48,15 @@ public class DecisionService {
         int evidenceMs = elapsedMillis(stepStarted);
 
         stepStarted = System.nanoTime();
-        List<TimeSlotScore> slots = RiskCalculator.calculateSlots(city, request);
+        List<TimeSlotScore> slots = RiskCalculator.calculateSlots(forecast, request);
         int riskMs = elapsedMillis(stepStarted);
 
         stepStarted = System.nanoTime();
         TimeSlotScore best = RiskCalculator.bestSlot(slots);
         int comparisonMs = elapsedMillis(stepStarted);
         List<String> actions = buildActions(best);
-        String fallbackSummary = "%s%s。综合温湿度、AQI、降水概率、%s和%s活动约束，%s的活动适宜度最高。当前环境数据为可复现演示快照。"
-                .formatted(city.getName(), city.getWeather(), request.group(), request.intensity(), best.label());
+        String fallbackSummary = "%s%s。基于逐小时天气、US AQI、降水概率、%s和%s活动约束，%s的活动适宜度最高。数据更新时间为%s。"
+                .formatted(city.getName(), city.getWeather(), request.group(), request.intensity(), best.label(), city.getUpdatedAt());
         stepStarted = System.nanoTime();
         String summary = deepSeekService.explain(request, best, actions, evidence).orElse(fallbackSummary);
         int explanationMs = elapsedMillis(stepStarted);
@@ -63,7 +65,7 @@ public class DecisionService {
                 ? best.label() + " 可作为当前优先时段"
                 : "建议将" + request.activityType() + "调整至 " + best.label() + " 开始";
         List<ToolTraceItem> trace = List.of(
-                new ToolTraceItem("t1", "get_environment_snapshot", "读取" + city.getName() + "环境快照", "fallback", environmentMs),
+                new ToolTraceItem("t1", "get_live_environment", "读取" + city.getName() + "实时环境与逐小时预报", "done", environmentMs),
                 new ToolTraceItem("t2", "retrieve_policy_evidence", "读取内置环境与活动规则依据", "done", evidenceMs),
                 new ToolTraceItem("t3", "calculate_activity_risk", "计算15个候选时段的复合风险", "done", riskMs),
                 new ToolTraceItem("t4", "compare_candidate_slots", "选择" + best.label() + "为综合最优时段", "done", comparisonMs),

@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "适候 | AI 户外活动环境决策平台",
-  description: "用演示环境数据推演校园与社区活动时段，展示地图、风险计算过程和决策依据。",
+  description: "基于实时天气、空气质量与逐小时预报，为校园和社区户外活动生成可解释的时段决策。",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

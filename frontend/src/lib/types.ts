@@ -19,7 +19,7 @@ export interface CityEnvironment {
   pm25: number;
   heatRisk: number;
   updatedAt: string;
-  sourceMode: "live" | "demo";
+  sourceMode: "live";
 }
 
 export interface ActivityInput {

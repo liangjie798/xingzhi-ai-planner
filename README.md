@@ -2,7 +2,7 @@
 
 面向学校、社区和活动组织者的 Web 决策工具。用户选择城市、时间、活动强度与人群后，系统计算候选时段风险，展示空间图层、执行建议、依据和工具轨迹。
 
-> 当前版本使用九个中国大陆城市的**演示环境快照**，仅用于验证交互与算法流程。没有接入实时天气、空气质量或逐小时预报，不能将当前分数用于真实活动安全决策。接入高德密钥后显示高德底图；地图上的点位指标仍是演示推算值。DeepSeek 密钥存在时仅增强文字解释，不修改风险计算结果。
+当前版本支持九个中国大陆城市，实时读取 Open-Meteo 天气、降雨、体感温度与空气质量预报。候选时段直接使用逐小时数据，US AQI 会在界面明确标注。热风险由体感温度和湿度计算。DeepSeek 密钥存在时增强文字解释，不修改风险计算结果。
 
 ## 目录结构
 
@@ -43,7 +43,7 @@ amap-jsapi/
 要求：Node.js 22、npm、JDK 21。Windows 当前安装的两个版本位于 `G:\JavaVersions\jdk8u152` 与 `G:\JavaVersions\jdk21.0.12`。本项目使用 Java 21。
 
 ```powershell
-# 终端 1：启动后端，默认使用 H2 演示数据库
+# 终端 1：启动后端，本地默认使用 H2 数据库
 cd 'G:\Ai Web\amap-jsapi\backend'
 ./run-dev.ps1
 
@@ -54,7 +54,7 @@ npm ci
 npm run dev
 ```
 
-访问 `http://localhost:3000`。前端开发服务器把 `/api/*` 转发至 `localhost:8080`。未提供高德密钥时，地图展示明确标记的演示空间图层。
+访问 `http://localhost:3000`。前端开发服务器把 `/api/*` 转发至 `localhost:8080`。未提供高德密钥时，地图区域仅显示真实城市坐标和城市级实时指标，不生成虚构的空间差异。
 
 切换当前 PowerShell 会话的 Java 版本：
 
@@ -67,7 +67,7 @@ javac -version
 
 ## 配置与部署
 
-复制根目录 `.env.example` 为 `.env`，填写 MySQL 密码。`DEEPSEEK_API_KEY` 和高德 JSAPI Key 可留空以运行演示模式。浏览器端高德地图还需要安全密钥或代理地址，对应 `NEXT_PUBLIC_AMAP_SECURITY_CODE` 或 `NEXT_PUBLIC_AMAP_SERVICE_HOST`。前端公开变量会在镜像构建时写入客户端包，请按高德控制台的域名白名单限制 Key。不要提交 `.env`。
+复制根目录 `.env.example` 为 `.env`，填写 MySQL 密码。`DEEPSEEK_API_KEY` 可留空，此时使用确定性规则生成解释。浏览器端高德地图需要 Web 端 JSAPI Key 以及安全密钥或代理地址，对应 `NEXT_PUBLIC_AMAP_SECURITY_CODE` 或 `NEXT_PUBLIC_AMAP_SERVICE_HOST`。前端公开变量会在镜像构建时写入客户端包，请按高德控制台的域名白名单限制 Key。不要提交 `.env`。
 
 ```bash
 docker compose up -d --build
@@ -78,17 +78,18 @@ docker compose ps
 
 ### Ubuntu 服务器原生部署
 
-`deploy/native-setup.sh` 用于无 Docker 的 Ubuntu ECS：安装 Node.js 22、Java 21、MySQL 与 Nginx 后，将仓库文件放在 `/opt/shihou`，把后端 JAR 放在 `/opt/shihou/backend/app.jar`，以 root 执行脚本。脚本会创建独立服务用户、数据库账号、systemd 服务和 Nginx 配置，DeepSeek 密钥可在 `/etc/shihou/backend.env` 中设置。当前阿里云演示部署使用 `lht574.cn`。
+`deploy/native-setup.sh` 用于无 Docker 的 Ubuntu ECS：安装 Node.js 22、Java 21、MySQL 与 Nginx 后，将仓库文件放在 `/opt/shihou`，把后端 JAR 放在 `/opt/shihou/backend/app.jar`，以 root 执行脚本。脚本会创建独立服务用户、数据库账号、systemd 服务和 Nginx 配置，DeepSeek 密钥可在 `/etc/shihou/backend.env` 中设置。当前阿里云部署使用 `lht574.cn`。
 
 ## API
 
-- `GET /api/v1/cities`：城市演示快照。
+- `GET /api/v1/cities`：九个城市的实时环境快照。
+- `GET /api/v1/cities/{cityId}`：单个城市的实时环境快照。
 - `POST /api/v1/decisions/analyze`：候选时段计算、依据检索与建议生成。
 - `GET /actuator/health`：后端健康检查。
 
-## 当前范围与下一步
+## 数据边界
 
-当前依据库是内置规则摘录，尚未完成向量检索；Agent 轨迹来自实际后端步骤，但模型当前只承担解释生成。参赛正式版应加入中国大陆有授权的数据源、观测时间及站点溯源、逐小时预报、可核验的政策文档检索与模型工具调用。实时数据接入前，产品会持续标明演示模式。
+天气与空气质量是城市坐标附近的网格预报，并非单一地面监测站实测值；系统支持今天至未来四天。当前依据库为内置规则摘录，尚未升级为向量检索。Agent 轨迹来自实际后端步骤，模型只承担解释生成。
 
 团队信息：待参赛团队填写。
 
