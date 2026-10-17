@@ -242,8 +242,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
         return;
       }
       try {
-        let response = await fetch(`https://geo.datav.aliyun.com/areas_v3/bound/${city.adcode}_full.json`, { signal: controller.signal });
-        if (!response.ok) response = await fetch(`https://geo.datav.aliyun.com/areas_v3/bound/${city.adcode}.json`, { signal: controller.signal });
+        const response = await fetch(`/api/region/${city.adcode}`, { signal: controller.signal });
         if (!response.ok) throw new Error("行政区边界不可用");
         const geoJson = await response.json() as { features?: Array<{ geometry?: { coordinates?: unknown } }> };
         const rings: number[][][] = [];
