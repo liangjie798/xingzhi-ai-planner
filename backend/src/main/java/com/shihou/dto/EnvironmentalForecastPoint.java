@@ -1,6 +1,7 @@
 package com.shihou.dto;
 
 public record EnvironmentalForecastPoint(
+        String date,
         int hour,
         double temperature,
         int humidity,

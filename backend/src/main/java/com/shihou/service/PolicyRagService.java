@@ -17,7 +17,8 @@ public class PolicyRagService {
     );
 
     public List<EvidenceItem> retrieve(String activityType, String group) {
-        return EVIDENCE;
+        if ("校园运动会".equals(activityType) || "体育课".equals(activityType)) return EVIDENCE;
+        return EVIDENCE.stream().filter(item -> !"校园活动".equals(item.tag())).toList();
     }
 }
 

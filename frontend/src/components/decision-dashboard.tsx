@@ -1,14 +1,21 @@
 "use client";
 
 import {
-  ArrowClockwise, Brain, CalendarBlank, CaretDown, CheckCircle, CloudSun, Compass,
-  Database, Drop, Gauge, Info, Lightning, MapPin, Path, ShieldCheck, Sparkle,
-  ThermometerSimple, UsersThree, WarningCircle, Wind,
+  ArrowClockwise, Binoculars, Brain, CalendarBlank, CaretDown, CheckCircle, Clock, CloudSun, Compass,
+  Crosshair, Database, Drop, Gauge, GearSix, Info, Lightning, MagnifyingGlass, MapPin, MapTrifold, Path,
+  ShieldCheck, Sparkle, ThermometerSimple, UsersThree, WarningCircle, Wind,
 } from "@phosphor-icons/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EnvironmentMap } from "./environment-map";
-import { cities, cityById } from "@/lib/cities";
-import type { ActivityInput, ActivityType, CityEnvironment, DecisionResult, GroupType, Intensity, LayerKey } from "@/lib/types";
+import { cities, cityById, saveSelectedCity } from "@/lib/cities";
+import type { CityOption } from "@/lib/cities";
+import { readModelConfig } from "@/lib/model-config";
+import { fetchTourismRoute } from "@/lib/tourism";
+import type {
+  ActivityInput, ActivityType, CityEnvironment, CitySearchResult, DecisionResult,
+  GridPoint, GroupType, Intensity, LayerKey, TourismRoute,
+} from "@/lib/types";
 
 const layers: Array<{ key: LayerKey; label: string; icon: typeof Gauge }> = [
   { key: "comfort", label: "活动适宜度", icon: Gauge },
@@ -17,9 +24,17 @@ const layers: Array<{ key: LayerKey; label: string; icon: typeof Gauge }> = [
   { key: "aqi", label: "US AQI", icon: Wind },
   { key: "heat", label: "热风险", icon: CloudSun },
 ];
-const activityTypes: ActivityType[] = ["校园运动会", "体育课", "社区活动", "户外训练", "研学活动"];
+const activityTypes: ActivityType[] = ["校园运动会", "体育课", "社区活动", "户外训练", "研学活动", "旅游规划"];
 const intensities: Intensity[] = ["低强度", "中强度", "高强度"];
 const groups: GroupType[] = ["普通人群", "儿童青少年", "老年人", "敏感人群"];
+const activityProfiles: Record<ActivityType, { focus: string; detail: string }> = {
+  "校园运动会": { focus: "多人连续、多项目联动", detail: "重点评估热风险、空气质量、医疗保障和延期条件。" },
+  "体育课": { focus: "单课时、教师可控", detail: "重点评估学生负荷、课时内天气变化和室内替代课程。" },
+  "社区活动": { focus: "年龄跨度大、开放场地", detail: "重点照顾老幼、敏感人群、无障碍动线和分批参与。" },
+  "户外训练": { focus: "强度高、体能负荷大", detail: "加重高温与空气污染惩罚，关注心率、补水和强度下调。" },
+  "研学活动": { focus: "路线长、节点多", detail: "重点评估交通衔接、集合清点、步行暴露和临时避险点。" },
+  "旅游规划": { focus: "多站点、跨时段出行", detail: "根据逐小时环境避开高风险时段，并结合景点位置生成可视化路线。" },
+};
 
 function dateString(offsetDays = 0) {
   const date = new Date();
@@ -28,7 +43,7 @@ function dateString(offsetDays = 0) {
 }
 
 const initialInput: ActivityInput = {
-  cityId: "hangzhou", activityType: "校园运动会", date: "",
+  cityId: "hangzhou", activityType: "校园运动会", date: "", endDate: "",
   startHour: 14, duration: 2, participants: 500, intensity: "中强度", group: "儿童青少年",
   locationName: "杭州某学校操场",
 };
@@ -42,22 +57,54 @@ async function apiError(response: Response) {
   }
 }
 
+const GRID_OFFSETS = [-0.07, 0, 0.07];
+
 export function DecisionDashboard() {
   const [input, setInput] = useState<ActivityInput>(initialInput);
   const [layer, setLayer] = useState<LayerKey>("comfort");
   const [city, setCity] = useState<CityEnvironment | null>(null);
   const [result, setResult] = useState<DecisionResult | null>(null);
+  const [route, setRoute] = useState<TourismRoute | null>(null);
+  const [grid, setGrid] = useState<GridPoint[]>([]);
   const [isLoadingCity, setIsLoadingCity] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isPlanning, setIsPlanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<"plan" | "evidence" | "trace">("plan");
   const [dateRange, setDateRange] = useState({ min: "", max: "" });
-  const selectedCity = useMemo(() => cityById(input.cityId), [input.cityId]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<CitySearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
+  const [participantsText, setParticipantsText] = useState("0500");
+  const searchTimer = useRef<number | null>(null);
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+  const isTourism = input.activityType === "旅游规划";
 
-  const loadCity = useCallback(async (cityId: string, signal?: AbortSignal) => {
+  const meta: CityOption = useMemo(() => {
+    if (input.longitude != null && input.latitude != null) {
+      return {
+        id: input.cityId,
+        name: input.cityName || "所选城市",
+        province: input.province || "中国",
+        adcode: input.adcode || input.cityId,
+        center: [input.longitude, input.latitude],
+      };
+    }
+    return cityById(input.cityId);
+  }, [input.cityId, input.cityName, input.province, input.adcode, input.longitude, input.latitude]);
+
+  const loadCity = useCallback(async (cityMeta: CityOption, signal?: AbortSignal) => {
+    const params = new URLSearchParams({
+      cityId: cityMeta.id,
+      name: cityMeta.name,
+      province: cityMeta.province,
+      adcode: cityMeta.adcode,
+      longitude: String(cityMeta.center[0]),
+      latitude: String(cityMeta.center[1]),
+    });
     try {
-      const response = await fetch(`${apiBase}/api/v1/cities/${cityId}`, { cache: "no-store", signal });
+      const response = await fetch(`${apiBase}/api/v1/cities/environment?${params.toString()}`, { cache: "no-store", signal });
       if (!response.ok) throw new Error(await apiError(response));
       setCity(await response.json() as CityEnvironment);
     } catch (caught) {
@@ -69,17 +116,107 @@ export function DecisionDashboard() {
     }
   }, [apiBase]);
 
+  // 城市网格采样：3x3 采样点逐点读取逐小时预报，用于地图分层着色
+  useEffect(() => {
+    if (!city) return;
+    const [centerLng, centerLat] = meta.center;
+    const referenceHour = input.date === dateString() ? Math.min(new Date().getHours(), 22) : 12;
+    let cancelled = false;
+
+    void (async () => {
+      const samples: GridPoint[] = [];
+      await Promise.all(GRID_OFFSETS.flatMap((dLat) => GRID_OFFSETS.map(async (dLng) => {
+        const params = new URLSearchParams({
+          cityId: meta.id,
+          name: meta.name,
+          province: meta.province,
+          adcode: meta.adcode,
+          longitude: String(+(centerLng + dLng).toFixed(4)),
+          latitude: String(+(centerLat + dLat).toFixed(4)),
+          date: input.date || dateString(),
+        });
+        try {
+          const response = await fetch(`${apiBase}/api/v1/cities/hourly?${params.toString()}`, { cache: "no-store" });
+          if (!response.ok) return;
+          const data = await response.json() as { hours: Array<{ hour: number; temperature: number; humidity: number; rainProbability: number; aqi: number; heatRisk: number }> };
+          const point = data.hours.find((hour) => hour.hour === referenceHour) ?? data.hours[12];
+          if (!point) return;
+          samples.push({
+            longitude: +(centerLng + dLng).toFixed(4),
+            latitude: +(centerLat + dLat).toFixed(4),
+            temperature: point.temperature,
+            humidity: point.humidity,
+            rainProbability: point.rainProbability,
+            aqi: point.aqi,
+            heatRisk: point.heatRisk,
+            comfort: Math.round(Math.max(0, 100 - point.heatRisk * 0.42 - Math.max(0, point.aqi - 35) * 0.21 - point.rainProbability * 0.18)),
+          });
+        } catch { /* 单点失败不影响整体 */ }
+      })));
+      if (!cancelled) setGrid(samples);
+    })();
+
+    return () => { cancelled = true; };
+  }, [city, meta, input.date, apiBase]);
+
   useEffect(() => {
     const controller = new AbortController();
-    queueMicrotask(() => void loadCity(input.cityId, controller.signal));
+    queueMicrotask(() => void loadCity(meta, controller.signal));
     return () => controller.abort();
-  }, [input.cityId, loadCity]);
+  }, [meta, loadCity]);
+
+  // 城市搜索（Open-Meteo 地理编码，支持城市及下属区域）
+  useEffect(() => {
+    if (searchTimer.current) window.clearTimeout(searchTimer.current);
+    const cleaned = searchQuery.trim();
+    if (cleaned.length < 2) {
+      return;
+    }
+    searchTimer.current = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`${apiBase}/api/v1/cities/search?q=${encodeURIComponent(cleaned)}`, { cache: "no-store" });
+        setSearchResults(response.ok ? await response.json() as CitySearchResult[] : []);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 380);
+  }, [searchQuery, apiBase]);
+
+  const selectSearchedCity = (item: CitySearchResult) => {
+    const option: CityOption = {
+      id: item.id,
+      name: item.district && item.district !== item.name ? `${item.name}·${item.district}` : item.name,
+      province: item.province,
+      adcode: item.adcode,
+      center: [item.longitude, item.latitude],
+    };
+    saveSelectedCity(option);
+    setError(null);
+    setResult(null);
+    setRoute(null);
+    setIsLoadingCity(true);
+    setCity(null);
+    setSearchQuery("");
+    setSearchResults([]);
+    setInput((current) => ({
+      ...current,
+      cityId: option.id,
+      cityName: option.name,
+      province: option.province,
+      adcode: option.adcode,
+      longitude: option.center[0],
+      latitude: option.center[1],
+      locationName: `${option.name}集合点`,
+    }));
+  };
 
   useEffect(() => {
     queueMicrotask(() => {
       const today = dateString();
       setDateRange({ min: today, max: dateString(4) });
-      setInput((current) => current.date ? current : { ...current, date: today });
+      setInput((current) => current.date ? current : { ...current, date: today, endDate: today });
     });
   }, []);
 
@@ -92,11 +229,58 @@ export function DecisionDashboard() {
   };
   const changeCity = (cityId: string) => {
     const nextCity = cityById(cityId);
+    const option: CityOption = { id: nextCity.id, name: nextCity.name, province: nextCity.province, adcode: nextCity.adcode, center: nextCity.center };
+    saveSelectedCity(option);
     setIsLoadingCity(true);
     setError(null);
     setCity(null);
     setResult(null);
-    setInput((current) => ({ ...current, cityId, locationName: `${nextCity.name.replace("市", "")}活动场地` }));
+    setRoute(null);
+    setInput((current) => ({
+      ...current,
+      cityId,
+      cityName: nextCity.name,
+      province: nextCity.province,
+      adcode: nextCity.adcode,
+      longitude: nextCity.center[0],
+      latitude: nextCity.center[1],
+      locationName: `${nextCity.name.replace("市", "")}活动场地`,
+    }));
+  };
+
+  const locateCurrentCity = () => {
+    if (!navigator.geolocation) {
+      setError("当前浏览器不支持定位，请直接搜索所在市区");
+      return;
+    }
+    setIsLocating(true);
+    setError(null);
+    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+      const longitude = +coords.longitude.toFixed(6);
+      const latitude = +coords.latitude.toFixed(6);
+      let name = "当前位置";
+      let province = "定位坐标";
+      try {
+        const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=zh`);
+        if (response.ok) {
+          const place = await response.json() as { city?: string; locality?: string; principalSubdivision?: string };
+          name = place.city || place.locality || name;
+          province = place.principalSubdivision || province;
+        }
+      } catch { /* 坐标仍可用于环境预报 */ }
+      const option: CityOption = { id: "geo-current", name, province, adcode: "geo-current", center: [longitude, latitude] };
+      saveSelectedCity(option);
+      setCity(null);
+      setResult(null);
+      setRoute(null);
+      setIsLoadingCity(true);
+      setInput((current) => ({ ...current, cityId: option.id, cityName: name, province,
+        adcode: option.adcode, longitude, latitude, locationName: `我的位置 ${longitude.toFixed(4)}, ${latitude.toFixed(4)}` }));
+      setIsLocating(false);
+    }, (reason) => {
+      setIsLocating(false);
+      setError(reason.code === reason.PERMISSION_DENIED ? "定位权限被拒绝，请在浏览器地址栏允许位置权限" : "无法获取当前位置，请直接搜索所在市区");
+    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 300000 });
   };
 
   async function analyze() {
@@ -109,7 +293,8 @@ export function DecisionDashboard() {
       });
       if (!response.ok) throw new Error(await apiError(response));
       setResult(await response.json() as DecisionResult);
-      await loadCity(input.cityId);
+      setRoute(null);
+      await loadCity(meta);
       setActivePanel("plan");
     } catch (caught) {
       setResult(null);
@@ -120,9 +305,45 @@ export function DecisionDashboard() {
     }
   }
 
+  async function planTourism() {
+    setIsPlanning(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        cityId: meta.id, date: input.date || dateString(),
+        name: meta.name, province: meta.province, adcode: meta.adcode,
+        longitude: String(meta.center[0]), latitude: String(meta.center[1]),
+      });
+      const response = await fetch(`${apiBase}/api/v1/cities/hourly?${params.toString()}`, { cache: "no-store" });
+      if (!response.ok) throw new Error(await apiError(response));
+      const hourly = await response.json() as { hours: Array<{ hour: number; temperature: number; humidity: number; rainProbability: number; aqi: number; heatRisk: number }> };
+      const modelConfig = readModelConfig();
+      const data = await fetchTourismRoute(apiBase, {
+        cityName: meta.name,
+        province: meta.province,
+        longitude: meta.center[0],
+        latitude: meta.center[1],
+        date: input.date || dateString(),
+        hours: hourly.hours,
+        config: { baseUrl: modelConfig.baseUrl, apiKey: modelConfig.apiKey, model: modelConfig.model },
+      });
+      setRoute(data);
+      setResult(null);
+      setActivePanel("plan");
+    } catch (caught) {
+      setRoute(null);
+      setError(caught instanceof Error ? caught.message : "旅游路线服务暂时不可用");
+    } finally {
+      setIsPlanning(false);
+    }
+  }
+
   const updatedAt = city ? new Intl.DateTimeFormat("zh-CN", {
     month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
   }).format(new Date(city.updatedAt)) : "";
+  const visibleSlots = result
+    ? result.slots.filter((slot) => !result.bestSlot.date || slot.date === result.bestSlot.date)
+    : [];
 
   return (
     <main className="app-shell">
@@ -138,7 +359,9 @@ export function DecisionDashboard() {
         </nav>
         <div className="topbar-actions">
           <span className={`system-status ${error ? "has-error" : ""}`}><i /> {error ? "数据连接异常" : isLoadingCity ? "正在同步实时数据" : `实时数据 · ${updatedAt}`}</span>
-          <button className="icon-button" type="button" onClick={() => showPanel("evidence")} aria-label="查看数据说明"><Info size={19} /></button>
+          <Link className="icon-button" href="/hourly" title="逐小时数据" aria-label="逐小时数据页面"><Clock size={18} /></Link>
+          <Link className="icon-button" href="/" title="启动页面" aria-label="启动页面"><MapTrifold size={18} /></Link>
+          <Link className="icon-button" href="/settings" title="AI 模型配置" aria-label="AI 模型配置页面"><GearSix size={18} /></Link>
           <div className="avatar">SH</div>
         </div>
       </header>
@@ -147,34 +370,82 @@ export function DecisionDashboard() {
         <aside className="control-rail">
           <div className="rail-heading">
             <div><span className="section-kicker">活动条件</span><h1>规划一次更合适的户外活动</h1></div>
-            <button type="button" className="icon-button compact" onClick={() => { const sameCity = input.cityId === initialInput.cityId; setError(null); setResult(null); setInput({ ...initialInput, date: dateString() }); if (!sameCity) { setIsLoadingCity(true); setCity(null); } else { void loadCity(initialInput.cityId); } }} aria-label="重置活动条件"><ArrowClockwise size={17} /></button>
+            <button type="button" className="icon-button compact" onClick={() => { const sameCity = input.cityId === initialInput.cityId; const today = dateString(); setError(null); setResult(null); setRoute(null); setParticipantsText("0500"); setInput({ ...initialInput, date: today, endDate: today }); if (!sameCity) { setIsLoadingCity(true); setCity(null); } else { void loadCity(cityById(initialInput.cityId)); } }} aria-label="重置活动条件"><ArrowClockwise size={17} /></button>
           </div>
+
           <FieldLabel htmlFor="city">所在城市</FieldLabel>
-          <div className="select-wrap"><MapPin size={17} /><select id="city" value={input.cityId} onChange={(event) => changeCity(event.target.value)}>{cities.map((item) => <option value={item.id} key={item.id}>{item.name} · {item.province}</option>)}</select><CaretDown size={14} /></div>
+          <div className="select-wrap"><MapPin size={17} /><select id="city" value={cities.some((item) => item.id === input.cityId) ? input.cityId : ""} onChange={(event) => changeCity(event.target.value)}>
+            {cities.some((item) => item.id === input.cityId) ? null : <option value="">{meta.name}（搜索城市）</option>}
+            {cities.map((item) => <option value={item.id} key={item.id}>{item.name} · {item.province}</option>)}
+          </select><CaretDown size={14} /></div>
+
+          <div className="city-search">
+            <div className="input-wrap"><MagnifyingGlass size={17} />
+              <input
+                value={searchQuery}
+                placeholder="搜索城市 / 区县，如：西湖区、临安"
+                aria-label="搜索城市及下属区域"
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setSearchQuery(value);
+                  setIsSearching(value.trim().length >= 2);
+                  if (value.trim().length < 2) {
+                    setSearchResults([]);
+                    setIsSearching(false);
+                  }
+                }}
+              />
+              {isSearching && <span className="button-loader dark search-loader" />}
+            </div>
+            {searchResults.length > 0 && (
+              <ul className="city-search-results" role="listbox">
+                {searchResults.map((item) => (
+                  <li key={item.id}>
+                    <button type="button" onClick={() => selectSearchedCity(item)}>
+                      <MapPin size={14} />
+                      <span className="city-search-name">{item.name}</span>
+                      <span className="city-search-meta">{[item.district, item.province].filter(Boolean).join(" · ")}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <button type="button" className="locate-button" onClick={locateCurrentCity} disabled={isLocating}><Crosshair size={16} />{isLocating ? "正在定位城市" : "自动定位当前城市"}</button>
+          {city && <dl className="city-detail-grid" aria-label="所选城市详细环境信息"><div><dt>天气</dt><dd>{city.weather}</dd></div><div><dt>PM2.5</dt><dd>{city.pm25} μg/m³</dd></div><div><dt>风力</dt><dd>{city.windPower}级</dd></div><div><dt>降雨</dt><dd>{city.rainProbability}%</dd></div></dl>}
+
           <FieldLabel htmlFor="location">活动地点</FieldLabel>
           <div className="input-wrap"><Path size={17} /><input id="location" value={input.locationName} onChange={(event) => updateInput("locationName", event.target.value)} /></div>
-          <div className="field-grid">
-            <div><FieldLabel htmlFor="date">活动日期</FieldLabel><div className="input-wrap"><CalendarBlank size={17} /><input id="date" type="date" min={dateRange.min} max={dateRange.max} value={input.date} onChange={(event) => { updateInput("date", event.target.value); setResult(null); }} /></div></div>
-            <div><FieldLabel htmlFor="hour">开始时间</FieldLabel><div className="select-wrap no-icon"><select id="hour" value={input.startHour} onChange={(event) => updateInput("startHour", Number(event.target.value))}>{Array.from({ length: 15 }, (_, index) => index + 6).map((hour) => <option value={hour} key={hour}>{String(hour).padStart(2, "0")}:00</option>)}</select><CaretDown size={14} /></div></div>
+          <div className="field-grid date-range-grid">
+            <div><FieldLabel htmlFor="date">开始日期</FieldLabel><div className="input-wrap"><CalendarBlank size={17} /><input id="date" type="date" min={dateRange.min} max={dateRange.max} value={input.date} onChange={(event) => { const date = event.target.value; setInput((current) => ({ ...current, date, endDate: !current.endDate || current.endDate < date ? date : current.endDate })); setResult(null); setRoute(null); }} /></div></div>
+            <div><FieldLabel htmlFor="end-date">结束日期</FieldLabel><div className="input-wrap"><CalendarBlank size={17} /><input id="end-date" type="date" min={input.date || dateRange.min} max={dateRange.max} value={input.endDate || input.date} onChange={(event) => { updateInput("endDate", event.target.value); setResult(null); setRoute(null); }} /></div></div>
           </div>
+          <FieldLabel htmlFor="hour">每日开始时间</FieldLabel><div className="select-wrap no-icon"><select id="hour" value={input.startHour} onChange={(event) => updateInput("startHour", Number(event.target.value))}>{Array.from({ length: 15 }, (_, index) => index + 6).map((hour) => <option value={hour} key={hour}>{String(hour).padStart(2, "0")}:00</option>)}</select><CaretDown size={14} /></div>
           <FieldLabel htmlFor="activity">活动类型</FieldLabel>
-          <div className="select-wrap"><Lightning size={17} /><select id="activity" value={input.activityType} onChange={(event) => updateInput("activityType", event.target.value as ActivityType)}>{activityTypes.map((item) => <option value={item} key={item}>{item}</option>)}</select><CaretDown size={14} /></div>
+          <div className="select-wrap"><Lightning size={17} /><select id="activity" value={input.activityType} onChange={(event) => { updateInput("activityType", event.target.value as ActivityType); setResult(null); }}>{activityTypes.map((item) => <option value={item} key={item}>{item}</option>)}</select><CaretDown size={14} /></div>
+          <p className="activity-profile"><strong>{activityProfiles[input.activityType].focus}</strong><span>{activityProfiles[input.activityType].detail}</span></p>
           <div className="field-grid">
-            <div><FieldLabel htmlFor="participants">参与人数</FieldLabel><div className="input-wrap"><UsersThree size={17} /><input id="participants" type="number" min="1" value={input.participants} onChange={(event) => updateInput("participants", Number(event.target.value))} /></div></div>
+            <div><FieldLabel htmlFor="participants">参与人数</FieldLabel><div className="input-wrap"><UsersThree size={17} /><input id="participants" type="text" inputMode="numeric" value={participantsText} onChange={(event) => { const digits = event.target.value.replace(/\D/g, "").slice(0, 5); setParticipantsText(digits); if (digits) updateInput("participants", Math.max(1, Number(digits))); }} onBlur={() => setParticipantsText(String(Math.max(1, input.participants)).padStart(4, "0"))} /></div></div>
             <div><FieldLabel htmlFor="duration">时长</FieldLabel><div className="select-wrap no-icon"><select id="duration" value={input.duration} onChange={(event) => updateInput("duration", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6].map((hour) => <option value={hour} key={hour}>{hour} 小时</option>)}</select><CaretDown size={14} /></div></div>
           </div>
           <FieldLabel>活动强度</FieldLabel>
           <div className="segmented-control">{intensities.map((item) => <button type="button" key={item} className={input.intensity === item ? "is-selected" : ""} onClick={() => updateInput("intensity", item)}>{item.replace("强度", "")}</button>)}</div>
           <FieldLabel htmlFor="group">参与人群</FieldLabel>
-          <div className="select-wrap"><UsersThree size={17} /><select id="group" value={input.group} onChange={(event) => updateInput("group", event.target.value as GroupType)}>{groups.map((item) => <option value={item} key={item}>{item}</option>)}</select><CaretDown size={14} /></div>
+          <div className="select-wrap"><UsersThree size={17} /><select id="group" value={input.group} onChange={(event) => { setResult(null); setRoute(null); updateInput("group", event.target.value as GroupType); }}>{groups.map((item) => <option value={item} key={item}>{item}</option>)}</select><CaretDown size={14} /></div>
+          {isTourism && (
+            <p className="tourism-hint"><Binoculars size={16} /> 旅游模式：将当日逐小时天气与内置公开景点候选库结合，编排一日路线并绘制在地图上。</p>
+          )}
           {error && <div className="error-notice" role="alert"><WarningCircle size={17} /><span>{error}</span></div>}
-          <button className="analyze-button" type="button" onClick={analyze} disabled={isAnalyzing || isLoadingCity || !city || !input.date}>{isAnalyzing ? <span className="button-loader" /> : <Sparkle size={19} weight="fill" />}{isAnalyzing ? "Agent 正在分析" : "生成活动决策"}</button>
+          <button className="analyze-button" type="button" onClick={isTourism ? planTourism : analyze} disabled={isAnalyzing || isPlanning || isLoadingCity || !city || !input.date}>
+            {isAnalyzing || isPlanning ? <span className="button-loader" /> : <Sparkle size={19} weight="fill" />}
+            {isAnalyzing ? "Agent 正在分析" : isPlanning ? "AI 正在编排路线" : isTourism ? "生成旅游路线" : "生成活动决策"}
+          </button>
           <p className="rail-footnote"><ShieldCheck size={14} /> 实时预报计算，AI 仅生成可解释文字</p>
         </aside>
 
         <section className="map-workbench">
           <div className="city-summary">
-            <div><span className="section-kicker">{selectedCity.province} · {selectedCity.adcode} · {city ? `更新于 ${updatedAt}` : "正在连接数据源"}</span><h2>{selectedCity.name}环境决策图</h2></div>
+            <div><span className="section-kicker">{meta.province} · {meta.adcode} · {city ? `更新于 ${updatedAt}` : "正在连接数据源"}</span><h2>{meta.name}环境决策图</h2></div>
             <div className="city-metrics" aria-label="城市环境概览">
               <Metric icon={ThermometerSimple} value={city ? `${city.temperature}°` : "--"} label="气温" />
               <Metric icon={Drop} value={city ? `${city.humidity}%` : "--"} label="湿度" />
@@ -183,18 +454,58 @@ export function DecisionDashboard() {
             </div>
           </div>
           <div className="layer-bar" aria-label="环境图层">{layers.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={layer === item.key ? "is-active" : ""} onClick={() => setLayer(item.key)}><Icon size={16} /> {item.label}</button>; })}</div>
-          {city ? <EnvironmentMap city={city} layer={layer} onPointSelected={onPointSelected} /> : <div className="map-shell map-unavailable"><span className="button-loader dark" /><p>{error ? "实时数据暂不可用" : "正在载入城市环境数据"}</p></div>}
+          {city
+            ? <EnvironmentMap city={city} layer={layer} onPointSelected={onPointSelected} grid={grid} route={route} />
+            : <div className="map-shell map-unavailable"><span className="button-loader dark" /><p>{error ? "实时数据暂不可用" : "正在载入城市环境数据"}</p></div>}
           <div className="timeline-card">
-            <div className="timeline-header"><div><span className="section-kicker">逐小时预报</span><h3>全天活动适宜度</h3></div><div className="legend"><span className="good" />适宜 <span className="caution" />谨慎 <span className="bad" />不建议</div></div>
-            {result ? <div className="slot-chart">{result.slots.map((slot) => <button type="button" key={slot.hour} className={`slot-column ${slot.hour === result.bestSlot.hour ? "is-best" : ""}`} onClick={() => updateInput("startHour", slot.hour)} aria-label={`${slot.label}适宜度${slot.score}`}><span className="slot-score">{slot.hour === result.bestSlot.hour ? slot.score : ""}</span><span className={`slot-bar level-${slot.level}`} style={{ height: `${Math.max(18, slot.score)}%` }} /><span className="slot-time">{slot.hour}</span></button>)}</div> : <div className="timeline-empty">选择活动条件后生成逐小时决策</div>}
+            <div className="timeline-header"><div><span className="section-kicker">逐小时预报</span><h3>{isTourism ? "旅游路线 · 推荐出行时段" : "全天活动适宜度"}</h3></div><div className="legend"><span className="good" />适宜 <span className="caution" />谨慎 <span className="bad" />不建议</div></div>
+            {isTourism
+              ? <div className="timeline-empty">{route ? `推荐时段：${route.bestHours}` : "选择城市与日期后生成旅游路线"}</div>
+              : result
+                ? <div className="slot-chart">{visibleSlots.map((slot) => { const isBest = slot.hour === result.bestSlot.hour && slot.date === result.bestSlot.date; return <button type="button" key={`${slot.date}-${slot.hour}`} className={`slot-column ${isBest ? "is-best" : ""}`} onClick={() => setInput((current) => ({ ...current, date: slot.date || current.date, startHour: slot.hour }))} aria-label={`${slot.label}适宜度${slot.score}`}><span className="slot-score">{isBest ? slot.score : ""}</span><span className={`slot-bar level-${slot.level}`} style={{ height: `${Math.max(18, slot.score)}%` }} /><span className="slot-time">{slot.hour}</span></button>; })}</div>
+                : <div className="timeline-empty">选择活动条件后生成逐小时决策</div>}
+            {!isTourism && result && <Link className="timeline-more" href="/hourly">查看完整逐小时页面 →</Link>}
           </div>
         </section>
 
         <aside className="decision-panel">
-          <div className="panel-tabs" role="tablist"><button type="button" className={activePanel === "plan" ? "is-active" : ""} onClick={() => setActivePanel("plan")}>方案</button><button type="button" className={activePanel === "evidence" ? "is-active" : ""} onClick={() => setActivePanel("evidence")}>证据</button><button type="button" className={activePanel === "trace" ? "is-active" : ""} onClick={() => setActivePanel("trace")}>Agent轨迹</button></div>
-          {!result && <div className="panel-content empty-state"><Sparkle size={30} weight="duotone" /><h2>等待生成决策</h2><p>系统将读取所选日期的真实逐小时预报，比较 15 个候选时段并生成行动建议。</p></div>}
-          {result && activePanel === "plan" && <div className="panel-content panel-enter">
-            <div className="score-hero"><div className={`score-ring level-${result.overallLevel}`} style={{ "--score": result.overallScore } as React.CSSProperties}><strong>{result.overallScore}</strong><small>适宜度</small></div><div><span className="decision-status"><CheckCircle size={15} weight="fill" /> {result.overallLevel}</span><h2>{result.recommendation}</h2><p>{result.generatedBy === "deepseek" ? "DeepSeek 增强解释 · 实时环境预报" : "规则解释 · 实时环境预报"}</p></div></div>
+          <div className="panel-tabs" role="tablist"><button type="button" className={activePanel === "plan" ? "is-active" : ""} onClick={() => setActivePanel("plan")}>{isTourism ? "路线" : "方案"}</button><button type="button" className={activePanel === "evidence" ? "is-active" : ""} onClick={() => setActivePanel("evidence")}>证据</button><button type="button" className={activePanel === "trace" ? "is-active" : ""} onClick={() => setActivePanel("trace")}>Agent轨迹</button></div>
+
+          {isTourism && !route && <div className="panel-content empty-state"><Binoculars size={30} weight="duotone" /><h2>{isPlanning ? "AI 正在编排路线…" : "等待生成旅游路线"}</h2><p>整合热门平台推荐与当日逐小时天气，把适合出行的时段留给户外打卡，并绘制在中央地图上。</p></div>}
+
+          {isTourism && route && activePanel === "plan" && (
+            <div className="panel-content panel-enter">
+              <div className="route-hero">
+                <span className="decision-status"><CheckCircle size={15} weight="fill" /> {route.generatedBy === "llm" ? `AI 路线 · ${route.provider ?? ""}` : "精选路线 · 内置景点库"}</span>
+                <h2>{route.cityName}一日旅游路线</h2>
+                <p>{route.date} · 推荐时段 {route.bestHours}</p>
+              </div>
+              <div className="summary-block"><Binoculars size={20} weight="duotone" /><p>{route.summary}</p></div>
+              <section className="recommend-section">
+                <span className="section-kicker">行程站点（已绘制在地图）</span>
+                <div className="stop-list">
+                  {route.stops.map((stop, index) => (
+                    <div className="stop-row" key={`${stop.name}-${index}`}>
+                      <span className="stop-index">{index + 1}</span>
+                      <div>
+                        <h3>{stop.name}<em>{stop.time}</em></h3>
+                        <p>{stop.tip}</p>
+                        <small>{stop.tag}</small>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <section className="contingency">
+                <div><ShieldCheck size={18} /><strong>出行提示</strong></div>
+                {route.notes.map((note) => <p key={note}>· {note}</p>)}
+              </section>
+            </div>
+          )}
+
+          {!isTourism && !result && <div className="panel-content empty-state"><Sparkle size={30} weight="duotone" /><h2>等待生成决策</h2><p>系统将读取日期范围内的真实逐小时预报，按活动场景比较候选时段并生成行动建议。</p></div>}
+          {!isTourism && result && activePanel === "plan" && <div className="panel-content panel-enter">
+            <div className="score-hero"><div className={`score-ring level-${result.overallLevel}`} style={{ "--score": result.overallScore } as React.CSSProperties}><strong>{result.overallScore}</strong><small>适宜度</small></div><div><span className="decision-status"><CheckCircle size={15} weight="fill" /> {result.overallLevel}</span><h2>{result.recommendation}</h2><p>{result.generatedBy === "deepseek" ? "大模型增强解释 · 实时环境预报" : "规则解释 · 实时环境预报"}</p></div></div>
             <div className="summary-block"><Brain size={20} weight="duotone" /><p>{result.summary}</p></div>
             <section className="recommend-section"><span className="section-kicker">执行措施</span><div className="action-list">{result.actions.map((action, index) => <div className="action-row" key={action}><span>{String(index + 1).padStart(2, "0")}</span><p>{action}</p></div>)}</div></section>
             <section className="contingency"><div><ShieldCheck size={18} /><strong>备用预案</strong></div><p>{result.contingency}</p></section>

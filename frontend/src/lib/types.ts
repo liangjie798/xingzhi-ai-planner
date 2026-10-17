@@ -1,8 +1,8 @@
 export type LayerKey = "comfort" | "temperature" | "humidity" | "aqi" | "heat";
 
-export type ActivityType = "校园运动会" | "体育课" | "社区活动" | "户外训练" | "研学活动";
+export type ActivityType = "校园运动会" | "体育课" | "社区活动" | "户外训练" | "研学活动" | "旅游规划";
 export type Intensity = "低强度" | "中强度" | "高强度";
-export type GroupType = "普通人群" | "儿童青少年" | "老年人" | "敏感人群";
+export type GroupType = "普通人群" | "儿童青少年" | "老年人" | "敏感人群" | "外来旅游人群";
 
 export interface CityEnvironment {
   id: string;
@@ -26,15 +26,49 @@ export interface ActivityInput {
   cityId: string;
   activityType: ActivityType;
   date: string;
+  endDate?: string;
   startHour: number;
   duration: number;
   participants: number;
   intensity: Intensity;
   group: GroupType;
   locationName: string;
+  cityName?: string;
+  province?: string;
+  adcode?: string;
+  longitude?: number;
+  latitude?: number;
+}
+
+export interface CitySearchResult {
+  id: string;
+  name: string;
+  province: string;
+  district: string;
+  adcode: string;
+  longitude: number;
+  latitude: number;
+}
+
+export interface EnvironmentalForecastPoint {
+  date?: string;
+  hour: number;
+  temperature: number;
+  humidity: number;
+  rainProbability: number;
+  aqi: number;
+  pm25: number;
+  heatRisk: number;
+}
+
+export interface HourlyEnvironmentResponse {
+  city: CityEnvironment;
+  date: string;
+  hours: EnvironmentalForecastPoint[];
 }
 
 export interface TimeSlotScore {
+  date?: string;
   hour: number;
   label: string;
   temperature: number;
@@ -72,5 +106,52 @@ export interface DecisionResult {
   evidence: EvidenceItem[];
   trace: ToolTraceItem[];
   generatedBy: "deepseek" | "deterministic-fallback";
+}
+
+export interface GridPoint {
+  longitude: number;
+  latitude: number;
+  temperature: number;
+  humidity: number;
+  aqi: number;
+  heatRisk: number;
+  rainProbability: number;
+  comfort: number;
+}
+
+export interface MapLegendInfo {
+  label: string;
+  min: number;
+  max: number;
+  unit: string;
+  highIsBad: boolean;
+}
+
+export interface TourismStop {
+  name: string;
+  longitude: number | null;
+  latitude: number | null;
+  time: string;
+  tip: string;
+  tag: string;
+}
+
+export interface TourismRoute {
+  cityName: string;
+  date: string;
+  summary: string;
+  bestHours: string;
+  stops: TourismStop[];
+  notes: string[];
+  generatedBy: "llm" | "curated";
+  provider?: string;
+}
+
+export interface ModelConfig {
+  providerId: string;
+  providerLabel: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
 }
 

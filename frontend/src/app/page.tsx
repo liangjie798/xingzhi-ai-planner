@@ -1,5 +1,1 @@
-import { DecisionDashboard } from "@/components/decision-dashboard";
-
-export default function Home() {
-  return <DecisionDashboard />;
-}
+export { default } from "./welcome/page";

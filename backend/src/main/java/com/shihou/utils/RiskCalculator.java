@@ -21,21 +21,34 @@ public final class RiskCalculator {
             "中强度", 6,
             "高强度", 13
     );
+    private static final Map<String, Integer> ACTIVITY_FACTOR = Map.of(
+            "校园运动会", 7,
+            "体育课", 3,
+            "社区活动", 1,
+            "户外训练", 10,
+            "研学活动", 4,
+            "旅游规划", 2
+    );
     private RiskCalculator() {
     }
 
     public static List<TimeSlotScore> calculateSlots(List<EnvironmentalForecastPoint> forecast, ActivityDecisionRequest input) {
         List<TimeSlotScore> slots = new ArrayList<>();
         for (EnvironmentalForecastPoint point : forecast) {
+            if (point.hour() < 6 || point.hour() > 20) continue;
             int heatRisk = (int) Math.round(clamp(point.heatRisk()
                     + INTENSITY_FACTOR.getOrDefault(input.intensity(), 6)));
             double risk = heatRisk * 0.42
                     + clamp((point.aqi() - 35) * 0.75) * 0.28
                     + point.rainProbability() * 0.18
                     + GROUP_FACTOR.getOrDefault(input.group(), 7)
+                    + ACTIVITY_FACTOR.getOrDefault(input.activityType(), 3)
                     + Math.max(0, input.duration() - 2) * 4;
             int score = (int) Math.round(clamp(100 - risk));
-            slots.add(new TimeSlotScore(point.hour(), "%02d:00".formatted(point.hour()), point.temperature(), point.aqi(),
+            String label = point.date() == null || point.date().equals(input.date())
+                    ? "%02d:00".formatted(point.hour())
+                    : point.date().substring(5) + " %02d:00".formatted(point.hour());
+            slots.add(new TimeSlotScore(point.date(), point.hour(), label, point.temperature(), point.aqi(),
                     heatRisk, point.rainProbability(), score, levelOf(score)));
         }
         return slots;

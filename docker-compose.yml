@@ -38,6 +38,9 @@ services:
         NEXT_PUBLIC_AMAP_SECURITY_CODE: ${NEXT_PUBLIC_AMAP_SECURITY_CODE:-}
         NEXT_PUBLIC_AMAP_SERVICE_HOST: ${NEXT_PUBLIC_AMAP_SERVICE_HOST:-}
     restart: unless-stopped
+    environment:
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
+      SILICONFLOW_MODEL: ${SILICONFLOW_MODEL:-}
     depends_on:
       - backend
 

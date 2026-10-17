@@ -6,6 +6,36 @@ export interface CityOption {
   center: [number, number];
 }
 
+export const CITY_STORAGE_KEY = "shihou:selected-city";
+
+export function locationParams(city: CityOption) {
+  const params = new URLSearchParams({
+    cityId: city.id,
+    name: city.name,
+    province: city.province,
+    adcode: city.adcode,
+    longitude: String(city.center[0]),
+    latitude: String(city.center[1]),
+  });
+  return params.toString();
+}
+
+export function saveSelectedCity(city: CityOption) {
+  window.localStorage.setItem(CITY_STORAGE_KEY, JSON.stringify(city));
+}
+
+export function readSelectedCity(): CityOption {
+  try {
+    const raw = window.localStorage.getItem(CITY_STORAGE_KEY);
+    if (!raw) return cities[4];
+    const parsed = JSON.parse(raw) as CityOption;
+    if (!parsed.id || !parsed.name || !Array.isArray(parsed.center)) return cities[4];
+    return parsed;
+  } catch {
+    return cities[4];
+  }
+}
+
 export const cities: CityOption[] = [
   { id: "beijing", name: "北京市", province: "北京市", adcode: "110000", center: [116.397428, 39.90923] },
   { id: "shanghai", name: "上海市", province: "上海市", adcode: "310000", center: [121.473701, 31.230416] },

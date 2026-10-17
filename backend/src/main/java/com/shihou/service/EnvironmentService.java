@@ -2,12 +2,15 @@ package com.shihou.service;
 
 import com.shihou.dao.CityEnvironmentRepository;
 import com.shihou.dto.EnvironmentalForecastPoint;
+import com.shihou.dto.CitySearchResult;
 import com.shihou.entity.CityEnvironmentEntity;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -60,9 +63,53 @@ public class EnvironmentService {
         return forecast(cityId, LocalDate.now(CHINA_ZONE)).city();
     }
 
+    public CityEnvironmentEntity getCity(String cityId, String name, String province, String adcode,
+                                         double longitude, double latitude) {
+        return forecast(customDefinition(cityId, name, province, adcode, longitude, latitude),
+                LocalDate.now(CHINA_ZONE)).city();
+    }
+
     public List<EnvironmentalForecastPoint> getForecast(String cityId, LocalDate date) {
         validateForecastDate(date);
         return forecast(cityId, date).points();
+    }
+
+    public List<EnvironmentalForecastPoint> getForecast(String cityId, String name, String province, String adcode,
+                                                        double longitude, double latitude, LocalDate date) {
+        validateForecastDate(date);
+        return forecast(customDefinition(cityId, name, province, adcode, longitude, latitude), date).points();
+    }
+
+    public List<CitySearchResult> searchCities(String query) {
+        String cleaned = query == null ? "" : query.strip();
+        if (cleaned.length() < 2 || cleaned.length() > 40) {
+            throw new IllegalArgumentException("请输入2至40个字符的城市名称");
+        }
+        String url = "https://geocoding-api.open-meteo.com/v1/search?name="
+                + URLEncoder.encode(cleaned, StandardCharsets.UTF_8)
+                + "&count=8&language=zh&format=json&countryCode=CN";
+        try {
+            JsonNode results = fetchJson(url).join().path("results");
+            List<CitySearchResult> matches = new ArrayList<>();
+            for (JsonNode result : results) {
+                if (!result.path("latitude").isNumber() || !result.path("longitude").isNumber()) continue;
+                String sourceId = result.path("id").asText();
+                String province = result.path("admin1").asText("中国");
+                String district = result.path("admin2").asText("");
+                matches.add(new CitySearchResult(
+                        "geo-" + sourceId,
+                        result.path("name").asText(cleaned),
+                        province,
+                        district,
+                        "geo-" + sourceId,
+                        result.path("longitude").asDouble(),
+                        result.path("latitude").asDouble()
+                ));
+            }
+            return List.copyOf(matches);
+        } catch (RuntimeException exception) {
+            throw new LiveDataUnavailableException("城市检索服务暂时不可用，请稍后重试", exception);
+        }
     }
 
     private ForecastBundle forecast(String cityId, LocalDate date) {
@@ -70,7 +117,11 @@ public class EnvironmentService {
                 .filter(city -> city.id().equals(cityId))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("暂不支持该城市: " + cityId));
-        String cacheKey = cityId + ":" + date;
+        return forecast(definition, date);
+    }
+
+    private ForecastBundle forecast(CityDefinition definition, LocalDate date) {
+        String cacheKey = definition.id() + ":" + definition.latitude() + ":" + definition.longitude() + ":" + date;
         CachedForecast cached = cache.get(cacheKey);
         if (cached != null && cached.fetchedAt().plus(CACHE_TTL).isAfter(Instant.now())) {
             return cached.bundle();
@@ -86,6 +137,20 @@ public class EnvironmentService {
         } catch (RuntimeException exception) {
             throw new LiveDataUnavailableException("实时环境数据源暂时不可用，请稍后重试", exception);
         }
+    }
+
+    private CityDefinition customDefinition(String cityId, String name, String province, String adcode,
+                                            double longitude, double latitude) {
+        if (!Double.isFinite(longitude) || !Double.isFinite(latitude)
+                || longitude < 73 || longitude > 136 || latitude < 3 || latitude > 54) {
+            throw new IllegalArgumentException("城市坐标不在中国大陆服务范围内");
+        }
+        String safeId = cityId == null || cityId.isBlank()
+                ? "geo-" + Integer.toUnsignedString((name + longitude + latitude).hashCode()) : cityId;
+        String safeName = name == null || name.isBlank() ? "所选城市" : name.strip();
+        String safeProvince = province == null || province.isBlank() ? "中国" : province.strip();
+        String safeAdcode = adcode == null || adcode.isBlank() ? safeId : adcode;
+        return new CityDefinition(safeId, safeName, safeProvince, safeAdcode, longitude, latitude);
     }
 
     private ForecastBundle fetchForecast(CityDefinition city, LocalDate date) {
@@ -125,7 +190,7 @@ public class EnvironmentService {
         JsonNode weatherHourly = weather.path("hourly");
         JsonNode airHourly = air.path("hourly");
         List<EnvironmentalForecastPoint> points = new ArrayList<>();
-        for (int hour = 6; hour <= 20; hour++) {
+        for (int hour = 0; hour <= 23; hour++) {
             String time = date + "T" + "%02d:00".formatted(hour);
             int weatherIndex = indexOf(weatherHourly.path("time"), time);
             int airIndex = indexOf(airHourly.path("time"), time);
@@ -136,6 +201,7 @@ public class EnvironmentService {
             int hourlyHumidity = arrayInt(weatherHourly, "relative_humidity_2m", weatherIndex);
             double hourlyApparent = arrayDouble(weatherHourly, "apparent_temperature", weatherIndex);
             points.add(new EnvironmentalForecastPoint(
+                    date.toString(),
                     hour,
                     round1(hourlyTemperature),
                     hourlyHumidity,

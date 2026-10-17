@@ -8,12 +8,18 @@ public record ActivityDecisionRequest(
         @NotBlank String cityId,
         @NotBlank String activityType,
         @NotBlank String date,
+        String endDate,
         @Min(6) @Max(20) int startHour,
         @Min(1) @Max(8) int duration,
         @Min(1) @Max(100000) int participants,
         @NotBlank String intensity,
         @NotBlank String group,
-        @NotBlank String locationName
+        @NotBlank String locationName,
+        String cityName,
+        String province,
+        String adcode,
+        Double longitude,
+        Double latitude
 ) {
 }
 

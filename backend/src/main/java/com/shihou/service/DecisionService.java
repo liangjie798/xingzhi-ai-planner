@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -39,8 +40,22 @@ public class DecisionService {
     @Transactional
     public ActivityDecisionResponse analyze(ActivityDecisionRequest request) {
         long stepStarted = System.nanoTime();
-        CityEnvironmentEntity city = environmentService.getCity(request.cityId());
-        var forecast = environmentService.getForecast(request.cityId(), LocalDate.parse(request.date()));
+        boolean customCity = request.longitude() != null && request.latitude() != null;
+        CityEnvironmentEntity city = customCity
+                ? environmentService.getCity(request.cityId(), request.cityName(), request.province(), request.adcode(), request.longitude(), request.latitude())
+                : environmentService.getCity(request.cityId());
+        LocalDate startDate = LocalDate.parse(request.date());
+        LocalDate endDate = request.endDate() == null || request.endDate().isBlank()
+                ? startDate : LocalDate.parse(request.endDate());
+        if (endDate.isBefore(startDate) || endDate.isAfter(startDate.plusDays(4))) {
+            throw new IllegalArgumentException("结束日期应在开始日期至其后4天内");
+        }
+        var forecast = new ArrayList<com.shihou.dto.EnvironmentalForecastPoint>();
+        for (LocalDate day = startDate; !day.isAfter(endDate); day = day.plusDays(1)) {
+            forecast.addAll(customCity
+                    ? environmentService.getForecast(request.cityId(), request.cityName(), request.province(), request.adcode(), request.longitude(), request.latitude(), day)
+                    : environmentService.getForecast(request.cityId(), day));
+        }
         int environmentMs = elapsedMillis(stepStarted);
 
         stepStarted = System.nanoTime();
@@ -54,9 +69,10 @@ public class DecisionService {
         stepStarted = System.nanoTime();
         TimeSlotScore best = RiskCalculator.bestSlot(slots);
         int comparisonMs = elapsedMillis(stepStarted);
-        List<String> actions = buildActions(best);
-        String fallbackSummary = "%s%s。基于逐小时天气、US AQI、降水概率、%s和%s活动约束，%s的活动适宜度最高。数据更新时间为%s。"
-                .formatted(city.getName(), city.getWeather(), request.group(), request.intensity(), best.label(), city.getUpdatedAt());
+        List<String> actions = buildActions(best, request);
+        String dateScope = endDate.equals(startDate) ? startDate.toString() : startDate + " 至 " + endDate;
+        String fallbackSummary = "%s%s。已比较%s内的逐小时天气、US AQI、降水概率，以及%s、%s和%s场景约束，%s的活动适宜度最高。数据更新时间为%s。"
+                .formatted(city.getName(), city.getWeather(), dateScope, request.group(), request.intensity(), request.activityType(), best.label(), city.getUpdatedAt());
         stepStarted = System.nanoTime();
         String summary = deepSeekService.explain(request, best, actions, evidence).orElse(fallbackSummary);
         int explanationMs = elapsedMillis(stepStarted);
@@ -67,7 +83,7 @@ public class DecisionService {
         List<ToolTraceItem> trace = List.of(
                 new ToolTraceItem("t1", "get_live_environment", "读取" + city.getName() + "实时环境与逐小时预报", "done", environmentMs),
                 new ToolTraceItem("t2", "retrieve_policy_evidence", "读取内置环境与活动规则依据", "done", evidenceMs),
-                new ToolTraceItem("t3", "calculate_activity_risk", "计算15个候选时段的复合风险", "done", riskMs),
+                new ToolTraceItem("t3", "calculate_activity_risk", "计算" + slots.size() + "个跨日期候选时段的复合风险", "done", riskMs),
                 new ToolTraceItem("t4", "compare_candidate_slots", "选择" + best.label() + "为综合最优时段", "done", comparisonMs),
                 new ToolTraceItem("t5", "generate_explanation", generatedBy.equals("deepseek") ? "DeepSeek生成解释" : "使用规则解释兜底", generatedBy.equals("deepseek") ? "done" : "fallback", explanationMs)
         );
@@ -86,8 +102,17 @@ public class DecisionService {
         return (int) TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
     }
 
-    private List<String> buildActions(TimeSlotScore slot) {
-        return List.of(
+    private List<String> buildActions(TimeSlotScore slot, ActivityDecisionRequest request) {
+        String sceneAction = switch (request.activityType()) {
+            case "校园运动会" -> "按项目和年级设置检录、补水、医疗与延期触发机制";
+            case "体育课" -> "教师按课时缩短连续运动段，并保留室内替代课程";
+            case "社区活动" -> "设置老幼休息区、无障碍动线与分批到场安排";
+            case "户外训练" -> "按训练负荷设置心率观察和强度下调阈值";
+            case "研学活动" -> "按路线节点设置集合清点、交通衔接与临时避险点";
+            case "旅游规划" -> "按景点开放时段、步行暴露和天气窗口安排路线顺序";
+            default -> "明确现场负责人、休息点与天气触发条件";
+        };
+        return List.of(sceneAction,
                 slot.heatRisk() >= 58 ? "设置补水点与遮阴休息区，每30分钟安排一次休息" : "保留常规补水与休息安排",
                 slot.aqi() >= 80 ? "减少持续耐力项目，并关注敏感参与者状态" : "空气条件允许开展常规户外项目",
                 slot.rainProbability() >= 40 ? "提前确认室内场地并设置降雨触发条件" : "保留场地防滑与短时降雨检查"

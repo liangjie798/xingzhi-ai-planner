@@ -1,6 +1,7 @@
 package com.shihou.dto;
 
 public record TimeSlotScore(
+        String date,
         int hour,
         String label,
         double temperature,
