@@ -110,7 +110,8 @@ public class EnvironmentService {
         double apparent = requiredDouble(currentWeather, "apparent_temperature");
         int aqi = requiredInt(currentAir, "us_aqi");
         int pm25 = (int) Math.round(requiredDouble(currentAir, "pm2_5"));
-        int rain = hourlyIntAt(weather.path("hourly"), "precipitation_probability", currentTime);
+        String currentHour = currentTime.substring(0, 13) + ":00";
+        int rain = hourlyIntAt(weather.path("hourly"), "precipitation_probability", currentHour);
         int weatherCode = requiredInt(currentWeather, "weather_code");
         double windSpeed = requiredDouble(currentWeather, "wind_speed_10m");
         Instant observedAt = LocalDateTime.parse(currentTime).atZone(CHINA_ZONE).toInstant();
