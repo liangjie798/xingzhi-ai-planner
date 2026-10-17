@@ -23,7 +23,7 @@ DATABASE_USERNAME=shihou
 DATABASE_PASSWORD=$db_password
 DEEPSEEK_API_KEY=
 DEEPSEEK_MODEL=deepseek-chat
-FRONTEND_ORIGIN=http://8.137.86.65
+FRONTEND_ORIGIN=https://lht574.cn
 EOF
   chown root:"$APP_USER" "$ENV_DIR/backend.env"
   chmod 640 "$ENV_DIR/backend.env"
