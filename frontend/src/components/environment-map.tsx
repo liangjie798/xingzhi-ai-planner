@@ -17,7 +17,7 @@ interface MapInstance {
   add(target: unknown): void;
   remove(target: unknown): void;
   on(event: string, handler: (event: { lnglat: { getLng: () => number; getLat: () => number } }) => void): void;
-  setFitView?(padding?: number[]): void;
+  setFitView?(overlays?: unknown[], immediately?: boolean, avoid?: number[], maxZoom?: number): void;
   setCenter?(position: [number, number]): void;
 }
 
@@ -27,6 +27,7 @@ interface AMapNamespace {
   Map: new (element: HTMLElement, options: Record<string, unknown>) => MapInstance;
   Marker: OverlayCtor;
   CircleMarker: OverlayCtor;
+  Polygon: OverlayCtor;
   Polyline: OverlayCtor;
   HeatMap: new (map: MapInstance, options: Record<string, unknown>) => { setDataSet(data: Record<string, unknown>): void; setMap?(map: MapInstance | null): void };
   Scale: OverlayCtor;
@@ -38,6 +39,7 @@ interface EnvironmentMapProps {
   city: CityEnvironment;
   layer: LayerKey;
   onPointSelected: (name: string) => void;
+  onRegionBounds?: (bounds: { minLng: number; maxLng: number; minLat: number; maxLat: number }) => void;
   grid?: GridPoint[];
   route?: TourismRoute | null;
 }
@@ -73,7 +75,67 @@ function shadeFor(value: number, min: number, max: number): string {
   return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
 }
 
-export function EnvironmentMap({ city, layer, onPointSelected, grid, route }: EnvironmentMapProps) {
+/**
+ * 将后端的稀疏气象采样点插值成高密度连续网格。
+ * AMap.HeatMap 直接渲染 3x3 点会暴露每个点的圆形核；密集网格会把核融合为连续色带。
+ */
+function interpolateSurface(points: GridPoint[], layer: LayerKey) {
+  if (points.length < 2) return [];
+  const longitudes = points.map((point) => point.longitude);
+  const latitudes = points.map((point) => point.latitude);
+  const sourceMinLng = Math.min(...longitudes);
+  const sourceMaxLng = Math.max(...longitudes);
+  const sourceMinLat = Math.min(...latitudes);
+  const sourceMaxLat = Math.max(...latitudes);
+  const lngSpan = Math.max(0.01, sourceMaxLng - sourceMinLng);
+  const latSpan = Math.max(0.01, sourceMaxLat - sourceMinLat);
+  // 略微越过行政区外接范围并在边缘羽化，覆盖全域同时避免污染相邻城市。
+  const minLng = sourceMinLng - lngSpan * 0.08;
+  const minLat = sourceMinLat - latSpan * 0.08;
+  const renderLngSpan = lngSpan * 1.16;
+  const renderLatSpan = latSpan * 1.16;
+  const values = points.map((point) => metricValue(point, layer));
+  const valueMin = Math.min(...values);
+  const valueMax = Math.max(...values);
+  const resolution = 27;
+  const surface: Array<{ lng: number; lat: number; count: number }> = [];
+
+  for (let row = 0; row < resolution; row += 1) {
+    const y = row / (resolution - 1);
+    const latitude = minLat + renderLatSpan * y;
+    for (let column = 0; column < resolution; column += 1) {
+      const x = column / (resolution - 1);
+      const longitude = minLng + renderLngSpan * x;
+      let weightedValue = 0;
+      let weightSum = 0;
+
+      points.forEach((point) => {
+        const dx = (longitude - point.longitude) / lngSpan;
+        const dy = (latitude - point.latitude) / latSpan;
+        const distanceSquared = dx * dx + dy * dy;
+        const weight = 1 / Math.pow(distanceSquared + 0.0025, 1.35);
+        weightedValue += metricValue(point, layer) * weight;
+        weightSum += weight;
+      });
+
+      const value = weightedValue / weightSum;
+      const normalized = valueMax > valueMin ? (value - valueMin) / (valueMax - valueMin) : 0.55;
+      // 边缘逐渐变淡，避免出现矩形边界；轻微空间起伏让色带更接近自然气象分布。
+      const edge = Math.min(x, 1 - x, y, 1 - y) * 2;
+      const edgeWobble = edge * 3.25 + Math.sin(x * 17 + y * 7) * 0.12 + Math.cos(y * 15 - x * 5) * 0.09;
+      const feather = Math.pow(Math.min(1, Math.max(0, edgeWobble)), 0.72);
+      const texture = 0.94 + 0.06 * Math.sin(x * 15 + y * 9);
+      surface.push({
+        lng: +longitude.toFixed(5),
+        lat: +latitude.toFixed(5),
+        count: (5 + normalized * 95) * feather * texture,
+      });
+    }
+  }
+  return surface;
+}
+
+export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, grid, route }: EnvironmentMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const initialCenterRef = useRef(city.center);
   const mapRef = useRef<MapInstance | null>(null);
@@ -148,6 +210,75 @@ export function EnvironmentMap({ city, layer, onPointSelected, grid, route }: En
     if (mapState === "ready") mapRef.current?.setCenter?.(city.center);
   }, [mapState, city.center]);
 
+  // 使用阿里云 DataV 中国大陆公开行政区 GeoJSON，让视野与采样范围覆盖完整城市/区县。
+  useEffect(() => {
+    const AMap = amapRef.current;
+    const map = mapRef.current;
+    if (mapState !== "ready" || !AMap || !map || !onRegionBounds) return;
+    let active = true;
+    let boundaryOverlays: unknown[] = [];
+    const fallback = () => {
+      if (!active) return;
+      const [longitude, latitude] = city.center;
+      onRegionBounds({
+        minLng: longitude - 0.32,
+        maxLng: longitude + 0.32,
+        minLat: latitude - 0.24,
+        maxLat: latitude + 0.24,
+      });
+    };
+    const controller = new AbortController();
+    const collectRings = (node: unknown, rings: number[][][]) => {
+      if (!Array.isArray(node) || node.length === 0) return;
+      if (Array.isArray(node[0]) && typeof node[0][0] === "number") {
+        rings.push(node as number[][]);
+        return;
+      }
+      node.forEach((child) => collectRings(child, rings));
+    };
+    void (async () => {
+      if (!/^\d{6}$/.test(city.adcode ?? "")) {
+        fallback();
+        return;
+      }
+      try {
+        let response = await fetch(`https://geo.datav.aliyun.com/areas_v3/bound/${city.adcode}_full.json`, { signal: controller.signal });
+        if (!response.ok) response = await fetch(`https://geo.datav.aliyun.com/areas_v3/bound/${city.adcode}.json`, { signal: controller.signal });
+        if (!response.ok) throw new Error("行政区边界不可用");
+        const geoJson = await response.json() as { features?: Array<{ geometry?: { coordinates?: unknown } }> };
+        const rings: number[][][] = [];
+        geoJson.features?.forEach((feature) => collectRings(feature.geometry?.coordinates, rings));
+        const points = rings.flat();
+        if (!active || points.length < 3) throw new Error("行政区边界为空");
+        boundaryOverlays = rings.map((ring) => new AMap.Polygon({
+          path: ring,
+          strokeColor: "#087f6d",
+          strokeWeight: 1.5,
+          strokeOpacity: 0.66,
+          fillColor: "#dff3ed",
+          fillOpacity: 0.025,
+        }));
+        map.add(boundaryOverlays);
+        map.setFitView?.(boundaryOverlays, true, [34, 34, 34, 34], 10);
+        const longitudes = points.map((point) => point[0]);
+        const latitudes = points.map((point) => point[1]);
+        onRegionBounds({
+          minLng: Math.min(...longitudes),
+          maxLng: Math.max(...longitudes),
+          minLat: Math.min(...latitudes),
+          maxLat: Math.max(...latitudes),
+        });
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) fallback();
+      }
+    })();
+    return () => {
+      active = false;
+      controller.abort();
+      if (boundaryOverlays.length) map.remove(boundaryOverlays);
+    };
+  }, [mapState, city.id, city.name, city.adcode, city.center, onRegionBounds]);
+
   // 图层着色：城市网格预报经高德 HeatMap 平滑插值，形成连续程度色带
   useEffect(() => {
     const AMap = amapRef.current;
@@ -165,19 +296,15 @@ export function EnvironmentMap({ city, layer, onPointSelected, grid, route }: En
 
     const highIsGood = layer === "comfort";
     const gradient = highIsGood
-      ? { 0: "#ef4444", 0.45: "#f6c453", 0.7: "#36d399", 1: "#087f6d" }
-      : { 0: "#24c7e8", 0.38: "#38d39f", 0.62: "#f1d34f", 0.82: "#f4933f", 1: "#df3f50" };
+      ? { 0: "rgba(239,68,68,0)", 0.28: "rgba(246,196,83,.48)", 0.58: "#5bd5aa", 0.8: "#22b99a", 1: "#087f6d" }
+      : { 0: "rgba(36,199,232,0)", 0.22: "rgba(36,199,232,.54)", 0.45: "#38d39f", 0.66: "#f1d34f", 0.84: "#f4933f", 1: "#df3f50" };
     const heatMap = new AMap.HeatMap(map, {
-      radius: 72,
-      opacity: [0.16, 0.82],
+      radius: 30,
+      opacity: [0.05, 0.78],
       gradient,
       zooms: [7, 17],
     });
-    const data = (grid ?? []).map((point) => {
-      const value = metricValue(point, layer);
-      const normalized = legend.max > legend.min ? (value - legend.min) / (legend.max - legend.min) : 0.55;
-      return { lng: point.longitude, lat: point.latitude, count: 20 + normalized * 80 };
-    });
+    const data = interpolateSurface(grid ?? [], layer);
     if (data.length) heatMap.setDataSet({ data, max: 100 });
     return () => {
       map.remove(centerMarker);
@@ -215,7 +342,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, grid, route }: En
       }));
     });
     map.add(overlays);
-    map.setFitView?.([70, 70, 70, 70]);
+    map.setFitView?.(overlays, false, [70, 70, 70, 70], 13);
     return () => {
       map.remove(overlays);
     };
@@ -312,7 +439,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, grid, route }: En
       <div className="map-mode-badge">
         {mapState === "ready" ? <Crosshair size={14} /> : <WarningCircle size={14} />}
         {mapState === "ready"
-          ? (route ? "高德地图 · 路线绘制" : "高德地图 · 网格热力图")
+          ? (route ? "高德地图 · 路线绘制" : "高德地图 · 连续网格色带")
           : mapState === "error" ? "高德地图鉴权待配置" : "城市坐标 · 实时数据"}
       </div>
     </div>

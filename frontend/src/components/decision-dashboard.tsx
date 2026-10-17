@@ -57,7 +57,13 @@ async function apiError(response: Response) {
   }
 }
 
-const GRID_OFFSETS = [-0.07, 0, 0.07];
+interface RegionBounds {
+  cityId: string;
+  minLng: number;
+  maxLng: number;
+  minLat: number;
+  maxLat: number;
+}
 
 export function DecisionDashboard() {
   const [input, setInput] = useState<ActivityInput>(initialInput);
@@ -66,6 +72,7 @@ export function DecisionDashboard() {
   const [result, setResult] = useState<DecisionResult | null>(null);
   const [route, setRoute] = useState<TourismRoute | null>(null);
   const [grid, setGrid] = useState<GridPoint[]>([]);
+  const [regionBounds, setRegionBounds] = useState<RegionBounds | null>(null);
   const [isLoadingCity, setIsLoadingCity] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isPlanning, setIsPlanning] = useState(false);
@@ -116,23 +123,38 @@ export function DecisionDashboard() {
     }
   }, [apiBase]);
 
-  // 城市网格采样：3x3 采样点逐点读取逐小时预报，用于地图分层着色
+  const onRegionBounds = useCallback((bounds: Omit<RegionBounds, "cityId">) => {
+    setGrid([]);
+    setRegionBounds((current) => {
+      const next = { cityId: meta.id, ...bounds };
+      if (current?.cityId === next.cityId
+        && Math.abs(current.minLng - next.minLng) < 0.0001
+        && Math.abs(current.maxLng - next.maxLng) < 0.0001
+        && Math.abs(current.minLat - next.minLat) < 0.0001
+        && Math.abs(current.maxLat - next.maxLat) < 0.0001) return current;
+      return next;
+    });
+  }, [meta.id]);
+
+  // 以完整行政区外接范围进行 3x3 采样，再由地图端插值为连续色带。
   useEffect(() => {
-    if (!city) return;
-    const [centerLng, centerLat] = meta.center;
+    if (!city || !regionBounds || regionBounds.cityId !== meta.id) return;
     const referenceHour = input.date === dateString() ? Math.min(new Date().getHours(), 22) : 12;
     let cancelled = false;
+    const ratios = [0.12, 0.5, 0.88];
+    const longitudes = ratios.map((ratio) => regionBounds.minLng + (regionBounds.maxLng - regionBounds.minLng) * ratio);
+    const latitudes = ratios.map((ratio) => regionBounds.minLat + (regionBounds.maxLat - regionBounds.minLat) * ratio);
 
     void (async () => {
       const samples: GridPoint[] = [];
-      await Promise.all(GRID_OFFSETS.flatMap((dLat) => GRID_OFFSETS.map(async (dLng) => {
+      await Promise.all(latitudes.flatMap((latitude) => longitudes.map(async (longitude) => {
         const params = new URLSearchParams({
           cityId: meta.id,
           name: meta.name,
           province: meta.province,
           adcode: meta.adcode,
-          longitude: String(+(centerLng + dLng).toFixed(4)),
-          latitude: String(+(centerLat + dLat).toFixed(4)),
+          longitude: String(+longitude.toFixed(4)),
+          latitude: String(+latitude.toFixed(4)),
           date: input.date || dateString(),
         });
         try {
@@ -142,8 +164,8 @@ export function DecisionDashboard() {
           const point = data.hours.find((hour) => hour.hour === referenceHour) ?? data.hours[12];
           if (!point) return;
           samples.push({
-            longitude: +(centerLng + dLng).toFixed(4),
-            latitude: +(centerLat + dLat).toFixed(4),
+            longitude: +longitude.toFixed(4),
+            latitude: +latitude.toFixed(4),
             temperature: point.temperature,
             humidity: point.humidity,
             rainProbability: point.rainProbability,
@@ -157,7 +179,7 @@ export function DecisionDashboard() {
     })();
 
     return () => { cancelled = true; };
-  }, [city, meta, input.date, apiBase]);
+  }, [city, meta, input.date, apiBase, regionBounds]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -470,7 +492,7 @@ export function DecisionDashboard() {
           </div>
           <div className="layer-bar" aria-label="环境图层">{layers.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={layer === item.key ? "is-active" : ""} onClick={() => setLayer(item.key)}><Icon size={16} /> {item.label}</button>; })}</div>
           {city
-            ? <EnvironmentMap city={city} layer={layer} onPointSelected={onPointSelected} grid={grid} route={route} />
+            ? <EnvironmentMap city={city} layer={layer} onPointSelected={onPointSelected} onRegionBounds={onRegionBounds} grid={grid} route={route} />
             : <div className="map-shell map-unavailable"><span className="button-loader dark" /><p>{error ? "实时数据暂不可用" : "正在载入城市环境数据"}</p></div>}
           <div className="timeline-card">
             <div className="timeline-header"><div><span className="section-kicker">逐小时预报</span><h3>{isTourism ? "旅游路线 · 推荐出行时段" : "全天活动适宜度"}</h3></div><div className="legend"><span className="good" />适宜 <span className="caution" />谨慎 <span className="bad" />不建议</div></div>
