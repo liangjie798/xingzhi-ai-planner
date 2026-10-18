@@ -7,6 +7,7 @@ import {
   SuitcaseRolling, ThermometerSimple, Trophy, UsersThree, WarningCircle, Wind,
 } from "@phosphor-icons/react";
 import Link from "next/link";
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EnvironmentMap } from "./environment-map";
 import type { MapSelection } from "./environment-map";
@@ -559,7 +560,7 @@ export function DecisionDashboard() {
           <FieldLabel htmlFor="group">参与人群</FieldLabel>
           <div className="select-wrap"><UsersThree size={17} /><select id="group" value={input.group} onChange={(event) => { setResult(null); setRoute(null); updateInput("group", event.target.value as GroupType); }}>{groups.map((item) => <option value={item} key={item}>{item}</option>)}</select><CaretDown size={14} /></div>
           {isTourism && (
-            <p className="tourism-hint"><Binoculars size={16} /> 旅游模式：将当日逐小时天气与内置公开景点候选库结合，编排一日路线并绘制在地图上。</p>
+            <p className="tourism-hint"><Binoculars size={16} /> 旅游模式：结合逐小时天气、公开文旅资料与平台检索入口，编排景点＋美食路线并绘制在地图上。</p>
           )}
           </section>
           {error && <div className="error-notice" role="alert"><WarningCircle size={17} /><span>{error}</span></div>}
@@ -612,14 +613,15 @@ export function DecisionDashboard() {
                 <span className="section-kicker">行程站点（已绘制在地图）</span>
                 <div className="stop-list">
                   {route.stops.map((stop, index) => (
-                    <div className="stop-row" key={`${stop.name}-${index}`}>
-                      <span className="stop-index">{index + 1}</span>
-                      <div>
-                        <h3>{stop.name}<em>{stop.time}</em></h3>
+                    <article className="stop-row" id={`tour-stop-${index}`} key={`${stop.name}-${index}`}>
+                      {stop.imageUrl && <Image className="stop-image" src={stop.imageUrl} alt={`${stop.name}地点图片`} width={320} height={180} sizes="(max-width: 1240px) 45vw, 330px" unoptimized />}
+                      <div className="stop-card-body">
+                        <div className="stop-heading"><span className={`stop-index ${stop.category === "美食" ? "is-food" : ""}`}>{index + 1}</span><div><span className="stop-category">{stop.category} · {stop.tag}</span><h3>{stop.name}<em>{stop.time}</em></h3></div></div>
                         <p>{stop.tip}</p>
-                        <small>{stop.tag}</small>
+                        {stop.address && <address>{stop.address}</address>}
+                        <div className="stop-links">{stop.links.map((link) => <a key={`${stop.name}-${link.kind}`} href={link.url} target="_blank" rel="noopener noreferrer">{link.label}<span aria-hidden>↗</span></a>)}</div>
                       </div>
-                    </div>
+                    </article>
                   ))}
                 </div>
               </section>

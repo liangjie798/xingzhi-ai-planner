@@ -134,6 +134,16 @@ export interface TourismStop {
   time: string;
   tip: string;
   tag: string;
+  category: "景点" | "美食";
+  address?: string;
+  imageUrl?: string;
+  articleTitle?: string;
+  articleUrl?: string;
+  links: Array<{
+    label: string;
+    url: string;
+    kind: "douyin" | "xiaohongshu" | "map" | "source";
+  }>;
 }
 
 export interface TourismRoute {

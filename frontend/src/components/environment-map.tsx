@@ -23,17 +23,24 @@ interface MapInstance {
 }
 
 type OverlayCtor = new (options: Record<string, unknown>) => unknown;
+interface InteractiveOverlay { on(event: string, handler: () => void): void }
+interface InfoWindowInstance { open(map: MapInstance, position: [number, number]): void; close(): void }
 
 interface AMapNamespace {
   Map: new (element: HTMLElement, options: Record<string, unknown>) => MapInstance;
-  Marker: OverlayCtor;
+  Marker: new (options: Record<string, unknown>) => InteractiveOverlay;
   CircleMarker: OverlayCtor;
   CanvasLayer: OverlayCtor;
   Polygon: OverlayCtor;
   Polyline: OverlayCtor;
+  InfoWindow: new (options: Record<string, unknown>) => InfoWindowInstance;
   Scale: OverlayCtor;
   ToolBar: OverlayCtor;
   getConfig?: () => { appname?: string };
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character] ?? character);
 }
 
 interface EnvironmentMapProps {
@@ -261,6 +268,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
     let active = true;
     setRegionRings([]);
     let boundaryOverlays: unknown[] = [];
+    let boundaryLabels: unknown[] = [];
     const fallback = () => {
       if (!active) return;
       const [longitude, latitude] = city.center;
@@ -288,7 +296,10 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
       try {
         const response = await fetch(`/region-data/${city.adcode}`, { signal: controller.signal });
         if (!response.ok) throw new Error("行政区边界不可用");
-        const geoJson = await response.json() as { features?: Array<{ geometry?: { coordinates?: unknown } }> };
+        const geoJson = await response.json() as { features?: Array<{
+          properties?: { name?: string; center?: [number, number]; centroid?: [number, number] };
+          geometry?: { coordinates?: unknown };
+        }> };
         const rings: number[][][] = [];
         geoJson.features?.forEach((feature) => collectRings(feature.geometry?.coordinates, rings));
         const points = rings.flat();
@@ -302,7 +313,19 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
           fillColor: "#dff3ed",
           fillOpacity: 0.025,
         }));
-        map.add(boundaryOverlays);
+        boundaryLabels = (geoJson.features ?? []).flatMap((feature) => {
+          const name = feature.properties?.name?.trim();
+          const position = feature.properties?.centroid ?? feature.properties?.center;
+          if (!name || !position || !Number.isFinite(position[0]) || !Number.isFinite(position[1])) return [];
+          return [new AMap.Marker({
+            position,
+            content: `<div class="district-map-label">${escapeHtml(name)}</div>`,
+            anchor: "center",
+            offset: [0, 0],
+            zIndex: 14,
+          })];
+        });
+        map.add([...boundaryOverlays, ...boundaryLabels]);
         const isDistrict = !city.adcode.endsWith("00");
         map.setFitView?.(boundaryOverlays, true, [34, 34, 34, 34], isDistrict ? 13 : 10);
         const longitudes = points.map((point) => point[0]);
@@ -322,6 +345,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
       setRegionRings([]);
       controller.abort();
       if (boundaryOverlays.length) map.remove(boundaryOverlays);
+      if (boundaryLabels.length) map.remove(boundaryLabels);
     };
   }, [mapState, city.id, city.name, city.adcode, city.center, onRegionBounds]);
 
@@ -366,27 +390,43 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
     if (stops.length < 2) return;
 
     const path = stops.map((stop) => [stop.longitude, stop.latitude]);
-    const overlays: unknown[] = [
-      new AMap.Polyline({
-        path,
-        strokeColor: "#056655",
-        strokeWeight: 5,
-        strokeOpacity: 0.92,
-        lineJoin: "round",
-        showDir: true,
-      }),
-    ];
+    const routeLine = new AMap.Polyline({
+      path,
+      strokeColor: "#056655",
+      strokeWeight: 5,
+      strokeOpacity: 0.92,
+      lineJoin: "round",
+      showDir: true,
+      zIndex: 28,
+    });
+    const overlays: unknown[] = [routeLine];
+    let activeInfoWindow: InfoWindowInstance | null = null;
     stops.forEach((stop, index) => {
-      overlays.push(new AMap.Marker({
+      const marker = new AMap.Marker({
         position: [stop.longitude, stop.latitude],
-        content: `<div class="route-badge" title="${stop.name}">${index + 1}</div>`,
+        content: `<div class="route-map-marker ${stop.category === "美食" ? "is-food" : ""}" title="${escapeHtml(stop.name)}"><span>${index + 1}</span><b>${escapeHtml(stop.name)}</b></div>`,
         offset: [-13, -13],
         title: stop.name,
-      }));
+        zIndex: 32,
+      });
+      marker.on("click", () => {
+        activeInfoWindow?.close();
+        const image = stop.imageUrl ? `<img src="${escapeHtml(stop.imageUrl)}" alt="" />` : "";
+        const navigation = stop.links.find((link) => link.kind === "map")?.url;
+        const action = navigation ? `<a href="${escapeHtml(navigation)}" target="_blank" rel="noopener noreferrer">打开高德导航</a>` : "";
+        activeInfoWindow = new AMap.InfoWindow({
+          anchor: "bottom-center",
+          offset: [0, -19],
+          content: `<article class="route-map-popover">${image}<div><small>${escapeHtml(stop.category)} · ${escapeHtml(stop.time)}</small><strong>${escapeHtml(stop.name)}</strong><p>${escapeHtml(stop.tip)}</p>${action}</div></article>`,
+        });
+        activeInfoWindow.open(map, [stop.longitude, stop.latitude]);
+      });
+      overlays.push(marker);
     });
     map.add(overlays);
     map.setFitView?.(overlays, false, [70, 70, 70, 70], 13);
     return () => {
+      activeInfoWindow?.close();
       map.remove(overlays);
     };
   }, [mapState, route]);

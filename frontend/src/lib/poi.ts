@@ -4,6 +4,10 @@ export interface PoiSpot {
   latitude: number;
   tag: string;
   blurb: string;
+  category?: "景点" | "美食";
+  sourceTitle?: string;
+  sourceUrl?: string;
+  searchKeyword?: string;
 }
 
 /**
@@ -44,12 +48,15 @@ export const CITY_POIS: Record<string, PoiSpot[]> = {
     { name: "东门老街", longitude: 114.119, latitude: 22.546, tag: "美食街区", blurb: "老深圳商业街，小吃密集。" },
   ],
   杭州市: [
-    { name: "西湖·断桥残雪", longitude: 120.15, latitude: 30.259, tag: "经典必去", blurb: "白堤起点，环湖核心机位。" },
-    { name: "灵隐寺·飞来峰", longitude: 120.097, latitude: 30.241, tag: "人文古刹", blurb: "千年名刹，石窟造像值得一逛。" },
+    { name: "西湖·断桥残雪", searchKeyword: "断桥残雪", longitude: 120.15, latitude: 30.259, tag: "经典必去", blurb: "白堤起点，环湖核心机位。" },
+    { name: "灵隐寺·飞来峰", searchKeyword: "灵隐寺", longitude: 120.097, latitude: 30.241, tag: "人文古刹", blurb: "千年名刹，石窟造像值得一逛。" },
     { name: "西溪国家湿地公园", longitude: 120.062, latitude: 30.273, tag: "热门街区", blurb: "摇橹船穿行水网，避开人流。" },
-    { name: "清河坊历史街区", longitude: 120.167, latitude: 30.244, tag: "美食街区", blurb: "南宋御街旁的老字号与小食。" },
+    { name: "清河坊历史街区", longitude: 120.167, latitude: 30.244, tag: "美食街区", category: "美食", blurb: "南宋御街旁的老字号与小食，适合作为边逛边吃的午后停靠点。", sourceTitle: "杭州官方文旅主题体验路线", sourceUrl: "https://ywhz.hangzhou.com.cn/tyxl/index.htm" },
     { name: "拱宸桥·桥西历史街区", longitude: 120.142, latitude: 30.327, tag: "运河夜景", blurb: "京杭大运河夜游起点。" },
     { name: "太子湾公园", longitude: 120.138, latitude: 30.235, tag: "赏花胜地", blurb: "郁金香与樱花季顶流。" },
+    { name: "楼外楼（西湖店）", searchKeyword: "楼外楼", longitude: 120.141, latitude: 30.250, tag: "杭帮菜", category: "美食", blurb: "西湖边的杭帮菜老字号，可体验东坡肉、龙井虾仁等代表菜。", sourceTitle: "杭州官方舌尖美食体验路线", sourceUrl: "https://ywhz.hangzhou.com.cn/tyxl/index.htm" },
+    { name: "知味观·味庄", searchKeyword: "知味观味庄", longitude: 120.138, latitude: 30.237, tag: "杭帮菜", category: "美食", blurb: "适合在杨公堤沿线安排正餐，兼顾传统杭帮菜与园林环境。", sourceTitle: "杭州官方舌尖美食体验路线", sourceUrl: "https://ywhz.hangzhou.com.cn/tyxl/index.htm" },
+    { name: "龙井村茶香体验", longitude: 120.101, latitude: 30.221, tag: "茶文化", category: "美食", blurb: "在龙井茶产区体验茶园与茶食，适合接在西湖西线景点之后。", sourceTitle: "杭州文旅官方旅游资讯", sourceUrl: "https://travel.hangzhou.com.cn/" },
   ],
   成都市: [
     { name: "宽窄巷子", longitude: 104.053, latitude: 30.665, tag: "城市打卡", blurb: "清代街巷格局，茶馆文化浓缩地。" },
