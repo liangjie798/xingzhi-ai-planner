@@ -97,7 +97,7 @@ function interpolateSurface(points: GridPoint[], layer: LayerKey) {
   const values = points.map((point) => metricValue(point, layer));
   const valueMin = Math.min(...values);
   const valueMax = Math.max(...values);
-  const resolution = 27;
+  const resolution = 55;
   const surface: Array<{ lng: number; lat: number; count: number }> = [];
 
   for (let row = 0; row < resolution; row += 1) {
@@ -242,7 +242,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
         return;
       }
       try {
-        const response = await fetch(`/api/region/${city.adcode}`, { signal: controller.signal });
+        const response = await fetch(`/region-data/${city.adcode}`, { signal: controller.signal });
         if (!response.ok) throw new Error("行政区边界不可用");
         const geoJson = await response.json() as { features?: Array<{ geometry?: { coordinates?: unknown } }> };
         const rings: number[][][] = [];
@@ -298,7 +298,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
       ? { 0: "rgba(239,68,68,0)", 0.28: "rgba(246,196,83,.48)", 0.58: "#5bd5aa", 0.8: "#22b99a", 1: "#087f6d" }
       : { 0: "rgba(36,199,232,0)", 0.22: "rgba(36,199,232,.54)", 0.45: "#38d39f", 0.66: "#f1d34f", 0.84: "#f4933f", 1: "#df3f50" };
     const heatMap = new AMap.HeatMap(map, {
-      radius: 30,
+      radius: 46,
       opacity: [0.05, 0.78],
       gradient,
       zooms: [7, 17],
