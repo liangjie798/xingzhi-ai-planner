@@ -66,7 +66,7 @@ public class EnvironmentService {
     public CityEnvironmentEntity getCity(String cityId, String name, String province, String adcode,
                                          double longitude, double latitude) {
         return forecast(customDefinition(cityId, name, province, adcode, longitude, latitude),
-                LocalDate.now(CHINA_ZONE)).city();
+                LocalDate.now(CHINA_ZONE), false).city();
     }
 
     public List<EnvironmentalForecastPoint> getForecast(String cityId, LocalDate date) {
@@ -77,7 +77,7 @@ public class EnvironmentService {
     public List<EnvironmentalForecastPoint> getForecast(String cityId, String name, String province, String adcode,
                                                         double longitude, double latitude, LocalDate date) {
         validateForecastDate(date);
-        return forecast(customDefinition(cityId, name, province, adcode, longitude, latitude), date).points();
+        return forecast(customDefinition(cityId, name, province, adcode, longitude, latitude), date, false).points();
     }
 
     public List<CitySearchResult> searchCities(String query) {
@@ -117,10 +117,10 @@ public class EnvironmentService {
                 .filter(city -> city.id().equals(cityId))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("暂不支持该城市: " + cityId));
-        return forecast(definition, date);
+        return forecast(definition, date, true);
     }
 
-    private ForecastBundle forecast(CityDefinition definition, LocalDate date) {
+    private ForecastBundle forecast(CityDefinition definition, LocalDate date, boolean persistSnapshot) {
         String cacheKey = definition.id() + ":" + definition.latitude() + ":" + definition.longitude() + ":" + date;
         CachedForecast cached = cache.get(cacheKey);
         if (cached != null && cached.fetchedAt().plus(CACHE_TTL).isAfter(Instant.now())) {
@@ -129,7 +129,9 @@ public class EnvironmentService {
 
         try {
             ForecastBundle bundle = fetchForecast(definition, date);
-            repository.save(bundle.city());
+            // 搜索得到的区县和地图网格点属于临时计算坐标，多个采样点可能共享同一行政区代码。
+            // 只持久化内置城市中心快照，避免临时坐标争用 adcode 唯一键并让实时请求返回 503。
+            if (persistSnapshot) repository.save(bundle.city());
             cache.put(cacheKey, new CachedForecast(bundle, Instant.now()));
             return bundle;
         } catch (IllegalArgumentException exception) {
