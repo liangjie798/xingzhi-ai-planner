@@ -93,23 +93,6 @@ function mixColor(stops: Array<[number, [number, number, number]]>, value: numbe
   return from.map((channel, index) => Math.round(channel + (to[index] - channel) * ratio)) as [number, number, number];
 }
 
-function pointInRing(longitude: number, latitude: number, ring: number[][]) {
-  let inside = false;
-  for (let current = 0, previous = ring.length - 1; current < ring.length; previous = current, current += 1) {
-    const [currentLng, currentLat] = ring[current];
-    const [previousLng, previousLat] = ring[previous];
-    if ((currentLat > latitude) !== (previousLat > latitude)
-      && longitude < ((previousLng - currentLng) * (latitude - currentLat)) / (previousLat - currentLat) + currentLng) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
-
-function pointInRegion(longitude: number, latitude: number, rings: number[][][]) {
-  return rings.reduce((inside, ring) => pointInRing(longitude, latitude, ring) ? !inside : inside, false);
-}
-
 /** 将稀疏气象采样值逐像素插值，并按真实行政区 GeoJSON 逐像素裁切。 */
 function createRasterSurface(points: GridPoint[], layer: LayerKey, rings: number[][][]) {
   if (points.length < 2 || rings.length === 0) return null;
@@ -128,8 +111,8 @@ function createRasterSurface(points: GridPoint[], layer: LayerKey, rings: number
   const colorStops: Array<[number, [number, number, number]]> = layer === "comfort"
     ? [[0, [239, 68, 68]], [0.34, [246, 196, 83]], [0.62, [91, 213, 170]], [0.82, [34, 185, 154]], [1, [8, 127, 109]]]
     : [[0, [36, 199, 232]], [0.3, [56, 211, 159]], [0.58, [241, 211, 79]], [0.8, [244, 147, 63]], [1, [223, 63, 80]]];
-  const width = 520;
-  const height = Math.max(300, Math.round(width * renderLatSpan / renderLngSpan));
+  const width = 420;
+  const height = Math.min(520, Math.max(260, Math.round(width * renderLatSpan / renderLngSpan)));
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -143,7 +126,6 @@ function createRasterSurface(points: GridPoint[], layer: LayerKey, rings: number
     for (let column = 0; column < width; column += 1) {
       const x = column / (width - 1);
       const longitude = minLng + renderLngSpan * x;
-      if (!pointInRegion(longitude, latitude, rings)) continue;
       let weightedValue = 0;
       let weightSum = 0;
 
@@ -167,6 +149,23 @@ function createRasterSurface(points: GridPoint[], layer: LayerKey, rings: number
     }
   }
   context.putImageData(image, 0, 0);
+
+  // 让浏览器原生 Canvas 路径引擎一次完成复杂多边形裁切，避免逐像素遍历数万条边界线。
+  context.save();
+  context.globalCompositeOperation = "destination-in";
+  context.beginPath();
+  rings.forEach((ring) => {
+    ring.forEach(([longitude, latitude], index) => {
+      const x = (longitude - minLng) / renderLngSpan * width;
+      const y = (maxLat - latitude) / renderLatSpan * height;
+      if (index === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    });
+    context.closePath();
+  });
+  context.fillStyle = "#000";
+  context.fill("evenodd");
+  context.restore();
   return { canvas, bounds: [minLng, minLat, maxLng, maxLat] as [number, number, number, number] };
 }
 
@@ -354,7 +353,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
       map.remove(centerMarker);
       if (rasterLayer) map.remove(rasterLayer);
     };
-  }, [mapState, city, layer, pointLabel, grid, legend, regionRings]);
+  }, [mapState, city, layer, pointLabel, grid, regionRings]);
 
   // 旅游路线：折线 + 编号站点
   useEffect(() => {
