@@ -18,7 +18,7 @@ import { readModelConfig } from "@/lib/model-config";
 import { fetchTourismRoute } from "@/lib/tourism";
 import type {
   ActivityInput, ActivityType, CityEnvironment, CitySearchResult, DecisionResult,
-  GridPoint, GroupType, Intensity, LayerKey, TourismRoute,
+  GridPoint, GroupType, Intensity, LayerKey, ToolTraceItem, TourismRoute,
 } from "@/lib/types";
 
 const layers: Array<{ key: LayerKey; label: string; icon: typeof Gauge }> = [
@@ -69,6 +69,31 @@ async function apiError(response: Response) {
   }
 }
 
+async function readAgentStream(response: Response, onTrace: (item: ToolTraceItem) => void) {
+  if (!response.body) throw new Error("浏览器不支持流式决策响应");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: DecisionResult | null = null;
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const frames = buffer.split(/\r?\n\r?\n/);
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      const event = frame.split(/\r?\n/).find((line) => line.startsWith("event:"))?.slice(6).trim();
+      const data = frame.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5)).join("\n");
+      if (!data) continue;
+      if (event === "trace") onTrace(JSON.parse(data) as ToolTraceItem);
+      if (event === "result") result = JSON.parse(data) as DecisionResult;
+      if (event === "error") throw new Error((JSON.parse(data) as { detail?: string }).detail || "Agent执行失败");
+    }
+    if (done) break;
+  }
+  if (!result) throw new Error("Agent没有返回最终决策");
+  return result;
+}
+
 interface RegionBounds {
   cityId: string;
   minLng: number;
@@ -88,6 +113,7 @@ export function DecisionDashboard() {
   const [isLoadingCity, setIsLoadingCity] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isPlanning, setIsPlanning] = useState(false);
+  const [liveTrace, setLiveTrace] = useState<ToolTraceItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<"plan" | "evidence" | "trace">("plan");
   const [dateRange, setDateRange] = useState({ min: "", max: "" });
@@ -377,30 +403,18 @@ export function DecisionDashboard() {
   async function analyze() {
     setIsAnalyzing(true);
     setError(null);
+    setResult(null);
+    setLiveTrace([]);
+    setActivePanel("trace");
     const startedAt = Date.now();
     try {
-      const response = await fetch(`${apiBase}/api/v1/decisions/analyze`, {
+      const response = await fetch(`${apiBase}/api/v2/agent/stream`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
       });
       if (!response.ok) throw new Error(await apiError(response));
-      let decision = await response.json() as DecisionResult;
-      const modelConfig = readModelConfig();
-      if (modelConfig.baseUrl && modelConfig.model) {
-        try {
-          const llmResponse = await fetch("/model-gateway", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              system: "你是适候户外活动决策助手。只根据给定数值写100至160字中文建议，不修改数值，不虚构政策。必须说明举办方式、风险阈值和备用方案。",
-              prompt: `地点：${input.locationName}；活动：${input.activityType}；场景重点：${activityProfiles[input.activityType].detail}；适宜度：${decision.overallScore}；推荐时段：${decision.bestSlot.label}；气温：${decision.bestSlot.temperature}℃；AQI：${decision.bestSlot.aqi}；热风险：${decision.bestSlot.heatRisk}；降雨概率：${decision.bestSlot.rainProbability}%；已有措施：${decision.actions.join("；")}`,
-              config: { baseUrl: modelConfig.baseUrl, apiKey: modelConfig.apiKey, model: modelConfig.model },
-            }),
-          });
-          const llm = await llmResponse.json() as { text?: string };
-          if (llmResponse.ok && llm.text) decision = { ...decision, summary: llm.text, generatedBy: "deepseek" };
-        } catch { /* 保留确定性决策，不因模型波动阻断结果 */ }
-      }
+      const decision = await readAgentStream(response, (item) => setLiveTrace((current) => [...current, item]));
       setResult(decision);
+      setLiveTrace([]);
       setRoute(null);
       await loadCity(meta);
       setActivePanel("plan");
@@ -632,15 +646,16 @@ export function DecisionDashboard() {
             </div>
           )}
 
-          {!isTourism && !result && <div className="panel-content empty-state"><Sparkle size={30} weight="duotone" /><h2>等待生成决策</h2><p>系统将读取日期范围内的真实逐小时预报，按活动场景比较候选时段并生成行动建议。</p></div>}
+          {!isTourism && !result && liveTrace.length === 0 && <div className="panel-content empty-state"><Sparkle size={30} weight="duotone" /><h2>{isAnalyzing ? "Agent正在建立计划…" : "等待生成决策"}</h2><p>系统将读取真实逐小时预报，检索权威依据，再调用受控工具比较候选时段。</p></div>}
+          {!isTourism && !result && liveTrace.length > 0 && <div className="panel-content panel-enter"><PanelTitle icon={Brain} title="Agent 正在执行" subtitle="以下事件来自后端真实工具调用" /><div className="trace-list">{liveTrace.map((item, index) => <div className="trace-item" key={item.id}><div className="trace-index">{index + 1}</div><div><strong>{item.name}</strong><p>{item.detail}</p></div><span className={item.status}>{item.status === "fallback" ? "安全兜底" : "完成"}</span></div>)}</div></div>}
           {!isTourism && result && activePanel === "plan" && <div className="panel-content panel-enter">
-            <div className="score-hero"><div className={`score-ring level-${result.overallLevel}`} style={{ "--score": result.overallScore } as React.CSSProperties}><strong>{result.overallScore}</strong><small>适宜度</small></div><div><span className="decision-status"><CheckCircle size={15} weight="fill" /> {result.overallLevel}</span><h2>{result.recommendation}</h2><p>{result.generatedBy === "deepseek" ? "大模型增强解释 · 实时环境预报" : "规则解释 · 实时环境预报"}</p></div></div>
+            <div className="score-hero"><div className={`score-ring level-${result.overallLevel}`} style={{ "--score": result.overallScore } as React.CSSProperties}><strong>{result.overallScore}</strong><small>适宜度</small></div><div><span className="decision-status"><CheckCircle size={15} weight="fill" /> {result.overallLevel}</span><h2>{result.recommendation}</h2><p>{result.generatedBy === "deepseek-agent" || result.generatedBy === "open-model-agent" ? `Agent决策 · ${result.modelProvider}` : "安全兜底 · 实时环境预报"} · 置信度 {Math.round(result.confidence * 100)}%</p></div></div>
             <div className="summary-block"><Brain size={20} weight="duotone" /><p>{result.summary}</p></div>
             <section className="recommend-section"><span className="section-kicker">执行措施</span><div className="action-list">{result.actions.map((action, index) => <div className="action-row" key={action}><span>{String(index + 1).padStart(2, "0")}</span><p>{action}</p></div>)}</div></section>
             <section className="contingency"><div><ShieldCheck size={18} /><strong>备用预案</strong></div><p>{result.contingency}</p></section>
           </div>}
-          {result && activePanel === "evidence" && <div className="panel-content panel-enter"><PanelTitle icon={Database} title="依据与数据来源" subtitle="每项建议都能回到计算和原始依据" /><div className="evidence-list">{result.evidence.map((item) => <article key={item.title}><span>{item.tag}</span><h3>{item.title}</h3><p>{item.excerpt}</p><small>{item.publisher}</small></article>)}</div><div className="data-note"><Info size={18} /><p>天气与降雨来自 Open-Meteo 逐小时预报；空气质量为 Open-Meteo US AQI 模型数据；热风险由体感温度和湿度计算。数据为城市坐标附近的网格预报，不代表单一监测站。</p></div></div>}
-          {result && activePanel === "trace" && <div className="panel-content panel-enter"><PanelTitle icon={Brain} title="决策执行轨迹" subtitle="环境读取、依据检索、计算与时段比较" /><div className="trace-list">{result.trace.map((item, index) => <div className="trace-item" key={item.id}><div className="trace-index">{index + 1}</div><div><strong>{item.name}</strong><p>{item.detail}</p></div><span className={item.status}>{item.status === "fallback" ? "规则兜底" : "完成"}</span></div>)}</div><div className="trace-footer"><ShieldCheck size={17} /> 数值由实时数据和同一计算流程产生</div></div>}
+          {result && activePanel === "evidence" && <div className="panel-content panel-enter"><PanelTitle icon={Database} title="依据与数据来源" subtitle={`混合检索 · ${result.ragMode}`} /><div className="evidence-list">{result.evidence.map((item) => <article key={item.id ?? item.title}><span>{item.tag}</span><h3>{item.title}</h3>{item.section && <small>{item.section} · {item.publishedAt}</small>}<p>{item.excerpt}</p><small>{item.publisher}</small>{item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer">查看政府原文 ↗</a>}</article>)}</div><div className="data-note"><Info size={18} /><p>天气与降雨来自 Open-Meteo 逐小时预报；空气质量为 Open-Meteo US AQI 模型数据。政策依据由 BM25 与本地中文向量混合检索，并保留发布机构、章节和原始链接。</p></div></div>}
+          {result && activePanel === "trace" && <div className="panel-content panel-enter"><PanelTitle icon={Brain} title="真实 Agent 执行轨迹" subtitle={`${result.agentPlan.length}个工具 · 模型规划、执行与校验`} /><div className="trace-list">{result.trace.map((item, index) => <div className="trace-item" key={item.id}><div className="trace-index">{index + 1}</div><div><strong>{item.name}</strong><p>{item.detail}</p></div><span className={item.status}>{item.status === "fallback" ? "安全兜底" : "完成"}</span></div>)}</div><div className="trace-footer"><ShieldCheck size={17} /> 模型负责规划与解释，环境数值和适宜度由受控工具产生</div></div>}
         </aside>
       </section>
     </main>

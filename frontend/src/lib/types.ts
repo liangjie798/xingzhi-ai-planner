@@ -80,10 +80,15 @@ export interface TimeSlotScore {
 }
 
 export interface EvidenceItem {
+  id?: string;
   title: string;
   publisher: string;
   excerpt: string;
   tag: string;
+  sourceUrl?: string;
+  publishedAt?: string;
+  section?: string;
+  retrievalScore?: number;
 }
 
 export interface ToolTraceItem {
@@ -105,7 +110,11 @@ export interface DecisionResult {
   contingency: string;
   evidence: EvidenceItem[];
   trace: ToolTraceItem[];
-  generatedBy: "deepseek" | "deterministic-fallback";
+  generatedBy: "deepseek-agent" | "open-model-agent" | "deterministic-agent-fallback" | "validated-safety-fallback";
+  modelProvider: string;
+  confidence: number;
+  ragMode: string;
+  agentPlan: string[];
 }
 
 export interface GridPoint {

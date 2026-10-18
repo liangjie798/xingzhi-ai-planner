@@ -1,10 +1,9 @@
 package com.shihou.service;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 import com.shihou.dao.DecisionRecordRepository;
 import com.shihou.dto.ActivityDecisionRequest;
 import com.shihou.dto.ActivityDecisionResponse;
+import com.shihou.dto.EnvironmentalForecastPoint;
 import com.shihou.dto.EvidenceItem;
 import com.shihou.dto.TimeSlotScore;
 import com.shihou.dto.ToolTraceItem;
@@ -13,12 +12,17 @@ import com.shihou.entity.DecisionRecordEntity;
 import com.shihou.utils.RiskCalculator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
-import java.util.List;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
+/** Executes the bounded agent workflow and keeps deterministic scoring as a safety boundary. */
 @Service
 public class DecisionService {
     private final EnvironmentService environmentService;
@@ -39,7 +43,20 @@ public class DecisionService {
 
     @Transactional
     public ActivityDecisionResponse analyze(ActivityDecisionRequest request) {
-        long stepStarted = System.nanoTime();
+        return analyze(request, ignored -> { });
+    }
+
+    @Transactional
+    public ActivityDecisionResponse analyze(ActivityDecisionRequest request, Consumer<ToolTraceItem> eventListener) {
+        List<ToolTraceItem> trace = new ArrayList<>();
+
+        long started = System.nanoTime();
+        DeepSeekService.AgentPlan plan = deepSeekService.plan(request);
+        emit(trace, eventListener, new ToolTraceItem("plan", "agent_plan",
+                plan.rationale() + "；计划调用：" + String.join("、", plan.tools()),
+                plan.modelPlanned() ? "done" : "fallback", elapsedMillis(started)));
+
+        started = System.nanoTime();
         boolean customCity = request.longitude() != null && request.latitude() != null;
         CityEnvironmentEntity city = customCity
                 ? environmentService.getCity(request.cityId(), request.cityName(), request.province(), request.adcode(), request.longitude(), request.latitude())
@@ -47,59 +64,108 @@ public class DecisionService {
         LocalDate startDate = LocalDate.parse(request.date());
         LocalDate endDate = request.endDate() == null || request.endDate().isBlank()
                 ? startDate : LocalDate.parse(request.endDate());
-        if (endDate.isBefore(startDate) || endDate.isAfter(startDate.plusDays(4))) {
+        if (endDate.isBefore(startDate) || endDate.isAfter(startDate.plusDays(4)))
             throw new IllegalArgumentException("结束日期应在开始日期至其后4天内");
-        }
-        var forecast = new ArrayList<com.shihou.dto.EnvironmentalForecastPoint>();
+        List<EnvironmentalForecastPoint> forecast = new ArrayList<>();
         for (LocalDate day = startDate; !day.isAfter(endDate); day = day.plusDays(1)) {
             forecast.addAll(customCity
                     ? environmentService.getForecast(request.cityId(), request.cityName(), request.province(), request.adcode(), request.longitude(), request.latitude(), day)
                     : environmentService.getForecast(request.cityId(), day));
         }
-        int environmentMs = elapsedMillis(stepStarted);
+        emit(trace, eventListener, new ToolTraceItem("environment", "get_environment_window",
+                "读取" + city.getName() + "共" + forecast.size() + "条真实逐小时预报", "done", elapsedMillis(started)));
 
-        stepStarted = System.nanoTime();
-        List<EvidenceItem> evidence = policyRagService.retrieve(request.activityType(), request.group());
-        int evidenceMs = elapsedMillis(stepStarted);
-
-        stepStarted = System.nanoTime();
+        started = System.nanoTime();
         List<TimeSlotScore> slots = RiskCalculator.calculateSlots(forecast, request);
-        int riskMs = elapsedMillis(stepStarted);
-
-        stepStarted = System.nanoTime();
         TimeSlotScore best = RiskCalculator.bestSlot(slots);
-        int comparisonMs = elapsedMillis(stepStarted);
-        List<String> actions = buildActions(best, request);
-        String dateScope = endDate.equals(startDate) ? startDate.toString() : startDate + " 至 " + endDate;
-        String fallbackSummary = "%s%s。已比较%s内的逐小时天气、US AQI、降水概率，以及%s、%s和%s场景约束，%s的活动适宜度最高。数据更新时间为%s。"
-                .formatted(city.getName(), city.getWeather(), dateScope, request.group(), request.intensity(), request.activityType(), best.label(), city.getUpdatedAt());
-        stepStarted = System.nanoTime();
-        String summary = deepSeekService.explain(request, best, actions, evidence).orElse(fallbackSummary);
-        int explanationMs = elapsedMillis(stepStarted);
-        String generatedBy = summary.equals(fallbackSummary) ? "deterministic-fallback" : "deepseek";
+        emit(trace, eventListener, new ToolTraceItem("score", "score_activity_slots",
+                "确定性安全引擎计算" + slots.size() + "个候选时段；模型无权修改分数", "done", elapsedMillis(started)));
+
+        started = System.nanoTime();
+        List<String> riskKeywords = riskKeywords(forecast, best);
+        List<EvidenceItem> evidence = policyRagService.retrieve(request.activityType(), request.group(),
+                String.join(" ", safe(request.province()), safe(request.cityName())), riskKeywords, 5);
+        emit(trace, eventListener, new ToolTraceItem("rag", "retrieve_policy_evidence",
+                "以BM25＋本地中文向量＋RRF检索" + policyRagService.corpusSize() + "个权威片段，返回" + evidence.size() + "条可核验依据",
+                "done", elapsedMillis(started)));
+
+        started = System.nanoTime();
+        List<String> deterministicActions = buildActions(best, request);
         String recommendation = best.hour() == request.startHour()
                 ? best.label() + " 可作为当前优先时段"
                 : "建议将" + request.activityType() + "调整至 " + best.label() + " 开始";
-        List<ToolTraceItem> trace = List.of(
-                new ToolTraceItem("t1", "get_live_environment", "读取" + city.getName() + "实时环境与逐小时预报", "done", environmentMs),
-                new ToolTraceItem("t2", "retrieve_policy_evidence", "读取内置环境与活动规则依据", "done", evidenceMs),
-                new ToolTraceItem("t3", "calculate_activity_risk", "计算" + slots.size() + "个跨日期候选时段的复合风险", "done", riskMs),
-                new ToolTraceItem("t4", "compare_candidate_slots", "选择" + best.label() + "为综合最优时段", "done", comparisonMs),
-                new ToolTraceItem("t5", "generate_explanation", generatedBy.equals("deepseek") ? "DeepSeek生成解释" : "使用规则解释兜底", generatedBy.equals("deepseek") ? "done" : "fallback", explanationMs)
-        );
+        emit(trace, eventListener, new ToolTraceItem("compare", "compare_activity_plans",
+                "比较原定时段、最优时段与转场备用方案，选择" + best.label(), "done", elapsedMillis(started)));
+
+        started = System.nanoTime();
+        String contingency = buildContingency(best);
+        emit(trace, eventListener, new ToolTraceItem("contingency", "build_contingency_plan",
+                "生成AQI、热风险和降水触发条件", "done", elapsedMillis(started)));
+
+        String dateScope = endDate.equals(startDate) ? startDate.toString() : startDate + " 至 " + endDate;
+        String fallbackSummary = "%s%s。已比较%s内的逐小时环境、%s场景约束和权威安全依据，%s适宜度最高。建议按风险阈值保留转场方案，数据更新时间为%s。"
+                .formatted(city.getName(), city.getWeather(), dateScope, request.activityType(), best.label(), city.getUpdatedAt());
+
+        started = System.nanoTime();
+        var narrative = deepSeekService.synthesize(request, best, deterministicActions, contingency, evidence, plan.tools());
+        String summary = narrative.map(DeepSeekService.AgentNarrative::summary).orElse(fallbackSummary);
+        List<String> actions = narrative.map(DeepSeekService.AgentNarrative::actions).orElse(deterministicActions);
+        String finalContingency = narrative.map(DeepSeekService.AgentNarrative::contingency).orElse(contingency);
+        double confidence = narrative.map(DeepSeekService.AgentNarrative::confidence).orElse(0.72);
+        String generatedBy = narrative.map(value -> value.model().startsWith("DeepSeek")
+                ? "deepseek-agent" : "open-model-agent").orElse("deterministic-agent-fallback");
+        emit(trace, eventListener, new ToolTraceItem("synthesis", "synthesize_grounded_decision",
+                narrative.isPresent() ? "DeepSeek基于工具结果和检索证据生成结构化方案" : "模型不可用，使用可解释规则方案",
+                narrative.isPresent() ? "done" : "fallback", elapsedMillis(started)));
+
+        started = System.nanoTime();
+        boolean valid = validateDecision(best, slots, summary, evidence,
+                narrative.map(DeepSeekService.AgentNarrative::citationIds).orElse(List.of()));
+        if (!valid) {
+            summary = fallbackSummary;
+            actions = deterministicActions;
+            finalContingency = contingency;
+            confidence = 0.68;
+            generatedBy = "validated-safety-fallback";
+        }
+        emit(trace, eventListener, new ToolTraceItem("verify", "verify_final_decision",
+                valid ? "数值一致、引用均来自本次检索结果" : "发现不可靠输出，已切换安全兜底",
+                valid ? "done" : "fallback", elapsedMillis(started)));
+
         ActivityDecisionResponse response = new ActivityDecisionResponse(
-                recommendation, summary,
-                best.score(), best.level(), best, slots, actions,
-                "当AQI超过100、热风险进入高等级或降水概率超过60%时，建议转入室内；无法转场时应缩短活动并降低强度。",
-                evidence, trace, generatedBy
-        );
+                recommendation, summary, best.score(), best.level(), best, slots, actions, finalContingency,
+                evidence, List.copyOf(trace), generatedBy,
+                narrative.isPresent() ? narrative.get().model() : plan.model(),
+                confidence, policyRagService.mode(), plan.tools());
         decisionRecordRepository.save(new DecisionRecordEntity(request.cityId(), request.activityType(),
                 best.score(), best.level(), generatedBy, toJson(request), summary));
         return response;
     }
 
+    private List<String> riskKeywords(List<EnvironmentalForecastPoint> forecast, TimeSlotScore best) {
+        LinkedHashSet<String> risks = new LinkedHashSet<>();
+        if (forecast.stream().anyMatch(point -> point.rainProbability() >= 40)) risks.add("降雨 暴雨 防滑");
+        if (forecast.stream().anyMatch(point -> point.heatRisk() >= 55)) risks.add("高温 高湿 中暑 补水");
+        if (forecast.stream().anyMatch(point -> point.aqi() >= 80)) risks.add("空气质量 AQI 敏感人群");
+        if (best.hour() >= 11 && best.hour() <= 15) risks.add("正午 户外暴露");
+        if (risks.isEmpty()) risks.add("常规活动安全 应急预案");
+        return List.copyOf(risks);
+    }
+
+    private boolean validateDecision(TimeSlotScore best, List<TimeSlotScore> slots, String summary,
+                                     List<EvidenceItem> evidence, List<String> citationIds) {
+        if (!slots.contains(best) || summary == null || summary.isBlank() || summary.length() > 1000) return false;
+        var allowed = evidence.stream().map(EvidenceItem::id).collect(java.util.stream.Collectors.toSet());
+        return allowed.containsAll(citationIds);
+    }
+
     private int elapsedMillis(long startedAt) {
         return (int) TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+    }
+
+    private void emit(List<ToolTraceItem> trace, Consumer<ToolTraceItem> listener, ToolTraceItem item) {
+        trace.add(item);
+        listener.accept(item);
     }
 
     private List<String> buildActions(TimeSlotScore slot, ActivityDecisionRequest request) {
@@ -113,18 +179,20 @@ public class DecisionService {
             default -> "明确现场负责人、休息点与天气触发条件";
         };
         return List.of(sceneAction,
-                slot.heatRisk() >= 58 ? "设置补水点与遮阴休息区，每30分钟安排一次休息" : "保留常规补水与休息安排",
+                slot.heatRisk() >= 58 ? "设置补水和遮阴休息区，每30分钟检查参与者状态" : "保留常规补水与休息安排",
                 slot.aqi() >= 80 ? "减少持续耐力项目，并关注敏感参与者状态" : "空气条件允许开展常规户外项目",
-                slot.rainProbability() >= 40 ? "提前确认室内场地并设置降雨触发条件" : "保留场地防滑与短时降雨检查"
-        );
+                slot.rainProbability() >= 40 ? "提前确认室内场地并设置降雨触发条件" : "保留场地防滑与短时降雨检查");
     }
+
+    private String buildContingency(TimeSlotScore slot) {
+        return "持续监测逐小时预报；当US AQI超过100、热风险进入高等级或降水概率超过60%时转入室内。" +
+                (slot.score() < 48 ? "当前候选时段不宜按原强度举办，应优先延期或转场。" : "现场负责人应在活动前30分钟复核触发条件。");
+    }
+
+    private String safe(String value) { return value == null ? "" : value; }
 
     private String toJson(ActivityDecisionRequest request) {
-        try {
-            return objectMapper.writeValueAsString(request);
-        } catch (JacksonException exception) {
-            return "{}";
-        }
+        try { return objectMapper.writeValueAsString(request); }
+        catch (JacksonException exception) { return "{}"; }
     }
 }
-

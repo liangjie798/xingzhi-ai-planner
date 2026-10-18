@@ -13,7 +13,11 @@ public record ActivityDecisionResponse(
         String contingency,
         List<EvidenceItem> evidence,
         List<ToolTraceItem> trace,
-        String generatedBy
+        String generatedBy,
+        String modelProvider,
+        double confidence,
+        String ragMode,
+        List<String> agentPlan
 ) {
 }
 

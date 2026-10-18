@@ -32,4 +32,6 @@ shihou:
     api-key: ${DEEPSEEK_API_KEY:}
     base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
     model: ${DEEPSEEK_MODEL:deepseek-chat}
+    fallback-base-url: ${AGENT_FALLBACK_BASE_URL:https://text.pollinations.ai/openai}
+    fallback-model: ${AGENT_FALLBACK_MODEL:openai-fast}
 
