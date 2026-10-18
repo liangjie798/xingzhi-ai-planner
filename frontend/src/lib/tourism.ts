@@ -21,7 +21,7 @@ export interface TourismRequestPayload {
 }
 
 export async function fetchTourismRoute(apiBase: string, payload: TourismRequestPayload): Promise<TourismRoute> {
-  const response = await fetch(`${apiBase}/api/tourism`, {
+  const response = await fetch(`${apiBase}/tourism-planner`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

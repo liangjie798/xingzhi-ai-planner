@@ -14,11 +14,11 @@ export interface ModelPreset {
 export const MODEL_PRESETS: ModelPreset[] = [
   {
     id: "pollinations",
-    label: "免费开源 · Pollinations（无需密钥）",
+    label: "免费开源 · Pollinations GPT-OSS（无需密钥）",
     baseUrl: "https://text.pollinations.ai/openai",
-    model: "mistral",
+    model: "openai-fast",
     apiKeyRequired: false,
-    note: "默认选项。托管开源模型（Mistral 等），无需注册与密钥即可调用。",
+    note: "默认选项。使用 Pollinations 当前匿名开放的 GPT-OSS 模型，无需注册与密钥即可调用。",
   },
   {
     id: "siliconflow",
@@ -42,7 +42,7 @@ export const MODEL_PRESETS: ModelPreset[] = [
     baseUrl: "",
     model: "",
     apiKeyRequired: false,
-    note: "填写任意 OpenAI 兼容的服务地址（如 vLLM、Ollama、OneAPI），以 /chat/completions 结尾由系统自动拼接。",
+    note: "填写任意 OpenAI 兼容的 Base URL 或完整 /chat/completions 地址，系统会自动识别，避免重复拼接造成 404。",
   },
 ];
 

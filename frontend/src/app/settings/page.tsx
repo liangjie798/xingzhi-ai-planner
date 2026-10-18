@@ -53,7 +53,7 @@ export default function SettingsPage() {
     setTest({ status: "testing", message: "正在连接模型…" });
     const startedAt = Date.now();
     try {
-      const response = await fetch("/api/llm", {
+      const response = await fetch("/model-gateway", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ system: "你是连通性测试助手。", prompt: "请只回复两个字母：OK", config: { baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model } }),

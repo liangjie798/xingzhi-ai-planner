@@ -3,11 +3,14 @@
 import {
   ArrowClockwise, Binoculars, Brain, CalendarBlank, CaretDown, CheckCircle, Clock, CloudSun, Compass,
   Crosshair, Database, Drop, Gauge, GearSix, Info, Lightning, MagnifyingGlass, MapPin, MapTrifold, Path,
-  ShieldCheck, Sparkle, ThermometerSimple, UsersThree, WarningCircle, Wind,
+  Backpack, Barbell, Buildings, ChalkboardTeacher, NavigationArrow, ShieldCheck, Sparkle,
+  SuitcaseRolling, ThermometerSimple, Trophy, UsersThree, WarningCircle, Wind,
 } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EnvironmentMap } from "./environment-map";
+import type { MapSelection } from "./environment-map";
+import { geocodeActivityAddress, reverseGeocode, searchChinaDistricts } from "@/lib/amap-lbs";
 import { cities, cityById, saveSelectedCity } from "@/lib/cities";
 import type { CityOption } from "@/lib/cities";
 import { readModelConfig } from "@/lib/model-config";
@@ -25,6 +28,14 @@ const layers: Array<{ key: LayerKey; label: string; icon: typeof Gauge }> = [
   { key: "heat", label: "热风险", icon: CloudSun },
 ];
 const activityTypes: ActivityType[] = ["校园运动会", "体育课", "社区活动", "户外训练", "研学活动", "旅游规划"];
+const activityIcons: Record<ActivityType, typeof Gauge> = {
+  "校园运动会": Trophy,
+  "体育课": ChalkboardTeacher,
+  "社区活动": Buildings,
+  "户外训练": Barbell,
+  "研学活动": Backpack,
+  "旅游规划": SuitcaseRolling,
+};
 const intensities: Intensity[] = ["低强度", "中强度", "高强度"];
 const groups: GroupType[] = ["普通人群", "儿童青少年", "老年人", "敏感人群"];
 const activityProfiles: Record<ActivityType, { focus: string; detail: string }> = {
@@ -83,7 +94,9 @@ export function DecisionDashboard() {
   const [searchResults, setSearchResults] = useState<CitySearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [isResolvingLocation, setIsResolvingLocation] = useState(false);
   const [participantsText, setParticipantsText] = useState("0500");
+  const [selectedDistrict, setSelectedDistrict] = useState("");
   const searchTimer = useRef<number | null>(null);
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
   const isTourism = input.activityType === "旅游规划";
@@ -187,7 +200,7 @@ export function DecisionDashboard() {
     return () => controller.abort();
   }, [meta, loadCity]);
 
-  // 城市搜索（Open-Meteo 地理编码，支持城市及下属区域）
+  // 使用高德行政区服务检索中国大陆省、市、区县，避免海外地名库缺项与坐标偏差。
   useEffect(() => {
     if (searchTimer.current) window.clearTimeout(searchTimer.current);
     const cleaned = searchQuery.trim();
@@ -196,15 +209,14 @@ export function DecisionDashboard() {
     }
     searchTimer.current = window.setTimeout(async () => {
       try {
-        const response = await fetch(`${apiBase}/api/v1/cities/search?q=${encodeURIComponent(cleaned)}`, { cache: "no-store" });
-        setSearchResults(response.ok ? await response.json() as CitySearchResult[] : []);
+        setSearchResults(await searchChinaDistricts(cleaned));
       } catch {
         setSearchResults([]);
       } finally {
         setIsSearching(false);
       }
     }, 380);
-  }, [searchQuery, apiBase]);
+  }, [searchQuery]);
 
   const selectSearchedCity = (item: CitySearchResult) => {
     const option: CityOption = {
@@ -222,6 +234,7 @@ export function DecisionDashboard() {
     setCity(null);
     setSearchQuery("");
     setSearchResults([]);
+    setSelectedDistrict(item.district && item.district !== item.name ? item.district : item.district || "");
     setInput((current) => ({
       ...current,
       cityId: option.id,
@@ -244,7 +257,49 @@ export function DecisionDashboard() {
 
   const updateInput = <K extends keyof ActivityInput>(key: K, value: ActivityInput[K]) =>
     setInput((current) => ({ ...current, [key]: value }));
-  const onPointSelected = useCallback((name: string) => setInput((current) => ({ ...current, locationName: name })), []);
+  const applyActivityLocation = useCallback((location: MapSelection & { province?: string; city?: string }) => {
+    setError(null);
+    setResult(null);
+    setRoute(null);
+    setIsLoadingCity(true);
+    setSelectedDistrict(location.district || "");
+    setInput((current) => ({
+      ...current,
+      locationName: location.name,
+      cityName: location.city || current.cityName,
+      province: location.province || current.province,
+      adcode: location.adcode || current.adcode,
+      longitude: location.longitude,
+      latitude: location.latitude,
+    }));
+  }, []);
+  const onPointSelected = useCallback((location: MapSelection) => applyActivityLocation(location), [applyActivityLocation]);
+
+  const resolveActivityLocation = async () => {
+    const query = input.locationName.trim();
+    if (!query) {
+      setError("请输入活动地点");
+      return;
+    }
+    setIsResolvingLocation(true);
+    setError(null);
+    try {
+      const resolved = await geocodeActivityAddress(query, meta.name);
+      applyActivityLocation({
+        name: resolved.name,
+        longitude: resolved.longitude,
+        latitude: resolved.latitude,
+        district: resolved.district,
+        adcode: resolved.adcode,
+        province: resolved.province,
+        city: resolved.city,
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "活动地点定位失败");
+    } finally {
+      setIsResolvingLocation(false);
+    }
+  };
   const showPanel = (panel: "plan" | "evidence" | "trace") => {
     setActivePanel(panel);
     if (window.innerWidth <= 820) document.querySelector(".decision-panel")?.scrollIntoView({ behavior: "smooth" });
@@ -258,6 +313,7 @@ export function DecisionDashboard() {
     setCity(null);
     setResult(null);
     setRoute(null);
+    setSelectedDistrict("");
     setInput((current) => ({
       ...current,
       cityId,
@@ -273,13 +329,14 @@ export function DecisionDashboard() {
   const locateCurrentCity = () => {
     setIsLocating(true);
     setError(null);
-    const applyLocation = (longitude: number, latitude: number, name: string, province: string, precise: boolean) => {
-      const option: CityOption = { id: "geo-current", name, province, adcode: "geo-current", center: [longitude, latitude] };
+    const applyLocation = (longitude: number, latitude: number, name: string, province: string, district: string, adcode: string, precise: boolean) => {
+      const option: CityOption = { id: "geo-current", name, province, adcode, center: [longitude, latitude] };
       saveSelectedCity(option);
       setCity(null);
       setResult(null);
       setRoute(null);
       setIsLoadingCity(true);
+      setSelectedDistrict(district);
       setInput((current) => ({ ...current, cityId: option.id, cityName: name, province,
         adcode: option.adcode, longitude, latitude,
         locationName: `${precise ? "我的位置" : "IP城市中心"} ${longitude.toFixed(4)}, ${latitude.toFixed(4)}` }));
@@ -291,7 +348,8 @@ export function DecisionDashboard() {
         if (!response.ok) throw new Error("IP定位失败");
         const place = await response.json() as { city?: string; locality?: string; principalSubdivision?: string; longitude?: number; latitude?: number };
         if (place.longitude == null || place.latitude == null) throw new Error("IP定位缺少坐标");
-        applyLocation(place.longitude, place.latitude, place.city || place.locality || "当前城市", place.principalSubdivision || "中国", false);
+        const resolved = await reverseGeocode(place.longitude, place.latitude);
+        applyLocation(place.longitude, place.latitude, resolved.city, resolved.province, resolved.district, resolved.adcode, false);
       } catch {
         setIsLocating(false);
         setError("自动定位失败，请直接搜索所在市区");
@@ -304,17 +362,12 @@ export function DecisionDashboard() {
     navigator.geolocation.getCurrentPosition(async ({ coords }) => {
       const longitude = +coords.longitude.toFixed(6);
       const latitude = +coords.latitude.toFixed(6);
-      let name = "当前位置";
-      let province = "定位坐标";
       try {
-        const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=zh`);
-        if (response.ok) {
-          const place = await response.json() as { city?: string; locality?: string; principalSubdivision?: string };
-          name = place.city || place.locality || name;
-          province = place.principalSubdivision || province;
-        }
-      } catch { /* 坐标仍可用于环境预报 */ }
-      applyLocation(longitude, latitude, name, province, true);
+        const resolved = await reverseGeocode(longitude, latitude);
+        applyLocation(longitude, latitude, resolved.city, resolved.province, resolved.district, resolved.adcode, true);
+      } catch {
+        applyLocation(longitude, latitude, "当前位置", "定位坐标", "", "", true);
+      }
     }, () => {
       void locateByIp();
     }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 300000 });
@@ -329,7 +382,24 @@ export function DecisionDashboard() {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
       });
       if (!response.ok) throw new Error(await apiError(response));
-      setResult(await response.json() as DecisionResult);
+      let decision = await response.json() as DecisionResult;
+      const modelConfig = readModelConfig();
+      if (modelConfig.baseUrl && modelConfig.model) {
+        try {
+          const llmResponse = await fetch("/model-gateway", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              system: "你是适候户外活动决策助手。只根据给定数值写100至160字中文建议，不修改数值，不虚构政策。必须说明举办方式、风险阈值和备用方案。",
+              prompt: `地点：${input.locationName}；活动：${input.activityType}；场景重点：${activityProfiles[input.activityType].detail}；适宜度：${decision.overallScore}；推荐时段：${decision.bestSlot.label}；气温：${decision.bestSlot.temperature}℃；AQI：${decision.bestSlot.aqi}；热风险：${decision.bestSlot.heatRisk}；降雨概率：${decision.bestSlot.rainProbability}%；已有措施：${decision.actions.join("；")}`,
+              config: { baseUrl: modelConfig.baseUrl, apiKey: modelConfig.apiKey, model: modelConfig.model },
+            }),
+          });
+          const llm = await llmResponse.json() as { text?: string };
+          if (llmResponse.ok && llm.text) decision = { ...decision, summary: llm.text, generatedBy: "deepseek" };
+        } catch { /* 保留确定性决策，不因模型波动阻断结果 */ }
+      }
+      setResult(decision);
       setRoute(null);
       await loadCity(meta);
       setActivePanel("plan");
@@ -407,9 +477,11 @@ export function DecisionDashboard() {
         <aside className="control-rail">
           <div className="rail-heading">
             <div><span className="section-kicker">活动条件</span><h1>规划一次更合适的户外活动</h1></div>
-            <button type="button" className="icon-button compact" onClick={() => { const sameCity = input.cityId === initialInput.cityId; const today = dateString(); setError(null); setResult(null); setRoute(null); setParticipantsText("0500"); setInput({ ...initialInput, date: today, endDate: today }); if (!sameCity) { setIsLoadingCity(true); setCity(null); } else { void loadCity(cityById(initialInput.cityId)); } }} aria-label="重置活动条件"><ArrowClockwise size={17} /></button>
+            <button type="button" className="icon-button compact" onClick={() => { const sameCity = input.cityId === initialInput.cityId; const today = dateString(); setError(null); setResult(null); setRoute(null); setSelectedDistrict(""); setParticipantsText("0500"); setInput({ ...initialInput, date: today, endDate: today }); if (!sameCity) { setIsLoadingCity(true); setCity(null); } else { void loadCity(cityById(initialInput.cityId)); } }} aria-label="重置活动条件"><ArrowClockwise size={17} /></button>
           </div>
 
+          <section className="control-section" aria-labelledby="place-section-title">
+          <div className="control-section-title" id="place-section-title"><MapPin size={15} /><span>地点与实时环境</span></div>
           <FieldLabel htmlFor="city">所在城市</FieldLabel>
           <div className="select-wrap"><MapPin size={17} /><select id="city" value={cities.some((item) => item.id === input.cityId) ? input.cityId : ""} onChange={(event) => changeCity(event.target.value)}>
             {cities.some((item) => item.id === input.cityId) ? null : <option value="">{meta.name}（搜索城市）</option>}
@@ -452,15 +524,32 @@ export function DecisionDashboard() {
           {city && <dl className="city-detail-grid" aria-label="所选城市详细环境信息"><div><dt>天气</dt><dd>{city.weather}</dd></div><div><dt>PM2.5</dt><dd>{city.pm25} μg/m³</dd></div><div><dt>风力</dt><dd>{city.windPower}级</dd></div><div><dt>降雨</dt><dd>{city.rainProbability}%</dd></div></dl>}
 
           <FieldLabel htmlFor="location">活动地点</FieldLabel>
-          <div className="input-wrap"><Path size={17} /><input id="location" value={input.locationName} onChange={(event) => updateInput("locationName", event.target.value)} /></div>
+          <div className="location-search-row">
+            <div className="input-wrap"><Path size={17} /><input id="location" value={input.locationName} onChange={(event) => updateInput("locationName", event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void resolveActivityLocation(); }} /></div>
+            <button type="button" className="icon-button location-resolve" onClick={() => void resolveActivityLocation()} disabled={isResolvingLocation} title="定位活动地点并读取该坐标数据" aria-label="定位活动地点">{isResolvingLocation ? <span className="button-loader dark" /> : <NavigationArrow size={17} weight="fill" />}</button>
+          </div>
+          <p className="field-help">输入学校、道路或场馆后定位；也可直接点击地图选点。</p>
+          </section>
+
+          <section className="control-section" aria-labelledby="time-section-title">
+          <div className="control-section-title" id="time-section-title"><CalendarBlank size={15} /><span>日期与时段</span></div>
           <div className="field-grid date-range-grid">
             <div><FieldLabel htmlFor="date">开始日期</FieldLabel><div className="input-wrap"><CalendarBlank size={17} /><input id="date" type="date" min={dateRange.min} max={dateRange.max} value={input.date} onChange={(event) => { const date = event.target.value; setInput((current) => ({ ...current, date, endDate: !current.endDate || current.endDate < date ? date : current.endDate })); setResult(null); setRoute(null); }} /></div></div>
             <div><FieldLabel htmlFor="end-date">结束日期</FieldLabel><div className="input-wrap"><CalendarBlank size={17} /><input id="end-date" type="date" min={input.date || dateRange.min} max={dateRange.max} value={input.endDate || input.date} onChange={(event) => { updateInput("endDate", event.target.value); setResult(null); setRoute(null); }} /></div></div>
           </div>
           <FieldLabel htmlFor="hour">每日开始时间</FieldLabel><div className="select-wrap no-icon"><select id="hour" value={input.startHour} onChange={(event) => updateInput("startHour", Number(event.target.value))}>{Array.from({ length: 15 }, (_, index) => index + 6).map((hour) => <option value={hour} key={hour}>{String(hour).padStart(2, "0")}:00</option>)}</select><CaretDown size={14} /></div>
-          <FieldLabel htmlFor="activity">活动类型</FieldLabel>
-          <div className="select-wrap"><Lightning size={17} /><select id="activity" value={input.activityType} onChange={(event) => { updateInput("activityType", event.target.value as ActivityType); setResult(null); }}>{activityTypes.map((item) => <option value={item} key={item}>{item}</option>)}</select><CaretDown size={14} /></div>
+          </section>
+
+          <section className="control-section" aria-labelledby="activity-section-title">
+          <div className="control-section-title" id="activity-section-title"><Lightning size={15} /><span>活动场景</span></div>
+          <div className="activity-type-grid" role="group" aria-label="选择活动类型">
+            {activityTypes.map((item) => { const Icon = activityIcons[item]; return <button type="button" key={item} className={input.activityType === item ? "is-selected" : ""} onClick={() => { updateInput("activityType", item); setResult(null); setRoute(null); }}><Icon size={17} weight={input.activityType === item ? "fill" : "regular"} /><span>{item}</span></button>; })}
+          </div>
           <p className="activity-profile"><strong>{activityProfiles[input.activityType].focus}</strong><span>{activityProfiles[input.activityType].detail}</span></p>
+          </section>
+
+          <section className="control-section" aria-labelledby="people-section-title">
+          <div className="control-section-title" id="people-section-title"><UsersThree size={15} /><span>规模与参与者</span></div>
           <div className="field-grid">
             <div><FieldLabel htmlFor="participants">参与人数</FieldLabel><div className="input-wrap"><UsersThree size={17} /><input id="participants" type="text" inputMode="numeric" value={participantsText} onChange={(event) => { const digits = event.target.value.replace(/\D/g, "").slice(0, 5); setParticipantsText(digits); if (digits) updateInput("participants", Math.max(1, Number(digits))); }} onBlur={() => setParticipantsText(String(Math.max(1, input.participants)).padStart(4, "0"))} /></div></div>
             <div><FieldLabel htmlFor="duration">时长</FieldLabel><div className="select-wrap no-icon"><select id="duration" value={input.duration} onChange={(event) => updateInput("duration", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6].map((hour) => <option value={hour} key={hour}>{hour} 小时</option>)}</select><CaretDown size={14} /></div></div>
@@ -472,6 +561,7 @@ export function DecisionDashboard() {
           {isTourism && (
             <p className="tourism-hint"><Binoculars size={16} /> 旅游模式：将当日逐小时天气与内置公开景点候选库结合，编排一日路线并绘制在地图上。</p>
           )}
+          </section>
           {error && <div className="error-notice" role="alert"><WarningCircle size={17} /><span>{error}</span></div>}
           <button className="analyze-button" type="button" onClick={isTourism ? planTourism : analyze} disabled={isAnalyzing || isPlanning || isLoadingCity || !city || !input.date}>
             {isAnalyzing || isPlanning ? <span className="button-loader" /> : <Sparkle size={19} weight="fill" />}
@@ -482,7 +572,7 @@ export function DecisionDashboard() {
 
         <section className="map-workbench">
           <div className="city-summary">
-            <div><span className="section-kicker">{meta.province} · {meta.adcode} · {city ? `更新于 ${updatedAt}` : "正在连接数据源"}</span><h2>{meta.name}环境决策图</h2></div>
+            <div><span className="section-kicker">{meta.province} · {meta.adcode} · {city ? `更新于 ${updatedAt}` : "正在连接数据源"}</span><h2>{meta.name}{selectedDistrict ? ` · ${selectedDistrict}` : ""}环境决策图</h2></div>
             <div className="city-metrics" aria-label="城市环境概览">
               <Metric icon={ThermometerSimple} value={city ? `${city.temperature}°` : "--"} label="气温" />
               <Metric icon={Drop} value={city ? `${city.humidity}%` : "--"} label="湿度" />

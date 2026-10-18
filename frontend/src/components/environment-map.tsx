@@ -4,6 +4,7 @@
 
 import { Crosshair, MapPin, WarningCircle } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { reverseGeocode } from "@/lib/amap-lbs";
 import type { CityEnvironment, GridPoint, LayerKey, TourismRoute } from "@/lib/types";
 
 declare global {
@@ -38,10 +39,18 @@ interface AMapNamespace {
 interface EnvironmentMapProps {
   city: CityEnvironment;
   layer: LayerKey;
-  onPointSelected: (name: string) => void;
+  onPointSelected: (location: MapSelection) => void;
   onRegionBounds?: (bounds: { minLng: number; maxLng: number; minLat: number; maxLat: number }) => void;
   grid?: GridPoint[];
   route?: TourismRoute | null;
+}
+
+export interface MapSelection {
+  name: string;
+  longitude: number;
+  latitude: number;
+  district?: string;
+  adcode?: string;
 }
 
 const layerLabel: Record<LayerKey, string> = {
@@ -84,34 +93,43 @@ function mixColor(stops: Array<[number, [number, number, number]]>, value: numbe
   return from.map((channel, index) => Math.round(channel + (to[index] - channel) * ratio)) as [number, number, number];
 }
 
-/** 将稀疏气象采样值逐像素插值为单张连续栅格，彻底避免 HeatMap 的圆形核。 */
-function createRasterSurface(points: GridPoint[], layer: LayerKey) {
-  if (points.length < 2) return null;
-  const longitudes = points.map((point) => point.longitude);
-  const latitudes = points.map((point) => point.latitude);
-  const sourceMinLng = Math.min(...longitudes);
-  const sourceMaxLng = Math.max(...longitudes);
-  const sourceMinLat = Math.min(...latitudes);
-  const sourceMaxLat = Math.max(...latitudes);
-  const sampleLngSpan = Math.max(0.01, sourceMaxLng - sourceMinLng);
-  const sampleLatSpan = Math.max(0.01, sourceMaxLat - sourceMinLat);
-  // 采样点位于行政区范围的 12%、50%、88%，由此还原完整行政区外接范围。
-  const regionLngSpan = sampleLngSpan / 0.76;
-  const regionLatSpan = sampleLatSpan / 0.76;
-  const regionMinLng = sourceMinLng - regionLngSpan * 0.12;
-  const regionMinLat = sourceMinLat - regionLatSpan * 0.12;
-  const minLng = regionMinLng - regionLngSpan * 0.035;
-  const minLat = regionMinLat - regionLatSpan * 0.035;
-  const renderLngSpan = regionLngSpan * 1.07;
-  const renderLatSpan = regionLatSpan * 1.07;
+function pointInRing(longitude: number, latitude: number, ring: number[][]) {
+  let inside = false;
+  for (let current = 0, previous = ring.length - 1; current < ring.length; previous = current, current += 1) {
+    const [currentLng, currentLat] = ring[current];
+    const [previousLng, previousLat] = ring[previous];
+    if ((currentLat > latitude) !== (previousLat > latitude)
+      && longitude < ((previousLng - currentLng) * (latitude - currentLat)) / (previousLat - currentLat) + currentLng) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function pointInRegion(longitude: number, latitude: number, rings: number[][][]) {
+  return rings.reduce((inside, ring) => pointInRing(longitude, latitude, ring) ? !inside : inside, false);
+}
+
+/** 将稀疏气象采样值逐像素插值，并按真实行政区 GeoJSON 逐像素裁切。 */
+function createRasterSurface(points: GridPoint[], layer: LayerKey, rings: number[][][]) {
+  if (points.length < 2 || rings.length === 0) return null;
+  const boundaryPoints = rings.flat();
+  const longitudes = boundaryPoints.map((point) => point[0]);
+  const latitudes = boundaryPoints.map((point) => point[1]);
+  const minLng = Math.min(...longitudes);
+  const maxLng = Math.max(...longitudes);
+  const minLat = Math.min(...latitudes);
+  const maxLat = Math.max(...latitudes);
+  const renderLngSpan = Math.max(0.01, maxLng - minLng);
+  const renderLatSpan = Math.max(0.01, maxLat - minLat);
   const values = points.map((point) => metricValue(point, layer));
   const valueMin = Math.min(...values);
   const valueMax = Math.max(...values);
   const colorStops: Array<[number, [number, number, number]]> = layer === "comfort"
     ? [[0, [239, 68, 68]], [0.34, [246, 196, 83]], [0.62, [91, 213, 170]], [0.82, [34, 185, 154]], [1, [8, 127, 109]]]
     : [[0, [36, 199, 232]], [0.3, [56, 211, 159]], [0.58, [241, 211, 79]], [0.8, [244, 147, 63]], [1, [223, 63, 80]]];
-  const width = 420;
-  const height = 280;
+  const width = 520;
+  const height = Math.max(300, Math.round(width * renderLatSpan / renderLngSpan));
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -125,12 +143,13 @@ function createRasterSurface(points: GridPoint[], layer: LayerKey) {
     for (let column = 0; column < width; column += 1) {
       const x = column / (width - 1);
       const longitude = minLng + renderLngSpan * x;
+      if (!pointInRegion(longitude, latitude, rings)) continue;
       let weightedValue = 0;
       let weightSum = 0;
 
       points.forEach((point) => {
-        const dx = (longitude - point.longitude) / regionLngSpan;
-        const dy = (latitude - point.latitude) / regionLatSpan;
+        const dx = (longitude - point.longitude) / renderLngSpan;
+        const dy = (latitude - point.latitude) / renderLatSpan;
         const distanceSquared = dx * dx + dy * dy;
         const weight = 1 / Math.pow(distanceSquared + 0.0025, 1.35);
         weightedValue += metricValue(point, layer) * weight;
@@ -139,20 +158,16 @@ function createRasterSurface(points: GridPoint[], layer: LayerKey) {
 
       const value = weightedValue / weightSum;
       const normalized = valueMax > valueMin ? (value - valueMin) / (valueMax - valueMin) : 0.55;
-      const edge = Math.min(x, 1 - x, y, 1 - y) * 2;
-      const edgeWobble = edge + Math.sin(x * 15 + y * 7) * 0.035 + Math.cos(y * 13 - x * 5) * 0.025;
-      const featherBase = Math.min(1, Math.max(0, edgeWobble / 0.16));
-      const feather = featherBase * featherBase * (3 - 2 * featherBase);
       const [red, green, blue] = mixColor(colorStops, normalized);
       const offset = (row * width + column) * 4;
       image.data[offset] = red;
       image.data[offset + 1] = green;
       image.data[offset + 2] = blue;
-      image.data[offset + 3] = Math.round(205 * feather);
+      image.data[offset + 3] = 205;
     }
   }
   context.putImageData(image, 0, 0);
-  return { canvas, bounds: [minLng, minLat, minLng + renderLngSpan, minLat + renderLatSpan] as [number, number, number, number] };
+  return { canvas, bounds: [minLng, minLat, maxLng, maxLat] as [number, number, number, number] };
 }
 
 export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, grid, route }: EnvironmentMapProps) {
@@ -161,6 +176,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
   const mapRef = useRef<MapInstance | null>(null);
   const amapRef = useRef<AMapNamespace | null>(null);
   const [mapState, setMapState] = useState<"loading" | "ready" | "coordinates" | "error">("loading");
+  const [regionRings, setRegionRings] = useState<number[][][]>([]);
   const amapKey = process.env.NEXT_PUBLIC_AMAP_KEY;
   const securityCode = process.env.NEXT_PUBLIC_AMAP_SECURITY_CODE;
   const serviceHost = process.env.NEXT_PUBLIC_AMAP_SERVICE_HOST;
@@ -190,7 +206,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
     import("@amap/amap-jsapi-loader").then(({ default: AMapLoader }) => AMapLoader.load({
       key: amapKey,
       version: "2.0",
-      plugins: ["AMap.Scale", "AMap.ToolBar", "AMap.Geocoder"],
+      plugins: ["AMap.Scale", "AMap.ToolBar"],
     }))
       .then((loaded) => {
         const AMap = loaded as unknown as AMapNamespace;
@@ -208,7 +224,15 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
         map.add(new AMap.ToolBar({ position: "RB", liteStyle: true }));
         map.on("click", (event) => {
           const point = event.lnglat;
-          onPointSelected(`地图选点 ${point.getLng().toFixed(4)}, ${point.getLat().toFixed(4)}`);
+          const longitude = point.getLng();
+          const latitude = point.getLat();
+          void reverseGeocode(longitude, latitude)
+            .then((result) => onPointSelected(result))
+            .catch(() => onPointSelected({
+              name: `地图选点 ${longitude.toFixed(4)}, ${latitude.toFixed(4)}`,
+              longitude,
+              latitude,
+            }));
         });
         amapRef.current = AMap;
         mapRef.current = map;
@@ -236,6 +260,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
     const map = mapRef.current;
     if (mapState !== "ready" || !AMap || !map || !onRegionBounds) return;
     let active = true;
+    setRegionRings([]);
     let boundaryOverlays: unknown[] = [];
     const fallback = () => {
       if (!active) return;
@@ -269,6 +294,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
         geoJson.features?.forEach((feature) => collectRings(feature.geometry?.coordinates, rings));
         const points = rings.flat();
         if (!active || points.length < 3) throw new Error("行政区边界为空");
+        setRegionRings(rings);
         boundaryOverlays = rings.map((ring) => new AMap.Polygon({
           path: ring,
           strokeColor: "#087f6d",
@@ -278,7 +304,8 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
           fillOpacity: 0.025,
         }));
         map.add(boundaryOverlays);
-        map.setFitView?.(boundaryOverlays, true, [34, 34, 34, 34], 10);
+        const isDistrict = !city.adcode.endsWith("00");
+        map.setFitView?.(boundaryOverlays, true, [34, 34, 34, 34], isDistrict ? 13 : 10);
         const longitudes = points.map((point) => point[0]);
         const latitudes = points.map((point) => point[1]);
         onRegionBounds({
@@ -293,6 +320,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
     })();
     return () => {
       active = false;
+      setRegionRings([]);
       controller.abort();
       if (boundaryOverlays.length) map.remove(boundaryOverlays);
     };
@@ -313,7 +341,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
     });
     map.add(centerMarker);
 
-    const raster = createRasterSurface(grid ?? [], layer);
+    const raster = createRasterSurface(grid ?? [], layer, regionRings);
     const rasterLayer = raster ? new AMap.CanvasLayer({
       canvas: raster.canvas,
       bounds: raster.bounds,
@@ -326,7 +354,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
       map.remove(centerMarker);
       if (rasterLayer) map.remove(rasterLayer);
     };
-  }, [mapState, city, layer, pointLabel, grid, legend]);
+  }, [mapState, city, layer, pointLabel, grid, legend, regionRings]);
 
   // 旅游路线：折线 + 编号站点
   useEffect(() => {
@@ -433,7 +461,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
             if (!position) return null;
             return <span key={`${stop.name}-${index}`} className="route-badge fallback" style={{ left: `${position.x}%`, top: `${position.y}%` }}>{index + 1}</span>;
           })}
-          <button type="button" className="map-node city-coordinate-node" onClick={() => onPointSelected(`${city.name}中心活动点`)} aria-label={`选择${city.name}中心坐标`}>
+          <button type="button" className="map-node city-coordinate-node" onClick={() => onPointSelected({ name: `${city.name}中心活动点`, longitude: city.center[0], latitude: city.center[1], adcode: city.adcode })} aria-label={`选择${city.name}中心坐标`}>
             <span className="node-halo" />
             <strong>{pointLabel}</strong>
             <small>{city.name}</small>

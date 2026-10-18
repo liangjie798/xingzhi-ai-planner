@@ -39,8 +39,9 @@ interface ProviderSpec {
 
 const TIMEOUT_MS = 32_000;
 
-function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.trim().replace(/\/+$/, "");
+function normalizeEndpoint(baseUrl: string): string {
+  const normalized = baseUrl.trim().replace(/\/+$/, "");
+  return normalized.endsWith("/chat/completions") ? normalized : `${normalized}/chat/completions`;
 }
 
 function providersFrom(clientConfig?: ClientModelConfig): ProviderSpec[] {
@@ -48,7 +49,7 @@ function providersFrom(clientConfig?: ClientModelConfig): ProviderSpec[] {
   if (clientConfig?.baseUrl && clientConfig?.model) {
     list.push({
       name: "用户自定义模型",
-      endpoint: `${normalizeBaseUrl(clientConfig.baseUrl)}/chat/completions`,
+      endpoint: normalizeEndpoint(clientConfig.baseUrl),
       model: clientConfig.model,
       apiKey: clientConfig.apiKey?.trim() || "",
     });
@@ -72,7 +73,7 @@ function providersFrom(clientConfig?: ClientModelConfig): ProviderSpec[] {
   list.push({
     name: "Pollinations（免费开源）",
     endpoint: "https://text.pollinations.ai/openai/chat/completions",
-    model: "mistral",
+    model: "openai-fast",
     apiKey: "",
   });
   return list;
