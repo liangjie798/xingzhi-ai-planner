@@ -92,17 +92,20 @@ public class DeepSeekService {
                     "evidence", citedEvidence,
                     "executedTools", plan
             );
-            String prompt = """
+            String prompt = (properties.primaryConfigured() ? """
                     只根据下面工具结果生成决策。返回 JSON 对象，字段为 summary、actions、contingency、confidence、citationIds。
                     summary 为100至180字中文，必须包含最佳时段、关键风险和举办方式，并以[证据ID]引用至少一条依据。
                     actions 为3至5条短句；不得修改任何环境数值、时段或适宜度；不得发明法规、来源或监测站。
                     confidence 是0到1的小数；citationIds只能取 evidence 中出现的id。
-                    JSON数据：
-                    """ + objectMapper.writeValueAsString(facts);
+                    """ : """
+                    只根据下面工具结果返回紧凑 JSON，字段仅为 summary、confidence、citationIds。
+                    summary 为80至120字中文，包含最佳时段、关键风险和举办方式，并以[证据ID]引用一条依据。
+                    confidence 是0到1的小数；citationIds只能取 evidence 中出现的id。不要输出解释或Markdown。
+                    """) + "JSON数据：" + objectMapper.writeValueAsString(facts);
             Map<String, Object> body = new java.util.LinkedHashMap<>();
             body.put("model", properties.activeModel());
             body.put("temperature", 0.15);
-            body.put("max_tokens", 500);
+            body.put("max_tokens", properties.primaryConfigured() ? 900 : 350);
             if (properties.primaryConfigured()) body.put("response_format", Map.of("type", "json_object"));
             body.put("messages", List.of(
                     Map.of("role", "system", "content", "你是受控户外活动决策Agent。输出合法json，不输出Markdown。"),
