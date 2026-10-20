@@ -486,7 +486,7 @@ export function DecisionDashboard() {
         <div className="topbar-actions">
           <span className={`system-status ${error ? "has-error" : ""}`}><i /> {error ? "数据连接异常" : isLoadingCity ? "正在同步实时数据" : `实时数据 · ${updatedAt}`}</span>
           <Link className="icon-button" href="/hourly" title="逐小时数据" aria-label="逐小时数据页面"><Clock size={18} /></Link>
-          <Link className="icon-button" href="/" title="启动页面" aria-label="启动页面"><MapTrifold size={18} /></Link>
+          <Link className="icon-button" href="/welcome" title="平台介绍" aria-label="平台介绍"><MapTrifold size={18} /></Link>
           <Link className="icon-button" href="/settings" title="AI 模型配置" aria-label="AI 模型配置页面"><GearSix size={18} /></Link>
           <AccountBadge />
         </div>
