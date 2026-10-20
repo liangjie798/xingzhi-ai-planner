@@ -82,7 +82,7 @@ export default function SettingsPage() {
             <h1>配置你的 AI 模型</h1>
           </div>
           <p className="settings-lede">
-            系统默认已接入免费开源大模型（Pollinations 托管的 Mistral，无需密钥）。
+            系统默认已接入 Pollinations 托管的开放模型（openai-fast，无需密钥）。
             你也可以改用自己的模型服务，旅游路线规划与文字解释将使用你配置的模型。
           </p>
         </div>

@@ -43,11 +43,20 @@ public class DecisionService {
 
     @Transactional
     public ActivityDecisionResponse analyze(ActivityDecisionRequest request) {
-        return analyze(request, ignored -> { });
+        return analyze(request, ignored -> { }, null);
+    }
+
+    public ActivityDecisionResponse analyze(ActivityDecisionRequest request, String username) {
+        return analyze(request, ignored -> { }, username);
     }
 
     @Transactional
     public ActivityDecisionResponse analyze(ActivityDecisionRequest request, Consumer<ToolTraceItem> eventListener) {
+        return analyze(request, eventListener, null);
+    }
+
+    @Transactional
+    public ActivityDecisionResponse analyze(ActivityDecisionRequest request, Consumer<ToolTraceItem> eventListener, String username) {
         List<ToolTraceItem> trace = new ArrayList<>();
 
         long started = System.nanoTime();
@@ -82,7 +91,9 @@ public class DecisionService {
                 "确定性安全引擎计算" + slots.size() + "个候选时段；模型无权修改分数", "done", elapsedMillis(started)));
 
         started = System.nanoTime();
-        List<String> riskKeywords = riskKeywords(forecast, best);
+        List<String> riskKeywords = new ArrayList<>(riskKeywords(forecast, best));
+        if (request.siteObservation() != null && !request.siteObservation().isBlank())
+            riskKeywords.add("场地影像 " + request.siteObservation());
         List<EvidenceItem> evidence = policyRagService.retrieve(request.activityType(), request.group(),
                 String.join(" ", safe(request.province()), safe(request.cityName())), riskKeywords, 5);
         emit(trace, eventListener, new ToolTraceItem("rag", "retrieve_policy_evidence",
@@ -109,9 +120,9 @@ public class DecisionService {
         started = System.nanoTime();
         var narrative = deepSeekService.synthesize(request, best, deterministicActions, contingency, evidence, plan.tools());
         String summary = narrative.map(DeepSeekService.AgentNarrative::summary).orElse(fallbackSummary);
-        List<String> actions = narrative.map(DeepSeekService.AgentNarrative::actions).orElse(deterministicActions);
-        String finalContingency = narrative.map(DeepSeekService.AgentNarrative::contingency).orElse(contingency);
-        double confidence = narrative.map(DeepSeekService.AgentNarrative::confidence).orElse(0.72);
+        List<String> actions = deterministicActions;
+        String finalContingency = contingency;
+        double confidence = deterministicConfidence(evidence, forecast, narrative.isPresent());
         String generatedBy = narrative.map(value -> value.model().startsWith("DeepSeek")
                 ? "deepseek-agent" : "open-model-agent").orElse("deterministic-agent-fallback");
         emit(trace, eventListener, new ToolTraceItem("synthesis", "synthesize_grounded_decision",
@@ -119,13 +130,13 @@ public class DecisionService {
                 narrative.isPresent() ? "done" : "fallback", elapsedMillis(started)));
 
         started = System.nanoTime();
-        boolean valid = validateDecision(best, slots, summary, evidence,
+        boolean valid = validateDecision(best, slots, summary, evidence, forecast,
                 narrative.map(DeepSeekService.AgentNarrative::citationIds).orElse(List.of()));
         if (!valid) {
             summary = fallbackSummary;
             actions = deterministicActions;
             finalContingency = contingency;
-            confidence = 0.68;
+            confidence = deterministicConfidence(evidence, forecast, false);
             generatedBy = "validated-safety-fallback";
         }
         emit(trace, eventListener, new ToolTraceItem("verify", "verify_final_decision",
@@ -138,13 +149,20 @@ public class DecisionService {
                 narrative.isPresent() ? narrative.get().model() : plan.model(),
                 confidence, policyRagService.mode(), plan.tools());
         decisionRecordRepository.save(new DecisionRecordEntity(request.cityId(), request.activityType(),
-                best.score(), best.level(), generatedBy, toJson(request), summary));
+                best.score(), best.level(), generatedBy, toJson(request), summary, username));
         return response;
+    }
+
+    private double deterministicConfidence(List<EvidenceItem> evidence, List<EnvironmentalForecastPoint> forecast,
+                                           boolean modelSucceeded) {
+        double value = 0.62 + Math.min(0.15, evidence.size() * 0.025)
+                + (forecast.size() >= 12 ? 0.08 : 0.03) + (modelSucceeded ? 0.04 : 0.0);
+        return Math.round(Math.min(0.89, value) * 100.0) / 100.0;
     }
 
     private List<String> riskKeywords(List<EnvironmentalForecastPoint> forecast, TimeSlotScore best) {
         LinkedHashSet<String> risks = new LinkedHashSet<>();
-        if (forecast.stream().anyMatch(point -> point.rainProbability() >= 40)) risks.add("降雨 暴雨 防滑");
+        if (forecast.stream().anyMatch(point -> point.rainProbability() >= 40)) risks.add("降雨 防滑");
         if (forecast.stream().anyMatch(point -> point.heatRisk() >= 55)) risks.add("高温 高湿 中暑 补水");
         if (forecast.stream().anyMatch(point -> point.aqi() >= 80)) risks.add("空气质量 AQI 敏感人群");
         if (best.hour() >= 11 && best.hour() <= 15) risks.add("正午 户外暴露");
@@ -153,10 +171,19 @@ public class DecisionService {
     }
 
     private boolean validateDecision(TimeSlotScore best, List<TimeSlotScore> slots, String summary,
-                                     List<EvidenceItem> evidence, List<String> citationIds) {
+                                     List<EvidenceItem> evidence, List<EnvironmentalForecastPoint> forecast,
+                                     List<String> citationIds) {
         if (!slots.contains(best) || summary == null || summary.isBlank() || summary.length() > 1000) return false;
         var allowed = evidence.stream().map(EvidenceItem::id).collect(java.util.stream.Collectors.toSet());
-        return allowed.containsAll(citationIds);
+        if (!allowed.containsAll(citationIds) || (summary.contains("[") && citationIds.isEmpty())) return false;
+        int maxRain = forecast.stream().mapToInt(EnvironmentalForecastPoint::rainProbability).max().orElse(0);
+        int maxHeat = forecast.stream().mapToInt(EnvironmentalForecastPoint::heatRisk).max().orElse(0);
+        int maxAqi = forecast.stream().mapToInt(EnvironmentalForecastPoint::aqi).max().orElse(0);
+        if ((summary.contains("暴雨") || summary.contains("雷电")) && maxRain < 60) return false;
+        if ((summary.contains("高温") || summary.contains("中暑")) && maxHeat < 55) return false;
+        if ((summary.contains("空气污染") || summary.contains("雾霾")) && maxAqi < 80) return false;
+        if (summary.contains("台风") || summary.contains("冰雹") || summary.contains("沙尘")) return false;
+        return citationIds.stream().allMatch(id -> summary.contains("[" + id + "]"));
     }
 
     private int elapsedMillis(long startedAt) {
@@ -178,10 +205,13 @@ public class DecisionService {
             case "旅游规划" -> "按景点开放时段、步行暴露和天气窗口安排路线顺序";
             default -> "明确现场负责人、休息点与天气触发条件";
         };
-        return List.of(sceneAction,
+        List<String> actions = new ArrayList<>(List.of(sceneAction,
                 slot.heatRisk() >= 58 ? "设置补水和遮阴休息区，每30分钟检查参与者状态" : "保留常规补水与休息安排",
                 slot.aqi() >= 80 ? "减少持续耐力项目，并关注敏感参与者状态" : "空气条件允许开展常规户外项目",
-                slot.rainProbability() >= 40 ? "提前确认室内场地并设置降雨触发条件" : "保留场地防滑与短时降雨检查");
+                slot.rainProbability() >= 40 ? "提前确认室内场地并设置降雨触发条件" : "保留场地防滑与短时降雨检查"));
+        if (request.siteObservation() != null && !request.siteObservation().isBlank())
+            actions.add("活动前按场地影像提示复核遮阴、排水、地面和疏散通道");
+        return List.copyOf(actions);
     }
 
     private String buildContingency(TimeSlotScore slot) {

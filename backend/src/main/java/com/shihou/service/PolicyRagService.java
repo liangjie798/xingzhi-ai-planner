@@ -57,10 +57,12 @@ public class PolicyRagService {
         List<String> queryTokens = tokens(query);
         double[] queryVector = vector(queryTokens);
 
-        List<ScoredChunk> lexical = chunks.stream()
+        List<PolicyChunk> eligible = chunks.stream().filter(chunk -> regionEligible(chunk, region)).toList();
+        if (eligible.isEmpty()) eligible = chunks;
+        List<ScoredChunk> lexical = eligible.stream()
                 .map(chunk -> new ScoredChunk(chunk, bm25(queryTokens, chunk)))
                 .sorted(Comparator.comparingDouble(ScoredChunk::score).reversed()).toList();
-        List<ScoredChunk> semantic = chunks.stream()
+        List<ScoredChunk> semantic = eligible.stream()
                 .map(chunk -> new ScoredChunk(chunk, cosine(queryVector, vector(tokens(searchableText(chunk))))))
                 .sorted(Comparator.comparingDouble(ScoredChunk::score).reversed()).toList();
 
@@ -120,6 +122,12 @@ public class PolicyRagService {
         if (risks != null && risks.stream().anyMatch(risk -> containsAny(chunk.risks(), risk))) boost += 0.014;
         if (containsAny(chunk.regions(), "全国")) boost += 0.004;
         return boost;
+    }
+
+    private boolean regionEligible(PolicyChunk chunk, String region) {
+        if (chunk.regions() == null || chunk.regions().isEmpty() || chunk.regions().contains("全国")) return true;
+        if (region == null || region.isBlank()) return false;
+        return chunk.regions().stream().anyMatch(region::contains);
     }
 
     private boolean containsAny(List<String> values, String query) {

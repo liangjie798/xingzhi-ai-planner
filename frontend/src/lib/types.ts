@@ -38,6 +38,7 @@ export interface ActivityInput {
   adcode?: string;
   longitude?: number;
   latitude?: number;
+  siteObservation?: string;
 }
 
 export interface CitySearchResult {

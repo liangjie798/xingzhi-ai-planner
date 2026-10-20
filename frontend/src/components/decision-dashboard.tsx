@@ -1,15 +1,17 @@
 "use client";
 
 import {
-  ArrowClockwise, Binoculars, Brain, CalendarBlank, CaretDown, CheckCircle, Clock, CloudSun, Compass,
-  Crosshair, Database, Drop, Gauge, GearSix, Info, Lightning, MagnifyingGlass, MapPin, MapTrifold, Path,
+  ArrowClockwise, Binoculars, CalendarBlank, CaretDown, Clock, CloudSun, Compass,
+  Crosshair, Drop, Gauge, GearSix, Lightning, MagnifyingGlass, MapPin, MapTrifold, Path,
   Backpack, Barbell, Buildings, ChalkboardTeacher, NavigationArrow, ShieldCheck, Sparkle,
   SuitcaseRolling, ThermometerSimple, Trophy, UsersThree, WarningCircle, Wind,
 } from "@phosphor-icons/react";
 import Link from "next/link";
-import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EnvironmentMap } from "./environment-map";
+import { AccountBadge } from "./account-badge";
+import { VenuePhotoAnalysis } from "./venue-photo-analysis";
+import { DecisionResultPanel } from "./decision-result-panel";
 import type { MapSelection } from "./environment-map";
 import { geocodeActivityAddress, reverseGeocode, searchChinaDistricts } from "@/lib/amap-lbs";
 import { cities, cityById, saveSelectedCity } from "@/lib/cities";
@@ -484,7 +486,7 @@ export function DecisionDashboard() {
           <Link className="icon-button" href="/hourly" title="逐小时数据" aria-label="逐小时数据页面"><Clock size={18} /></Link>
           <Link className="icon-button" href="/" title="启动页面" aria-label="启动页面"><MapTrifold size={18} /></Link>
           <Link className="icon-button" href="/settings" title="AI 模型配置" aria-label="AI 模型配置页面"><GearSix size={18} /></Link>
-          <div className="avatar">SH</div>
+          <AccountBadge />
         </div>
       </header>
 
@@ -544,6 +546,7 @@ export function DecisionDashboard() {
             <button type="button" className="icon-button location-resolve" onClick={() => void resolveActivityLocation()} disabled={isResolvingLocation} title="定位活动地点并读取该坐标数据" aria-label="定位活动地点">{isResolvingLocation ? <span className="button-loader dark" /> : <NavigationArrow size={17} weight="fill" />}</button>
           </div>
           <p className="field-help">输入学校、道路或场馆后定位；也可直接点击地图选点。</p>
+          <VenuePhotoAnalysis activityType={input.activityType} locationName={input.locationName} onAnalysis={(siteObservation) => setInput((current) => ({ ...current, siteObservation }))} />
           </section>
 
           <section className="control-section" aria-labelledby="time-section-title">
@@ -587,7 +590,7 @@ export function DecisionDashboard() {
 
         <section className="map-workbench">
           <div className="city-summary">
-            <div><span className="section-kicker">{meta.province} · {meta.adcode} · {city ? `更新于 ${updatedAt}` : "正在连接数据源"}</span><h2>{meta.name}{selectedDistrict ? ` · ${selectedDistrict}` : ""}环境决策图</h2></div>
+            <div><span className="section-kicker">{meta.province} · {meta.adcode} · {city ? `实况更新 ${updatedAt}` : "正在连接数据源"}</span><h2>{meta.name}{selectedDistrict ? ` · ${selectedDistrict}` : ""}当前环境空间图</h2></div>
             <div className="city-metrics" aria-label="城市环境概览">
               <Metric icon={ThermometerSimple} value={city ? `${city.temperature}°` : "--"} label="气温" />
               <Metric icon={Drop} value={city ? `${city.humidity}%` : "--"} label="湿度" />
@@ -600,7 +603,7 @@ export function DecisionDashboard() {
             ? <EnvironmentMap city={city} layer={layer} onPointSelected={onPointSelected} onRegionBounds={onRegionBounds} grid={grid} route={route} />
             : <div className="map-shell map-unavailable"><span className="button-loader dark" /><p>{error ? "实时数据暂不可用" : "正在载入城市环境数据"}</p></div>}
           <div className="timeline-card">
-            <div className="timeline-header"><div><span className="section-kicker">逐小时预报</span><h3>{isTourism ? "旅游路线 · 推荐出行时段" : "全天活动适宜度"}</h3></div><div className="legend"><span className="good" />适宜 <span className="caution" />谨慎 <span className="bad" />不建议</div></div>
+            <div className="timeline-header"><div><span className="section-kicker">活动日期逐小时预测 · {input.date || "待选择日期"}</span><h3>{isTourism ? "旅游路线 · 推荐出行时段" : "候选时段活动适宜度"}</h3></div><div className="legend"><span className="good" />适宜 <span className="caution" />谨慎 <span className="bad" />不建议</div></div>
             {isTourism
               ? <div className="timeline-empty">{route ? `推荐时段：${route.bestHours}` : "选择城市与日期后生成旅游路线"}</div>
               : result
@@ -610,53 +613,7 @@ export function DecisionDashboard() {
           </div>
         </section>
 
-        <aside className="decision-panel">
-          <div className="panel-tabs" role="tablist"><button type="button" className={activePanel === "plan" ? "is-active" : ""} onClick={() => setActivePanel("plan")}>{isTourism ? "路线" : "方案"}</button><button type="button" className={activePanel === "evidence" ? "is-active" : ""} onClick={() => setActivePanel("evidence")}>证据</button><button type="button" className={activePanel === "trace" ? "is-active" : ""} onClick={() => setActivePanel("trace")}>Agent轨迹</button></div>
-
-          {isTourism && !route && <div className="panel-content empty-state"><Binoculars size={30} weight="duotone" /><h2>{isPlanning ? "AI 正在编排路线…" : "等待生成旅游路线"}</h2><p>整合热门平台推荐与当日逐小时天气，把适合出行的时段留给户外打卡，并绘制在中央地图上。</p></div>}
-
-          {isTourism && route && activePanel === "plan" && (
-            <div className="panel-content panel-enter">
-              <div className="route-hero">
-                <span className="decision-status"><CheckCircle size={15} weight="fill" /> {route.generatedBy === "llm" ? `AI 路线 · ${route.provider ?? ""}` : "精选路线 · 内置景点库"}</span>
-                <h2>{route.cityName}一日旅游路线</h2>
-                <p>{route.date} · 推荐时段 {route.bestHours}</p>
-              </div>
-              <div className="summary-block"><Binoculars size={20} weight="duotone" /><p>{route.summary}</p></div>
-              <section className="recommend-section">
-                <span className="section-kicker">行程站点（已绘制在地图）</span>
-                <div className="stop-list">
-                  {route.stops.map((stop, index) => (
-                    <article className="stop-row" id={`tour-stop-${index}`} key={`${stop.name}-${index}`}>
-                      {stop.imageUrl && <Image className="stop-image" src={stop.imageUrl} alt={`${stop.name}地点图片`} width={320} height={180} sizes="(max-width: 1240px) 45vw, 330px" unoptimized />}
-                      <div className="stop-card-body">
-                        <div className="stop-heading"><span className={`stop-index ${stop.category === "美食" ? "is-food" : ""}`}>{index + 1}</span><div><span className="stop-category">{stop.category} · {stop.tag}</span><h3>{stop.name}<em>{stop.time}</em></h3></div></div>
-                        <p>{stop.tip}</p>
-                        {stop.address && <address>{stop.address}</address>}
-                        <div className="stop-links">{stop.links.map((link) => <a key={`${stop.name}-${link.kind}`} href={link.url} target="_blank" rel="noopener noreferrer">{link.label}<span aria-hidden>↗</span></a>)}</div>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-              <section className="contingency">
-                <div><ShieldCheck size={18} /><strong>出行提示</strong></div>
-                {route.notes.map((note) => <p key={note}>· {note}</p>)}
-              </section>
-            </div>
-          )}
-
-          {!isTourism && !result && liveTrace.length === 0 && <div className="panel-content empty-state"><Sparkle size={30} weight="duotone" /><h2>{isAnalyzing ? "Agent正在建立计划…" : "等待生成决策"}</h2><p>系统将读取真实逐小时预报，检索权威依据，再调用受控工具比较候选时段。</p></div>}
-          {!isTourism && !result && liveTrace.length > 0 && <div className="panel-content panel-enter"><PanelTitle icon={Brain} title="Agent 正在执行" subtitle="以下事件来自后端真实工具调用" /><div className="trace-list">{liveTrace.map((item, index) => <div className="trace-item" key={item.id}><div className="trace-index">{index + 1}</div><div><strong>{item.name}</strong><p>{item.detail}</p></div><span className={item.status}>{item.status === "fallback" ? "安全兜底" : "完成"}</span></div>)}</div></div>}
-          {!isTourism && result && activePanel === "plan" && <div className="panel-content panel-enter">
-            <div className="score-hero"><div className={`score-ring level-${result.overallLevel}`} style={{ "--score": result.overallScore } as React.CSSProperties}><strong>{result.overallScore}</strong><small>适宜度</small></div><div><span className="decision-status"><CheckCircle size={15} weight="fill" /> {result.overallLevel}</span><h2>{result.recommendation}</h2><p>{result.generatedBy === "deepseek-agent" || result.generatedBy === "open-model-agent" ? `Agent决策 · ${result.modelProvider}` : "安全兜底 · 实时环境预报"} · 置信度 {Math.round(result.confidence * 100)}%</p></div></div>
-            <div className="summary-block"><Brain size={20} weight="duotone" /><p>{result.summary}</p></div>
-            <section className="recommend-section"><span className="section-kicker">执行措施</span><div className="action-list">{result.actions.map((action, index) => <div className="action-row" key={action}><span>{String(index + 1).padStart(2, "0")}</span><p>{action}</p></div>)}</div></section>
-            <section className="contingency"><div><ShieldCheck size={18} /><strong>备用预案</strong></div><p>{result.contingency}</p></section>
-          </div>}
-          {result && activePanel === "evidence" && <div className="panel-content panel-enter"><PanelTitle icon={Database} title="依据与数据来源" subtitle={`混合检索 · ${result.ragMode}`} /><div className="evidence-list">{result.evidence.map((item) => <article key={item.id ?? item.title}><span>{item.tag}</span><h3>{item.title}</h3>{item.section && <small>{item.section} · {item.publishedAt}</small>}<p>{item.excerpt}</p><small>{item.publisher}</small>{item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer">查看政府原文 ↗</a>}</article>)}</div><div className="data-note"><Info size={18} /><p>天气与降雨来自 Open-Meteo 逐小时预报；空气质量为 Open-Meteo US AQI 模型数据。政策依据由 BM25 与本地中文向量混合检索，并保留发布机构、章节和原始链接。</p></div></div>}
-          {result && activePanel === "trace" && <div className="panel-content panel-enter"><PanelTitle icon={Brain} title="真实 Agent 执行轨迹" subtitle={`${result.agentPlan.length}个工具 · 模型规划、执行与校验`} /><div className="trace-list">{result.trace.map((item, index) => <div className="trace-item" key={item.id}><div className="trace-index">{index + 1}</div><div><strong>{item.name}</strong><p>{item.detail}</p></div><span className={item.status}>{item.status === "fallback" ? "安全兜底" : "完成"}</span></div>)}</div><div className="trace-footer"><ShieldCheck size={17} /> 模型负责规划与解释，环境数值和适宜度由受控工具产生</div></div>}
-        </aside>
+        <DecisionResultPanel isTourism={isTourism} route={route} result={result} liveTrace={liveTrace} activePanel={activePanel} onPanel={setActivePanel} isPlanning={isPlanning} isAnalyzing={isAnalyzing} />
       </section>
     </main>
   );
@@ -664,4 +621,3 @@ export function DecisionDashboard() {
 
 function FieldLabel({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) { return <label className="field-label" htmlFor={htmlFor}>{children}</label>; }
 function Metric({ icon: Icon, value, label }: { icon: typeof Gauge; value: string; label: string }) { return <div className="metric-item"><Icon size={18} /><div><strong>{value}</strong><span>{label}</span></div></div>; }
-function PanelTitle({ icon: Icon, title, subtitle }: { icon: typeof Brain; title: string; subtitle: string }) { return <div className="panel-title"><Icon size={20} /><div><h2>{title}</h2><p>{subtitle}</p></div></div>; }

@@ -71,7 +71,7 @@ javac -version
 
 ## 配置与部署
 
-复制根目录 `.env.example` 为 `.env`，填写 MySQL 密码。`DEEPSEEK_API_KEY` 可留空，此时使用确定性规则生成解释。浏览器端高德地图需要 Web 端 JSAPI Key 以及安全密钥或代理地址，对应 `NEXT_PUBLIC_AMAP_SECURITY_CODE` 或 `NEXT_PUBLIC_AMAP_SERVICE_HOST`。前端公开变量会在镜像构建时写入客户端包，请按高德控制台的域名白名单限制 Key。不要提交 `.env`。
+复制根目录 `.env.example` 为 `.env`，填写 MySQL 密码和管理员初始密码。`DEEPSEEK_API_KEY` 可留空，此时使用确定性规则生成解释。浏览器端高德地图需要 Web 端 JSAPI Key 以及安全密钥或代理地址，对应 `NEXT_PUBLIC_AMAP_SECURITY_CODE` 或 `NEXT_PUBLIC_AMAP_SERVICE_HOST`。前端公开变量会在镜像构建时写入客户端包，请按高德控制台的域名白名单限制 Key。不要提交 `.env`。
 
 ```bash
 docker compose up -d --build

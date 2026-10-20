@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import java.security.Principal;
 
 @Traceable
 @RestController
@@ -21,8 +22,8 @@ public class DecisionController {
     }
 
     @PostMapping("/analyze")
-    public ActivityDecisionResponse analyze(@Valid @RequestBody ActivityDecisionRequest request) {
-        return decisionService.analyze(request);
+    public ActivityDecisionResponse analyze(@Valid @RequestBody ActivityDecisionRequest request, Principal principal) {
+        return decisionService.analyze(request, principal == null ? null : principal.getName());
     }
 }
 

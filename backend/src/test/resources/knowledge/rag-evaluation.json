@@ -1,0 +1,12 @@
+[
+  {"activityType":"校园运动会","group":"儿童青少年","region":"杭州 浙江","risks":["大型活动 医疗 应急"],"expectedPrefix":"moe-"},
+  {"activityType":"校园运动会","group":"儿童青少年","region":"杭州 浙江","risks":["1000人 疏散 出口"],"expectedPrefix":"mass-event-"},
+  {"activityType":"体育课","group":"儿童青少年","region":"广州 广东","risks":["高温 中暑 补水"],"expectedPrefix":"nhc-heat-"},
+  {"activityType":"户外训练","group":"普通人群","region":"成都 四川","risks":["高温 运动负荷 休息"],"expectedPrefix":"sport-outdoor-"},
+  {"activityType":"旅游规划","group":"普通人群","region":"杭州 浙江","risks":["出游 预警 路线"],"expectedPrefix":"mct-"},
+  {"activityType":"研学活动","group":"儿童青少年","region":"杭州 浙江","risks":["暴雨 涉水 撤离"],"expectedPrefix":"zhejiang-"},
+  {"activityType":"社区活动","group":"老年人","region":"南京 江苏","risks":["空气质量 AQI 敏感人群"],"expectedPrefix":"mee-"},
+  {"activityType":"社区活动","group":"普通人群","region":"武汉 湖北","risks":["雷电 避险 金属"],"expectedPrefix":"cma-warning-"},
+  {"activityType":"户外训练","group":"普通人群","region":"重庆","risks":["山洪 滑坡 地形"],"expectedPrefix":"sport-"},
+  {"activityType":"校园运动会","group":"儿童青少年","region":"北京","risks":["安全管理 保护 应急"],"expectedPrefix":"moe-"}
+]

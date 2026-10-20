@@ -8,10 +8,20 @@
     "excerpt": "本标准规定环境空气质量指数的分级方案、计算方法、级别与类别，以及日报、实时报和预报的发布内容与数据完整性要求。平台展示的是 Open-Meteo 标注的 US AQI，不能直接冒充本标准定义的中国 AQI。",
     "tag": "空气质量",
     "sourceUrl": "https://www.mee.gov.cn/ywgz/fgbz/bz/bzwb/jcffbz/202602/t20260225_1144441.shtml",
-    "activityTypes": ["全部"],
-    "audiences": ["全部"],
-    "risks": ["空气质量", "AQI", "污染"],
-    "regions": ["全国"]
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "空气质量",
+      "AQI",
+      "污染"
+    ],
+    "regions": [
+      "全国"
+    ]
   },
   {
     "id": "moe-school-safety-29",
@@ -22,10 +32,21 @@
     "excerpt": "学校组织学生参加大型集体活动，应成立临时安全管理组织，开展有针对性的安全教育，安排必要管理人员、明确安全职责，并制定安全应急预案、配备相应设施。",
     "tag": "校园安全",
     "sourceUrl": "https://www.moe.gov.cn/jyb_xxgk/xxgk/zhengce/guizhang/202112/t20211206_585036.html",
-    "activityTypes": ["校园运动会", "研学活动"],
-    "audiences": ["儿童青少年"],
-    "risks": ["大型活动", "组织", "应急"],
-    "regions": ["全国"]
+    "activityTypes": [
+      "校园运动会",
+      "研学活动"
+    ],
+    "audiences": [
+      "儿童青少年"
+    ],
+    "risks": [
+      "大型活动",
+      "组织",
+      "应急"
+    ],
+    "regions": [
+      "全国"
+    ]
   },
   {
     "id": "moe-school-safety-30",
@@ -36,10 +57,21 @@
     "excerpt": "学校应按要求组织体育教学和体育活动，并根据教学要求采取必要的保护和帮助措施；大型体育活动涉及主要街道和交通要道时，应共同研究并落实安全措施。",
     "tag": "学校体育",
     "sourceUrl": "https://www.moe.gov.cn/jyb_xxgk/xxgk/zhengce/guizhang/202112/t20211206_585036.html",
-    "activityTypes": ["校园运动会", "体育课"],
-    "audiences": ["儿童青少年"],
-    "risks": ["体育活动", "交通", "保护"],
-    "regions": ["全国"]
+    "activityTypes": [
+      "校园运动会",
+      "体育课"
+    ],
+    "audiences": [
+      "儿童青少年"
+    ],
+    "risks": [
+      "体育活动",
+      "交通",
+      "保护"
+    ],
+    "regions": [
+      "全国"
+    ]
   },
   {
     "id": "moe-sports-risk-control",
@@ -50,10 +82,22 @@
     "excerpt": "学校组织大型体育活动或体育比赛，应成立安全管理机构，制定安全应急预案，设置安全设施、标识和现场急救点，并对学生开展安全教育。",
     "tag": "学校体育",
     "sourceUrl": "https://www.moe.gov.cn/jyb_xwfb/s271/201505/t20150528_188616.html",
-    "activityTypes": ["校园运动会", "体育课"],
-    "audiences": ["儿童青少年"],
-    "risks": ["医疗", "急救", "应急", "大型活动"],
-    "regions": ["全国"]
+    "activityTypes": [
+      "校园运动会",
+      "体育课"
+    ],
+    "audiences": [
+      "儿童青少年"
+    ],
+    "risks": [
+      "医疗",
+      "急救",
+      "应急",
+      "大型活动"
+    ],
+    "regions": [
+      "全国"
+    ]
   },
   {
     "id": "mct-summer-travel-2025",
@@ -64,10 +108,26 @@
     "excerpt": "出游前应关注目的地、沿途天气和气象灾害预警，及时调整行程；暑期出游应做好防暑、防雷、防雨准备，避开正午高温时段，大量出汗时及时补充水分。",
     "tag": "旅游安全",
     "sourceUrl": "https://app.www.gov.cn/govdata/gov/202507/13/532685/article.html",
-    "activityTypes": ["旅游规划", "研学活动", "社区活动"],
-    "audiences": ["普通人群", "儿童青少年", "老年人", "敏感人群"],
-    "risks": ["高温", "暴雨", "雷电", "出行"],
-    "regions": ["全国"]
+    "activityTypes": [
+      "旅游规划",
+      "研学活动",
+      "社区活动"
+    ],
+    "audiences": [
+      "普通人群",
+      "儿童青少年",
+      "老年人",
+      "敏感人群"
+    ],
+    "risks": [
+      "高温",
+      "暴雨",
+      "雷电",
+      "出行"
+    ],
+    "regions": [
+      "全国"
+    ]
   },
   {
     "id": "sport-rainy-outdoor-2026",
@@ -78,10 +138,24 @@
     "excerpt": "雨季登山、徒步和露营活动应重点防控降雨、雷电、山洪与滑坡风险，细化安全防范和应急处置预案，并明确执行赛事活动熔断机制。",
     "tag": "户外运动",
     "sourceUrl": "https://www.sport.gov.cn/dszx/n5414/c29589103/content.html",
-    "activityTypes": ["户外训练", "研学活动", "旅游规划"],
-    "audiences": ["全部"],
-    "risks": ["降雨", "雷电", "山洪", "滑坡", "熔断"],
-    "regions": ["全国"]
+    "activityTypes": [
+      "户外训练",
+      "研学活动",
+      "旅游规划"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "降雨",
+      "雷电",
+      "山洪",
+      "滑坡",
+      "熔断"
+    ],
+    "regions": [
+      "全国"
+    ]
   },
   {
     "id": "zhejiang-culture-weather-guide",
@@ -92,10 +166,24 @@
     "excerpt": "户外文化和旅游活动应强化安全隐患排查、细化应急预案并落实防范措施；涉山涉水高风险项目应根据预警动态加强巡查，视情停止活动并组织撤离疏散。",
     "tag": "浙江文旅",
     "sourceUrl": "https://zjjcmspublic.oss-cn-hangzhou-zwynet-d01-a.internet.cloud.zj.gov.cn/jcms_files/jcms1/web3176/site/attach/0/f42c8e3345b64a3bbb02d0b2904615da.pdf",
-    "activityTypes": ["旅游规划", "研学活动", "社区活动"],
-    "audiences": ["全部"],
-    "risks": ["台风", "暴雨", "撤离", "涉水"],
-    "regions": ["浙江", "杭州"]
+    "activityTypes": [
+      "旅游规划",
+      "研学活动",
+      "社区活动"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "台风",
+      "暴雨",
+      "撤离",
+      "涉水"
+    ],
+    "regions": [
+      "浙江",
+      "杭州"
+    ]
   },
   {
     "id": "beijing-heat-humidity-2026",
@@ -106,9 +194,1089 @@
     "excerpt": "高温高湿环境运动会增加人体散热负担；户外活动超过一小时或大量出汗时，可结合个人健康状况适当补充含电解质饮品，并关注高温、暴雨和雷电预警。",
     "tag": "高温防护",
     "sourceUrl": "https://www.beijing.gov.cn/fuwu/bmfw/sy/jrts/202607/t20260730_4800430.html",
-    "activityTypes": ["校园运动会", "体育课", "社区活动", "户外训练", "研学活动", "旅游规划"],
-    "audiences": ["普通人群", "儿童青少年", "老年人", "敏感人群"],
-    "risks": ["高温", "高湿", "补水", "中暑"],
-    "regions": ["全国", "北京"]
+    "activityTypes": [
+      "校园运动会",
+      "体育课",
+      "社区活动",
+      "户外训练",
+      "研学活动",
+      "旅游规划"
+    ],
+    "audiences": [
+      "普通人群",
+      "儿童青少年",
+      "老年人",
+      "敏感人群"
+    ],
+    "risks": [
+      "高温",
+      "高湿",
+      "补水",
+      "中暑"
+    ],
+    "regions": [
+      "北京"
+    ]
+  },
+  {
+    "id": "mee-aqi-01",
+    "title": "环境空气质量指数（AQI）技术规定 HJ 633—2026",
+    "publisher": "中华人民共和国生态环境部",
+    "publishedAt": "2026-03-01",
+    "section": "指数性质",
+    "excerpt": "AQI用于描述空气质量状况，平台必须清楚标注采用的指数口径，避免把US AQI与中国AQI混用。",
+    "tag": "空气质量",
+    "sourceUrl": "https://www.mee.gov.cn/ywgz/fgbz/bz/bzwb/jcffbz/202602/t20260225_1144441.shtml",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "AQI",
+      "口径"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "mee-aqi-02",
+    "title": "环境空气质量指数（AQI）技术规定 HJ 633—2026",
+    "publisher": "中华人民共和国生态环境部",
+    "publishedAt": "2026-03-01",
+    "section": "健康提示",
+    "excerpt": "空气污染水平升高时，儿童、老年人和心肺疾病患者等敏感人群应优先降低长时间、高强度户外活动。",
+    "tag": "敏感人群",
+    "sourceUrl": "https://www.mee.gov.cn/ywgz/fgbz/bz/bzwb/jcffbz/202602/t20260225_1144441.shtml",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "AQI",
+      "敏感人群"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "mee-aqi-03",
+    "title": "环境空气质量指数（AQI）技术规定 HJ 633—2026",
+    "publisher": "中华人民共和国生态环境部",
+    "publishedAt": "2026-03-01",
+    "section": "预报发布",
+    "excerpt": "空气质量预报应说明时间范围和数据状态；活动决策需同时显示数据更新时间与预测日期。",
+    "tag": "数据透明",
+    "sourceUrl": "https://www.mee.gov.cn/ywgz/fgbz/bz/bzwb/jcffbz/202602/t20260225_1144441.shtml",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "预报",
+      "更新时间"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "mee-aqi-04",
+    "title": "环境空气质量指数（AQI）技术规定 HJ 633—2026",
+    "publisher": "中华人民共和国生态环境部",
+    "publishedAt": "2026-03-01",
+    "section": "数据完整性",
+    "excerpt": "空气质量数据缺测时不应输出伪精确结论，应明确不可用状态并执行安全兜底。",
+    "tag": "数据质量",
+    "sourceUrl": "https://www.mee.gov.cn/ywgz/fgbz/bz/bzwb/jcffbz/202602/t20260225_1144441.shtml",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "缺测",
+      "兜底"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "mee-aqi-05",
+    "title": "环境空气质量指数（AQI）技术规定 HJ 633—2026",
+    "publisher": "中华人民共和国生态环境部",
+    "publishedAt": "2026-03-01",
+    "section": "活动调整",
+    "excerpt": "空气质量不利于敏感人群时，应减少持续耐力活动，提供室内替代并观察参与者状态。",
+    "tag": "活动调整",
+    "sourceUrl": "https://www.mee.gov.cn/ywgz/fgbz/bz/bzwb/jcffbz/202602/t20260225_1144441.shtml",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "AQI",
+      "运动负荷"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "moe-safety-01",
+    "title": "中小学幼儿园安全管理办法",
+    "publisher": "中华人民共和国教育部",
+    "publishedAt": "2006-09-01",
+    "section": "第二十三条",
+    "excerpt": "学校应配备卫生保健人员、必要急救器材和药品，并落实突发公共卫生事件报告。",
+    "tag": "校园医疗",
+    "sourceUrl": "https://www.moe.gov.cn/jyb_xxgk/xxgk/zhengce/guizhang/202112/t20211206_585036.html",
+    "activityTypes": [
+      "校园运动会",
+      "体育课",
+      "研学活动"
+    ],
+    "audiences": [
+      "儿童青少年"
+    ],
+    "risks": [
+      "医疗",
+      "急救"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "moe-safety-02",
+    "title": "中小学幼儿园安全管理办法",
+    "publisher": "中华人民共和国教育部",
+    "publishedAt": "2006-09-01",
+    "section": "第二十六条",
+    "excerpt": "学校组织集体劳动、教学实习或社会实践，应符合学生心理、生理特点和健康状况。",
+    "tag": "研学安全",
+    "sourceUrl": "https://www.moe.gov.cn/jyb_xxgk/xxgk/zhengce/guizhang/202112/t20211206_585036.html",
+    "activityTypes": [
+      "校园运动会",
+      "体育课",
+      "研学活动"
+    ],
+    "audiences": [
+      "儿童青少年"
+    ],
+    "risks": [
+      "健康状况",
+      "研学"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "moe-safety-03",
+    "title": "中小学幼儿园安全管理办法",
+    "publisher": "中华人民共和国教育部",
+    "publishedAt": "2006-09-01",
+    "section": "第二十九条·组织",
+    "excerpt": "大型集体活动应成立临时安全管理组织，明确管理人员和安全职责。",
+    "tag": "组织责任",
+    "sourceUrl": "https://www.moe.gov.cn/jyb_xxgk/xxgk/zhengce/guizhang/202112/t20211206_585036.html",
+    "activityTypes": [
+      "校园运动会",
+      "体育课",
+      "研学活动"
+    ],
+    "audiences": [
+      "儿童青少年"
+    ],
+    "risks": [
+      "大型活动",
+      "职责"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "moe-safety-04",
+    "title": "中小学幼儿园安全管理办法",
+    "publisher": "中华人民共和国教育部",
+    "publishedAt": "2006-09-01",
+    "section": "第二十九条·教育",
+    "excerpt": "大型集体活动前应开展有针对性的安全教育，使参与者了解规则与应急要求。",
+    "tag": "安全教育",
+    "sourceUrl": "https://www.moe.gov.cn/jyb_xxgk/xxgk/zhengce/guizhang/202112/t20211206_585036.html",
+    "activityTypes": [
+      "校园运动会",
+      "体育课",
+      "研学活动"
+    ],
+    "audiences": [
+      "儿童青少年"
+    ],
+    "risks": [
+      "教育",
+      "应急"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "moe-safety-05",
+    "title": "中小学幼儿园安全管理办法",
+    "publisher": "中华人民共和国教育部",
+    "publishedAt": "2006-09-01",
+    "section": "第二十九条·预案",
+    "excerpt": "大型集体活动应制定安全应急预案并配备相应设施，不能仅依赖临场处置。",
+    "tag": "应急预案",
+    "sourceUrl": "https://www.moe.gov.cn/jyb_xxgk/xxgk/zhengce/guizhang/202112/t20211206_585036.html",
+    "activityTypes": [
+      "校园运动会",
+      "体育课",
+      "研学活动"
+    ],
+    "audiences": [
+      "儿童青少年"
+    ],
+    "risks": [
+      "预案",
+      "设施"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "moe-safety-06",
+    "title": "中小学幼儿园安全管理办法",
+    "publisher": "中华人民共和国教育部",
+    "publishedAt": "2006-09-01",
+    "section": "第三十条·保护",
+    "excerpt": "体育教学与活动应采取必要保护和帮助措施，并评估活动路线交通风险。",
+    "tag": "学校体育",
+    "sourceUrl": "https://www.moe.gov.cn/jyb_xxgk/xxgk/zhengce/guizhang/202112/t20211206_585036.html",
+    "activityTypes": [
+      "校园运动会",
+      "体育课",
+      "研学活动"
+    ],
+    "audiences": [
+      "儿童青少年"
+    ],
+    "risks": [
+      "体育活动",
+      "保护"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "mass-event-01",
+    "title": "大型群众性活动安全管理条例",
+    "publisher": "中华人民共和国司法部国家行政法规库",
+    "publishedAt": "2007-10-01",
+    "section": "第二条",
+    "excerpt": "面向公众且预计每场次一千人以上的体育比赛等活动属于大型群众性活动，应按规定管理。",
+    "tag": "大型活动",
+    "sourceUrl": "https://xzfg.moj.gov.cn/front/law/detail?LawID=204",
+    "activityTypes": [
+      "校园运动会",
+      "社区活动",
+      "户外训练"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "1000人",
+      "许可"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "mass-event-02",
+    "title": "大型群众性活动安全管理条例",
+    "publisher": "中华人民共和国司法部国家行政法规库",
+    "publishedAt": "2007-10-01",
+    "section": "第五条",
+    "excerpt": "承办者对活动安全负责，主要负责人是活动安全责任人。",
+    "tag": "主体责任",
+    "sourceUrl": "https://xzfg.moj.gov.cn/front/law/detail?LawID=204",
+    "activityTypes": [
+      "校园运动会",
+      "社区活动",
+      "户外训练"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "负责人",
+      "责任"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "mass-event-03",
+    "title": "大型群众性活动安全管理条例",
+    "publisher": "中华人民共和国司法部国家行政法规库",
+    "publishedAt": "2007-10-01",
+    "section": "第六条·人员",
+    "excerpt": "安全工作方案应说明安全工作人员数量、任务分配和识别标志。",
+    "tag": "人员配置",
+    "sourceUrl": "https://xzfg.moj.gov.cn/front/law/detail?LawID=204",
+    "activityTypes": [
+      "校园运动会",
+      "社区活动",
+      "户外训练"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "工作人员",
+      "岗位"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "mass-event-04",
+    "title": "大型群众性活动安全管理条例",
+    "publisher": "中华人民共和国司法部国家行政法规库",
+    "publishedAt": "2007-10-01",
+    "section": "第六条·容量",
+    "excerpt": "安全工作方案应明确场所可容纳人数、预计人数，并设置治安缓冲区域。",
+    "tag": "容量管理",
+    "sourceUrl": "https://xzfg.moj.gov.cn/front/law/detail?LawID=204",
+    "activityTypes": [
+      "校园运动会",
+      "社区活动",
+      "户外训练"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "人数",
+      "分区"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "mass-event-05",
+    "title": "大型群众性活动安全管理条例",
+    "publisher": "中华人民共和国司法部国家行政法规库",
+    "publishedAt": "2007-10-01",
+    "section": "第六条·疏导",
+    "excerpt": "安全工作方案应包含车辆停放、秩序维护、人员疏导和应急救援预案。",
+    "tag": "疏散组织",
+    "sourceUrl": "https://xzfg.moj.gov.cn/front/law/detail?LawID=204",
+    "activityTypes": [
+      "校园运动会",
+      "社区活动",
+      "户外训练"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "疏导",
+      "应急"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "mass-event-06",
+    "title": "大型群众性活动安全管理条例",
+    "publisher": "中华人民共和国司法部国家行政法规库",
+    "publishedAt": "2007-10-01",
+    "section": "第七条",
+    "excerpt": "承办者应落实医疗救护、灭火和应急疏散措施并组织演练。",
+    "tag": "应急救援",
+    "sourceUrl": "https://xzfg.moj.gov.cn/front/law/detail?LawID=204",
+    "activityTypes": [
+      "校园运动会",
+      "社区活动",
+      "户外训练"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "医疗",
+      "疏散"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "mass-event-07",
+    "title": "大型群众性活动安全管理条例",
+    "publisher": "中华人民共和国司法部国家行政法规库",
+    "publishedAt": "2007-10-01",
+    "section": "第八条",
+    "excerpt": "场所管理者应保障疏散通道、安全出口、应急广播、照明和疏散标志有效。",
+    "tag": "场所安全",
+    "sourceUrl": "https://xzfg.moj.gov.cn/front/law/detail?LawID=204",
+    "activityTypes": [
+      "校园运动会",
+      "社区活动",
+      "户外训练"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "出口",
+      "通道"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "nhc-heat-01",
+    "title": "高温中暑预防知识要点",
+    "publisher": "中华人民共和国国家卫生健康委员会",
+    "publishedAt": "2010-07-01",
+    "section": "高温高湿风险",
+    "excerpt": "高温、高湿和强热辐射会增加体温调节与水盐代谢负担，高强度活动应缩短连续暴露。",
+    "tag": "高温防护",
+    "sourceUrl": "https://www.nhc.gov.cn/wjw/jbyfykz/201007/1edb19b7dd4e4bdf8da5ea45f4a64e23.shtml",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "高温",
+      "高湿"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "nhc-heat-02",
+    "title": "高温中暑预防知识要点",
+    "publisher": "中华人民共和国国家卫生健康委员会",
+    "publishedAt": "2010-07-01",
+    "section": "时段选择",
+    "excerpt": "出行应尽量避开正午前后，户外活动优先选择阴凉场地和较凉时段。",
+    "tag": "时段调整",
+    "sourceUrl": "https://www.nhc.gov.cn/wjw/jbyfykz/201007/1edb19b7dd4e4bdf8da5ea45f4a64e23.shtml",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "正午",
+      "遮阴"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "nhc-heat-03",
+    "title": "高温中暑预防知识要点",
+    "publisher": "中华人民共和国国家卫生健康委员会",
+    "publishedAt": "2010-07-01",
+    "section": "锻炼调整",
+    "excerpt": "高温时应减少户外锻炼；确需活动时应增加补水、休息和状态观察。",
+    "tag": "运动防护",
+    "sourceUrl": "https://www.nhc.gov.cn/wjw/jbyfykz/201007/1edb19b7dd4e4bdf8da5ea45f4a64e23.shtml",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "高温",
+      "补水"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "nhc-heat-04",
+    "title": "高温中暑预防知识要点",
+    "publisher": "中华人民共和国国家卫生健康委员会",
+    "publishedAt": "2010-07-01",
+    "section": "补充水盐",
+    "excerpt": "大量出汗时除补水外还需关注盐分和矿物质流失，宜少量多次补充。",
+    "tag": "科学补水",
+    "sourceUrl": "https://www.nhc.gov.cn/wjw/jbyfykz/201007/1edb19b7dd4e4bdf8da5ea45f4a64e23.shtml",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "补水",
+      "电解质"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "nhc-heat-05",
+    "title": "高温中暑预防知识要点",
+    "publisher": "中华人民共和国国家卫生健康委员会",
+    "publishedAt": "2010-07-01",
+    "section": "敏感人群",
+    "excerpt": "婴幼儿、老年人及心脏病、高血压等慢性病人群更易受高温影响，应加强观察。",
+    "tag": "敏感人群",
+    "sourceUrl": "https://www.nhc.gov.cn/wjw/jbyfykz/201007/1edb19b7dd4e4bdf8da5ea45f4a64e23.shtml",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "儿童",
+      "老年人"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "nhc-heat-06",
+    "title": "高温中暑预防知识要点",
+    "publisher": "中华人民共和国国家卫生健康委员会",
+    "publishedAt": "2010-07-01",
+    "section": "早期症状",
+    "excerpt": "头晕、恶心、乏力、心率明显增加等可能是热不适信号，应停止活动并转移至阴凉处。",
+    "tag": "症状识别",
+    "sourceUrl": "https://www.nhc.gov.cn/wjw/jbyfykz/201007/1edb19b7dd4e4bdf8da5ea45f4a64e23.shtml",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "中暑",
+      "停止活动"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "nhc-heat-07",
+    "title": "高温中暑预防知识要点",
+    "publisher": "中华人民共和国国家卫生健康委员会",
+    "publishedAt": "2010-07-01",
+    "section": "现场处置",
+    "excerpt": "出现中暑症状应迅速脱离高温环境并降温；重症表现应及时呼叫急救。",
+    "tag": "医疗处置",
+    "sourceUrl": "https://www.nhc.gov.cn/wjw/jbyfykz/201007/1edb19b7dd4e4bdf8da5ea45f4a64e23.shtml",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "中暑",
+      "急救"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "nhc-heat-08",
+    "title": "高温中暑预防知识要点",
+    "publisher": "中华人民共和国国家卫生健康委员会",
+    "publishedAt": "2010-07-01",
+    "section": "防晒着装",
+    "excerpt": "户外活动应采用透气浅色衣物、遮阳帽或遮阳伞等防晒措施。",
+    "tag": "个人防护",
+    "sourceUrl": "https://www.nhc.gov.cn/wjw/jbyfykz/201007/1edb19b7dd4e4bdf8da5ea45f4a64e23.shtml",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "防晒",
+      "着装"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "sport-outdoor-01",
+    "title": "夏日户外运动安全第一",
+    "publisher": "国家体育总局",
+    "publishedAt": "2024-06-12",
+    "section": "运动节奏",
+    "excerpt": "高温户外行走宜降低节奏、缩短连续活动时长，并按身体状态安排休息。",
+    "tag": "运动负荷",
+    "sourceUrl": "https://www.sport.gov.cn/n20001280/n20001265/n20067664/c27825811/content.html",
+    "activityTypes": [
+      "体育课",
+      "户外训练",
+      "研学活动",
+      "旅游规划"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "高温",
+      "休息"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "sport-outdoor-02",
+    "title": "夏日户外运动安全第一",
+    "publisher": "国家体育总局",
+    "publishedAt": "2024-06-12",
+    "section": "科学饮水",
+    "excerpt": "夏季运动应及时少量多次补水，避免活动后短时间大量饮水。",
+    "tag": "科学补水",
+    "sourceUrl": "https://www.sport.gov.cn/n20001280/n20001265/n20067664/c27825811/content.html",
+    "activityTypes": [
+      "体育课",
+      "户外训练",
+      "研学活动",
+      "旅游规划"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "补水",
+      "运动"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "sport-outdoor-03",
+    "title": "夏日户外运动安全第一",
+    "publisher": "国家体育总局",
+    "publishedAt": "2024-06-12",
+    "section": "衣物准备",
+    "excerpt": "户外运动宜选透气速干和防晒衣物，并携带可及时更换的干燥衣物。",
+    "tag": "装备",
+    "sourceUrl": "https://www.sport.gov.cn/n20001280/n20001265/n20067664/c27825811/content.html",
+    "activityTypes": [
+      "体育课",
+      "户外训练",
+      "研学活动",
+      "旅游规划"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "衣物",
+      "防晒"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "sport-outdoor-04",
+    "title": "夏日户外运动安全第一",
+    "publisher": "国家体育总局",
+    "publishedAt": "2024-06-12",
+    "section": "天气变化",
+    "excerpt": "活动前除查看趋势，还应持续关注活动所在地天气和现场变化。",
+    "tag": "临近监测",
+    "sourceUrl": "https://www.sport.gov.cn/n20001280/n20001265/n20067664/c27825811/content.html",
+    "activityTypes": [
+      "体育课",
+      "户外训练",
+      "研学活动",
+      "旅游规划"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "预报",
+      "复核"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "sport-outdoor-05",
+    "title": "夏日户外运动安全第一",
+    "publisher": "国家体育总局",
+    "publishedAt": "2024-06-12",
+    "section": "极端天气",
+    "excerpt": "大雨、暴风、雷电和冰雹属于不可控风险，天气突变时应及时终止或转场。",
+    "tag": "熔断机制",
+    "sourceUrl": "https://www.sport.gov.cn/n20001280/n20001265/n20067664/c27825811/content.html",
+    "activityTypes": [
+      "体育课",
+      "户外训练",
+      "研学活动",
+      "旅游规划"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "降雨",
+      "雷电"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "sport-outdoor-06",
+    "title": "夏日户外运动安全第一",
+    "publisher": "国家体育总局",
+    "publishedAt": "2024-06-12",
+    "section": "地形避险",
+    "excerpt": "户外天气突变时应远离山沟、陡坡等位置，防范山洪、滑坡和落石。",
+    "tag": "地形风险",
+    "sourceUrl": "https://www.sport.gov.cn/n20001280/n20001265/n20067664/c27825811/content.html",
+    "activityTypes": [
+      "体育课",
+      "户外训练",
+      "研学活动",
+      "旅游规划"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "山洪",
+      "滑坡"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "mct-travel-01",
+    "title": "文化和旅游部汛期、暑期出游提示",
+    "publisher": "中华人民共和国文化和旅游部",
+    "publishedAt": "2024-06-27",
+    "section": "行前查询",
+    "excerpt": "出游前应查询目的地和沿途天气及预警，根据风险及时调整路线与时间。",
+    "tag": "旅游安全",
+    "sourceUrl": "https://www.mct.gov.cn/whzx/whyw/202406/t20240627_953746.htm",
+    "activityTypes": [
+      "旅游规划",
+      "研学活动"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "预警",
+      "路线"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "mct-travel-02",
+    "title": "文化和旅游部汛期、暑期出游提示",
+    "publisher": "中华人民共和国文化和旅游部",
+    "publishedAt": "2024-06-27",
+    "section": "高温防护",
+    "excerpt": "暑期出游需准备遮阳防暑物品和药品，及时补水并避免高温时长时间户外活动。",
+    "tag": "高温防护",
+    "sourceUrl": "https://www.mct.gov.cn/whzx/whyw/202406/t20240627_953746.htm",
+    "activityTypes": [
+      "旅游规划",
+      "研学活动"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "高温",
+      "补水"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "mct-travel-03",
+    "title": "文化和旅游部汛期、暑期出游提示",
+    "publisher": "中华人民共和国文化和旅游部",
+    "publishedAt": "2024-06-27",
+    "section": "涉水涉山",
+    "excerpt": "汛期应谨慎进入山地、峡谷和涉水区域，遵守景区关闭与转移安排。",
+    "tag": "汛期旅游",
+    "sourceUrl": "https://www.mct.gov.cn/whzx/whyw/202406/t20240627_953746.htm",
+    "activityTypes": [
+      "旅游规划",
+      "研学活动"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "山洪",
+      "涉水"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "mct-travel-04",
+    "title": "文化和旅游部汛期、暑期出游提示",
+    "publisher": "中华人民共和国文化和旅游部",
+    "publishedAt": "2024-06-27",
+    "section": "项目边界",
+    "excerpt": "参与户外项目应听从专业人员指导，不进入未开发或缺乏保障的区域。",
+    "tag": "项目安全",
+    "sourceUrl": "https://www.mct.gov.cn/whzx/whyw/202406/t20240627_953746.htm",
+    "activityTypes": [
+      "旅游规划",
+      "研学活动"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "户外项目",
+      "边界"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "mct-travel-05",
+    "title": "文化和旅游部汛期、暑期出游提示",
+    "publisher": "中华人民共和国文化和旅游部",
+    "publishedAt": "2024-06-27",
+    "section": "动态调整",
+    "excerpt": "行程应保留室内替代点和机动时间，预警或现场条件变化时及时停止。",
+    "tag": "备用方案",
+    "sourceUrl": "https://www.mct.gov.cn/whzx/whyw/202406/t20240627_953746.htm",
+    "activityTypes": [
+      "旅游规划",
+      "研学活动"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "转场",
+      "停止"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "cma-warning-01",
+    "title": "气象灾害预警信号发布与传播管理办法",
+    "publisher": "中国气象局",
+    "publishedAt": "2007-06-12",
+    "section": "雷电预警",
+    "excerpt": "收到雷电预警或现场出现雷电活动时，户外人员应进入有防雷设施的建筑物或汽车。",
+    "tag": "雷电防御",
+    "sourceUrl": "https://www.cma.gov.cn/gzk/202005/W020220628619402421665.pdf",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "雷电",
+      "避险"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "cma-warning-02",
+    "title": "气象灾害预警信号发布与传播管理办法",
+    "publisher": "中国气象局",
+    "publishedAt": "2007-06-12",
+    "section": "雷电场所",
+    "excerpt": "雷雨时不要在树下、电杆、塔吊下避雨，也不要在空旷场地持伞或肩扛长金属物。",
+    "tag": "雷电防御",
+    "sourceUrl": "https://www.cma.gov.cn/gzk/202005/W020220628619402421665.pdf",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "雷电",
+      "金属"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "cma-warning-03",
+    "title": "气象灾害预警信号发布与传播管理办法",
+    "publisher": "中国气象局",
+    "publishedAt": "2007-06-12",
+    "section": "暴雨预警",
+    "excerpt": "暴雨预警期间应关注积水、山洪和地质灾害风险，避免低洼、涉水和山地危险区域。",
+    "tag": "暴雨防御",
+    "sourceUrl": "https://www.cma.gov.cn/gzk/202005/W020220628619402421665.pdf",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "暴雨",
+      "积水"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "cma-warning-04",
+    "title": "气象灾害预警信号发布与传播管理办法",
+    "publisher": "中国气象局",
+    "publishedAt": "2007-06-12",
+    "section": "大风预警",
+    "excerpt": "大风条件下应检查临时搭建物、广告设施和高空坠物风险，必要时取消室外活动。",
+    "tag": "大风防御",
+    "sourceUrl": "https://www.cma.gov.cn/gzk/202005/W020220628619402421665.pdf",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "大风",
+      "搭建物"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "cma-warning-05",
+    "title": "气象灾害预警信号发布与传播管理办法",
+    "publisher": "中国气象局",
+    "publishedAt": "2007-06-12",
+    "section": "高温预警",
+    "excerpt": "高温预警期间应减少高温时段户外活动，为参与者提供遮阴、饮水和休息条件。",
+    "tag": "高温预警",
+    "sourceUrl": "https://www.cma.gov.cn/gzk/202005/W020220628619402421665.pdf",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "高温",
+      "遮阴"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "cma-warning-06",
+    "title": "气象灾害预警信号发布与传播管理办法",
+    "publisher": "中国气象局",
+    "publishedAt": "2007-06-12",
+    "section": "预警响应",
+    "excerpt": "组织方应持续接收属地预警，并把等级转化为暂停、转场或取消条件。",
+    "tag": "预警响应",
+    "sourceUrl": "https://www.cma.gov.cn/gzk/202005/W020220628619402421665.pdf",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "预警",
+      "熔断"
+    ],
+    "regions": [
+      "全国"
+    ]
+  },
+  {
+    "id": "cma-warning-07",
+    "title": "气象灾害预警信号发布与传播管理办法",
+    "publisher": "中国气象局",
+    "publishedAt": "2007-06-12",
+    "section": "动态复核",
+    "excerpt": "气象预报存在时空变化，活动开始前和进行中应再次核对临近预报与预警。",
+    "tag": "数据复核",
+    "sourceUrl": "https://www.cma.gov.cn/gzk/202005/W020220628619402421665.pdf",
+    "activityTypes": [
+      "全部"
+    ],
+    "audiences": [
+      "全部"
+    ],
+    "risks": [
+      "更新时间",
+      "临近预报"
+    ],
+    "regions": [
+      "全国"
+    ]
   }
 ]

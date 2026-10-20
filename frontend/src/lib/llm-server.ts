@@ -16,6 +16,7 @@ export interface ClientModelConfig {
 export interface LlmRequest {
   system?: string;
   prompt: string;
+  imageDataUrl?: string;
   config?: ClientModelConfig;
 }
 
@@ -25,9 +26,10 @@ export interface LlmResult {
   model: string;
 }
 
+type MessageContent = string | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
 interface ChatMessage {
   role: "system" | "user";
-  content: string;
+  content: MessageContent;
 }
 
 interface ProviderSpec {
@@ -35,6 +37,7 @@ interface ProviderSpec {
   endpoint: string;
   model: string;
   apiKey: string;
+  userProvided?: boolean;
 }
 
 const TIMEOUT_MS = 32_000;
@@ -52,6 +55,7 @@ function providersFrom(clientConfig?: ClientModelConfig): ProviderSpec[] {
       endpoint: normalizeEndpoint(clientConfig.baseUrl),
       model: clientConfig.model,
       apiKey: clientConfig.apiKey?.trim() || "",
+      userProvided: true,
     });
   }
   if (process.env.SILICONFLOW_API_KEY) {
@@ -80,6 +84,7 @@ function providersFrom(clientConfig?: ClientModelConfig): ProviderSpec[] {
 }
 
 async function callProvider(spec: ProviderSpec, messages: ChatMessage[]): Promise<string> {
+  if (spec.userProvided) await assertPublicEndpoint(spec.endpoint);
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (spec.apiKey) headers.Authorization = `Bearer ${spec.apiKey}`;
 
@@ -100,10 +105,23 @@ async function callProvider(spec: ProviderSpec, messages: ChatMessage[]): Promis
   return text;
 }
 
+async function assertPublicEndpoint(endpoint: string) {
+  const { isIP } = await import("node:net");
+  const { lookup } = await import("node:dns/promises");
+  const url = new URL(endpoint);
+  if (url.protocol !== "https:" && !(process.env.NODE_ENV === "development" && ["localhost", "127.0.0.1"].includes(url.hostname)))
+    throw new Error("自定义模型地址必须使用 HTTPS");
+  const addresses = isIP(url.hostname) ? [{ address: url.hostname }] : await lookup(url.hostname, { all: true });
+  const blocked = addresses.some(({ address }) => /^(127\.|10\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1$|fc|fd|fe80)/i.test(address));
+  if (blocked) throw new Error("自定义模型地址不能指向本机或内网地址");
+}
+
 export async function callLlm(request: LlmRequest): Promise<LlmResult> {
   const messages: ChatMessage[] = [];
   if (request.system) messages.push({ role: "system", content: request.system });
-  messages.push({ role: "user", content: request.prompt });
+  messages.push({ role: "user", content: request.imageDataUrl
+    ? [{ type: "text", text: request.prompt }, { type: "image_url", image_url: { url: request.imageDataUrl } }]
+    : request.prompt });
 
   const errors: string[] = [];
   for (const spec of providersFrom(request.config)) {

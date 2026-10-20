@@ -522,7 +522,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
       <div className="map-mode-badge">
         {mapState === "ready" ? <Crosshair size={14} /> : <WarningCircle size={14} />}
         {mapState === "ready"
-          ? (route ? "高德地图 · 路线绘制" : "高德地图 · 连续栅格色带")
+          ? (route ? "高德地图 · 路线绘制" : "当前实况插值 · 行政区内裁切")
           : mapState === "error" ? "高德地图鉴权待配置" : "城市坐标 · 实时数据"}
       </div>
     </div>

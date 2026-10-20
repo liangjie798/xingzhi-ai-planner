@@ -6,9 +6,16 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.shihou.service.EnvironmentService.LiveDataUnavailableException;
+import org.springframework.security.core.AuthenticationException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    @ExceptionHandler(AuthenticationException.class)
+    ProblemDetail handleAuthentication(AuthenticationException exception) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
+        detail.setTitle("登录失败");
+        return detail;
+    }
     @ExceptionHandler(IllegalArgumentException.class)
     ProblemDetail handleBadRequest(IllegalArgumentException exception) {
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());

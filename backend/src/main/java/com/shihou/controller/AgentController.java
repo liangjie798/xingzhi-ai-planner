@@ -13,6 +13,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
+import java.security.Principal;
 
 /** Streams actual tool events followed by the verified decision. */
 @Traceable
@@ -26,11 +27,12 @@ public class AgentController {
     }
 
     @PostMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@Valid @RequestBody ActivityDecisionRequest request) {
+    public SseEmitter stream(@Valid @RequestBody ActivityDecisionRequest request, Principal principal) {
         SseEmitter emitter = new SseEmitter(45_000L);
+        String username = principal == null ? null : principal.getName();
         CompletableFuture.runAsync(() -> {
             try {
-                var result = decisionService.analyze(request, item -> send(emitter, "trace", item));
+                var result = decisionService.analyze(request, item -> send(emitter, "trace", item), username);
                 emitter.send(SseEmitter.event().name("result").data(result));
                 emitter.complete();
             } catch (Exception exception) {

@@ -3,6 +3,7 @@ package com.shihou.dto;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 public record ActivityDecisionRequest(
         @NotBlank String cityId,
@@ -19,7 +20,8 @@ public record ActivityDecisionRequest(
         String province,
         String adcode,
         Double longitude,
-        Double latitude
+        Double latitude,
+        @Size(max = 1000) String siteObservation
 ) {
 }
 
