@@ -12,7 +12,7 @@ export default function AccountPage() {
   const [items, setItems] = useState<DecisionHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => { void Promise.all([currentUser(), decisionHistory()]).then(([nextUser, history]) => { if (!nextUser) return router.replace("/login"); setUser(nextUser); setItems(history); }).catch(() => router.replace("/login")).finally(() => setLoading(false)); }, [router]);
-  async function signOut() { await logout(); router.replace("/login"); }
+  async function signOut() { await logout(); router.replace("/login"); router.refresh(); }
 
   return <main className="account-page">
     <header className="account-topbar"><Link href="/dashboard"><ArrowLeft size={17} />返回工作台</Link><span><Compass size={21} weight="duotone" />适候</span><button onClick={signOut}><SignOut size={17} />退出登录</button></header>

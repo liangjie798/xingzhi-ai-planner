@@ -8,5 +8,6 @@ export function AccountBadge() {
   const [user, setUser] = useState<AccountUser | null>(null);
   useEffect(() => { void currentUser().then(setUser).catch(() => setUser(null)); }, []);
   const initials = user?.displayName?.slice(0, 2).toUpperCase() || "登录";
-  return <Link className={`avatar ${user ? "is-authenticated" : ""}`} href={user ? "/account" : "/login"} title={user ? `${user.displayName} · 账户中心` : "登录后保存决策"}>{initials}</Link>;
+  const href = user?.role === "ADMIN" ? "/admin" : user?.role === "USER" ? "/account" : "/login";
+  return <Link className={`avatar ${user ? "is-authenticated" : ""}`} href={href} title={user ? `${user.displayName} · ${user.role === "ADMIN" ? "管理中心" : user.role === "GUEST" ? "访客会话" : "账户中心"}` : "登录后保存决策"}>{initials}</Link>;
 }

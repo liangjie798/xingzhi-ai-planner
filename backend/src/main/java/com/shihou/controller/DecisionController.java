@@ -23,7 +23,8 @@ public class DecisionController {
 
     @PostMapping("/analyze")
     public ActivityDecisionResponse analyze(@Valid @RequestBody ActivityDecisionRequest request, Principal principal) {
-        return decisionService.analyze(request, principal == null ? null : principal.getName());
+        String username = principal == null || principal.getName().startsWith("guest-") ? null : principal.getName();
+        return decisionService.analyze(request, username);
     }
 }
 

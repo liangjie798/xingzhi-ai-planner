@@ -23,18 +23,42 @@ async function csrf(): Promise<CsrfResponse> {
   return response.json() as Promise<CsrfResponse>;
 }
 
-export async function login(username: string, password: string): Promise<AccountUser> {
+export async function login(username: string, password: string, portal: "USER" | "ADMIN" = "USER"): Promise<AccountUser> {
   const token = await csrf();
   const response = await fetch("/api/v1/auth/login", {
     method: "POST", credentials: "same-origin",
     headers: { "Content-Type": "application/json", [token.headerName]: token.token },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, portal }),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { detail?: string } | null;
     throw new Error(body?.detail || "用户名或密码错误");
   }
   return response.json() as Promise<AccountUser>;
+}
+
+export async function register(username: string, password: string, displayName: string): Promise<AccountUser> {
+  const token = await csrf();
+  const response = await fetch("/api/v1/auth/register", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", [token.headerName]: token.token }, body: JSON.stringify({ username, password, displayName }) });
+  const body = await response.json().catch(() => null) as (AccountUser & { detail?: string }) | null;
+  if (!response.ok) throw new Error(body?.detail || "注册失败，请检查用户名和密码");
+  return body as AccountUser;
+}
+
+export async function loginAsGuest(): Promise<AccountUser> {
+  const token = await csrf();
+  const response = await fetch("/api/v1/auth/guest", { method: "POST", credentials: "same-origin", headers: { [token.headerName]: token.token } });
+  if (!response.ok) throw new Error("访客会话建立失败");
+  return response.json() as Promise<AccountUser>;
+}
+
+export interface AdminOverview { registeredUsers: number; searches: number; decisions: number }
+export interface AdminUser { id: number; username: string; displayName: string; role: string; enabled: boolean; createdAt: string }
+export interface AdminSearch { id: number; query: string; resultCount: number; username?: string; actorType: string; createdAt: string }
+export async function adminData(): Promise<[AdminOverview, AdminUser[], AdminSearch[]]> {
+  const responses = await Promise.all(["overview", "users", "searches"].map((path) => fetch(`/api/v1/admin/${path}`, { credentials: "same-origin", cache: "no-store" })));
+  if (responses.some((response) => !response.ok)) throw new Error("无管理员权限或数据加载失败");
+  return Promise.all(responses.map((response) => response.json())) as Promise<[AdminOverview, AdminUser[], AdminSearch[]]>;
 }
 
 export async function currentUser(): Promise<AccountUser | null> {

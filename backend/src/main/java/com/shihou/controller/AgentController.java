@@ -29,7 +29,7 @@ public class AgentController {
     @PostMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@Valid @RequestBody ActivityDecisionRequest request, Principal principal) {
         SseEmitter emitter = new SseEmitter(45_000L);
-        String username = principal == null ? null : principal.getName();
+        String username = principal == null || principal.getName().startsWith("guest-") ? null : principal.getName();
         CompletableFuture.runAsync(() -> {
             try {
                 var result = decisionService.analyze(request, item -> send(emitter, "trace", item), username);

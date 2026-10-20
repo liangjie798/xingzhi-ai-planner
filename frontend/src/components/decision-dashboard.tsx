@@ -238,7 +238,9 @@ export function DecisionDashboard() {
     }
     searchTimer.current = window.setTimeout(async () => {
       try {
-        setSearchResults(await searchChinaDistricts(cleaned));
+        const results = await searchChinaDistricts(cleaned);
+        setSearchResults(results);
+        void fetch("/api/v1/analytics/search", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: cleaned, resultCount: results.length }) });
       } catch {
         setSearchResults([]);
       } finally {

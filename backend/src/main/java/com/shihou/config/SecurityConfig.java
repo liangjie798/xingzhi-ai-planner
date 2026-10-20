@@ -40,9 +40,10 @@ public class SecurityConfig {
         csrf.setCookiePath("/");
         http
                 .csrf(value -> value.csrfTokenRepository(csrf)
-                        .ignoringRequestMatchers("/api/v1/decisions/**", "/api/v2/agent/**"))
+                        .ignoringRequestMatchers("/api/v1/decisions/**", "/api/v2/agent/**", "/api/v1/analytics/**"))
                 .authorizeHttpRequests(value -> value
-                        .requestMatchers("/api/v1/account/**").authenticated()
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/account/**").hasAnyRole("USER", "ADMIN")
                         .requestMatchers("/**").permitAll())
                 .requestCache(value -> value.disable())
                 .formLogin(value -> value.disable())
