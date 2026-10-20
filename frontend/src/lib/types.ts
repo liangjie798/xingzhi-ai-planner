@@ -165,6 +165,8 @@ export interface TourismRoute {
   notes: string[];
   generatedBy: "llm" | "curated";
   provider?: string;
+  evidence: EvidenceItem[];
+  trace: ToolTraceItem[];
 }
 
 export interface ModelConfig {

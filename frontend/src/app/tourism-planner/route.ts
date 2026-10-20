@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { callLlm, extractJson } from "@/lib/llm-server";
 import { poisForCity, DEFAULT_STOP_TIMES, type PoiSpot } from "@/lib/poi";
 import type { TourismHourSnapshot, TourismRequestPayload } from "@/lib/tourism";
-import type { TourismRoute, TourismStop } from "@/lib/types";
+import type { EvidenceItem, ToolTraceItem, TourismRoute, TourismStop } from "@/lib/types";
 
 export const maxDuration = 60;
 type TourismRequestBody = TourismRequestPayload;
@@ -72,14 +72,38 @@ function curatedPois(pois: PoiSpot[]): PoiSpot[] {
     .filter((poi, index, list) => list.findIndex((candidate) => candidate.name === poi.name) === index).slice(0, 6);
 }
 
+function routeEvidence(stops: TourismStop[]): EvidenceItem[] {
+  const official = stops.filter((stop) => stop.articleUrl).filter((stop, index, list) => list.findIndex((item) => item.articleUrl === stop.articleUrl) === index)
+    .map((stop, index) => ({ id: `tour-official-${index}`, title: stop.articleTitle || `${stop.name}公开资料`, publisher: "地方公开文旅资料", excerpt: `${stop.name}：${stop.tip}`, tag: "文旅依据", sourceUrl: stop.articleUrl, section: stop.category }));
+  return [
+    { id: "tour-weather", title: "逐小时天气与环境预报", publisher: "Open-Meteo", excerpt: "路线推荐时段综合气温、湿度、降水概率、空气质量与热风险计算。", tag: "实时数据", sourceUrl: "https://open-meteo.com/", section: "活动日期逐小时预测" },
+    { id: "tour-poi", title: "地点坐标、地址与公开图片", publisher: "高德开放平台", excerpt: "路线站点通过城市限定 POI 检索校准坐标、地址和公开图片，地图路径按校准后的坐标绘制。", tag: "地图数据", sourceUrl: "https://lbs.amap.com/api/webservice/guide/api-advanced/newpoisearch", section: "POI 搜索" },
+    ...official,
+  ];
+}
+
+function routeTrace(hours: number, candidates: number, generatedBy: "llm" | "curated", modelMs: number, poiMs: number): ToolTraceItem[] {
+  return [
+    { id: "tour-forecast", name: "读取逐小时环境", detail: `接收 ${hours} 个小时的气温、降水、AQI 与热风险数据，计算推荐出行时段。`, status: "done", durationMs: 0 },
+    { id: "tour-retrieve", name: "检索城市候选地点", detail: `从城市候选库筛选 ${candidates} 个景点与美食，并执行类别约束。`, status: candidates ? "done" : "fallback", durationMs: 0 },
+    { id: "tour-plan", name: "编排游览顺序", detail: generatedBy === "llm" ? "模型在限定候选集内安排相邻站点、用餐时间和天气适配。" : "模型不可用，使用可解释的景点与美食规则生成路线。", status: generatedBy === "llm" ? "done" : "fallback", durationMs: modelMs },
+    { id: "tour-enrich", name: "校准 POI 与链接", detail: "使用高德 POI 校准地点坐标、地址和图片，并生成导航及内容平台检索入口。", status: "done", durationMs: poiMs },
+    { id: "tour-validate", name: "路线约束校验", detail: "检查站点去重、时间顺序，以及景点与美食的最低数量要求。", status: "done", durationMs: 0 },
+  ];
+}
+
 async function fallbackRoute(body: TourismRequestBody): Promise<TourismRoute> {
-  const stops = await Promise.all(curatedPois(poisForCity(body.cityName)).map((poi, index) => enrichStop(body.cityName, poi, DEFAULT_STOP_TIMES[index] ?? "19:00")));
+  const poiStarted = Date.now();
+  const candidates = poisForCity(body.cityName);
+  const stops = await Promise.all(curatedPois(candidates).map((poi, index) => enrichStop(body.cityName, poi, DEFAULT_STOP_TIMES[index] ?? "19:00")));
   return {
     cityName: body.cityName, date: body.date,
     summary: stops.length ? `${body.cityName}一日路线串联代表景点与本地美食，按上午游览、中午用餐、下午体验、傍晚街区的节奏编排，并结合逐小时天气调整户外停留。` : `${body.cityName}暂无完整候选库，建议优先选择城市历史街区、公共文化场馆与本地餐饮集中区。`,
     bestHours: bestHoursText(body.hours ?? []), stops,
     notes: ["推荐参考公开文旅资料，并提供抖音、小红书关键词检索入口；平台热度会变化，不代表实时排名。", "图片与地址来自高德公开 POI 信息，出发前请再次确认营业时间、预约和交通状态。"],
     generatedBy: "curated",
+    evidence: routeEvidence(stops),
+    trace: routeTrace(body.hours?.length ?? 0, candidates.length, "curated", 0, Date.now() - poiStarted),
   };
 }
 
@@ -103,7 +127,9 @@ export async function POST(request: Request) {
   ].filter(Boolean).join("\n");
 
   try {
+    const modelStarted = Date.now();
     const result = await callLlm({ system, prompt, config: body.config });
+    const modelMs = Date.now() - modelStarted;
     const plan = extractJson<LlmRoutePlan>(result.text);
     const chosen: Array<{ poi: PoiSpot; time: string; tip?: string }> = [];
     for (const [index, stop] of (Array.isArray(plan?.stops) ? plan.stops.slice(0, 6) : []).entries()) {
@@ -128,13 +154,17 @@ export async function POST(request: Request) {
     }
     if (chosen.length < 3) return NextResponse.json({ ...(await fallbackRoute(body)), provider: result.provider });
     chosen.sort((a, b) => a.time.localeCompare(b.time));
+    const poiStarted = Date.now();
     const stops = await Promise.all(chosen.map((item) => enrichStop(body.cityName, item.poi, item.time, item.tip)));
+    const poiMs = Date.now() - poiStarted;
     return NextResponse.json({
       cityName: body.cityName, date: body.date,
       summary: plan?.summary?.trim() || `${body.cityName}景点与美食一日路线，结合当日天气编排。`,
       bestHours: plan?.bestHours?.trim() || bestHoursText(body.hours ?? []), stops,
       notes: [...(Array.isArray(plan?.notes) ? plan.notes.slice(0, 2).map(String) : []), "抖音、小红书按钮打开对应关键词的实时检索结果，平台内容与热度由平台更新。"],
       generatedBy: "llm", provider: `${result.provider} · ${result.model}`,
+      evidence: routeEvidence(stops),
+      trace: routeTrace(body.hours?.length ?? 0, pois.length, "llm", modelMs, poiMs),
     } satisfies TourismRoute);
   } catch { return NextResponse.json(await fallbackRoute(body)); }
 }
