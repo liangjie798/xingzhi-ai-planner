@@ -10,7 +10,12 @@ export default function AdminPage() {
   const router = useRouter(); const [user, setUser] = useState<AccountUser | null>(null); const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]); const [searches, setSearches] = useState<AdminSearch[]>([]); const [loading, setLoading] = useState(true);
   useEffect(() => { void Promise.all([currentUser(), adminData()]).then(([nextUser, data]) => { if (nextUser?.role !== "ADMIN") return router.replace("/login"); setUser(nextUser); setOverview(data[0]); setUsers(data[1]); setSearches(data[2]); }).catch(() => router.replace("/login")).finally(() => setLoading(false)); }, [router]);
-  async function signOut() { await logout(); router.replace("/login"); router.refresh(); }
+  async function signOut() {
+    await logout();
+    // A full navigation clears cached credentials and pending form state after logout.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign("/login");
+  }
   const format = (value: string) => new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
   return <main className="account-page admin-page"><header className="account-topbar"><Link href="/dashboard"><ArrowLeft size={17} />返回工作台</Link><span><Compass size={21} weight="duotone" />适候管理台</span><button onClick={signOut}><SignOut size={17} />退出登录</button></header>
     <div className="admin-body"><section className="admin-heading"><div><span className="section-kicker">ADMIN CONSOLE</span><h1>平台使用概览</h1><p>{user?.displayName} · 注册和行为数据只在管理员权限下展示</p></div><Link href="/dashboard"><Sparkle size={16} />进入决策工作台</Link></section>
