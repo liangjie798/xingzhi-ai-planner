@@ -1,6 +1,7 @@
 import type { TourismRoute } from "./types";
 
 export interface TourismHourSnapshot {
+  date: string;
   hour: number;
   temperature: number;
   humidity: number;
@@ -15,6 +16,7 @@ export interface TourismRequestPayload {
   longitude?: number;
   latitude?: number;
   date: string;
+  endDate: string;
   hours: TourismHourSnapshot[];
   /** 用户在「AI 模型配置」页保存的模型配置（OpenAI 兼容） */
   config?: { baseUrl: string; apiKey: string; model: string };

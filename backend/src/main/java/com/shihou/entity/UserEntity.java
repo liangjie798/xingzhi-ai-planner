@@ -40,4 +40,11 @@ public class UserEntity {
     public String getRole() { return role; }
     public boolean isEnabled() { return enabled; }
     public Instant getCreatedAt() { return createdAt; }
+
+    public void updateAdministrativeAccess(String nextPasswordHash, String nextDisplayName, String nextRole) {
+        this.passwordHash = nextPasswordHash;
+        this.displayName = nextDisplayName;
+        this.role = nextRole;
+        this.enabled = true;
+    }
 }

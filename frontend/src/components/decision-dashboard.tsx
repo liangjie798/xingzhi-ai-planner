@@ -2,9 +2,10 @@
 
 import {
   ArrowClockwise, Binoculars, CalendarBlank, CaretDown, Clock, CloudSun, Compass,
+  ChatCircleDots,
   Crosshair, Drop, Gauge, GearSix, Lightning, MagnifyingGlass, MapPin, MapTrifold, Path,
   Backpack, Barbell, Buildings, ChalkboardTeacher, NavigationArrow, ShieldCheck, Sparkle,
-  SuitcaseRolling, ThermometerSimple, Trophy, UsersThree, WarningCircle, Wind,
+  PaperPlaneTilt, SuitcaseRolling, ThermometerSimple, Trophy, UsersThree, WarningCircle, Wind, X,
 } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -104,6 +105,14 @@ interface RegionBounds {
   maxLat: number;
 }
 
+interface ChatMessage { role: "user" | "assistant"; content: string }
+interface ConversationResponse {
+  reply: string;
+  command: "analyze" | "clarify";
+  patch: Partial<ActivityInput> & { cityName?: string };
+  provider?: string;
+}
+
 export function DecisionDashboard() {
   const [input, setInput] = useState<ActivityInput>(initialInput);
   const [layer, setLayer] = useState<LayerKey>("comfort");
@@ -127,6 +136,12 @@ export function DecisionDashboard() {
   const [participantsText, setParticipantsText] = useState("0500");
   const [selectedDistrict, setSelectedDistrict] = useState("");
   const searchTimer = useRef<number | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatText, setChatText] = useState("");
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    { role: "assistant", content: "直接告诉我城市、日期和活动要求。我会更新表单，查询真实逐小时数据，并同步刷新地图、图表与结论。" },
+  ]);
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
   const isTourism = input.activityType === "旅游规划";
 
@@ -404,7 +419,7 @@ export function DecisionDashboard() {
     }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 300000 });
   };
 
-  async function analyze() {
+  async function analyze(activity: ActivityInput = input, targetMeta: CityOption = meta) {
     setIsAnalyzing(true);
     setError(null);
     setResult(null);
@@ -413,14 +428,14 @@ export function DecisionDashboard() {
     const startedAt = Date.now();
     try {
       const response = await fetch(`${apiBase}/api/v2/agent/stream`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(activity),
       });
       if (!response.ok) throw new Error(await apiError(response));
       const decision = await readAgentStream(response, (item) => setLiveTrace((current) => [...current, item]));
       setResult(decision);
       setLiveTrace([]);
       setRoute(null);
-      await loadCity(meta);
+      await loadCity(targetMeta);
       setActivePanel("plan");
     } catch (caught) {
       setResult(null);
@@ -431,26 +446,36 @@ export function DecisionDashboard() {
     }
   }
 
-  async function planTourism() {
+  async function planTourism(activity: ActivityInput = input, targetMeta: CityOption = meta) {
     setIsPlanning(true);
     setError(null);
     try {
-      const params = new URLSearchParams({
-        cityId: meta.id, date: input.date || dateString(),
-        name: meta.name, province: meta.province, adcode: meta.adcode,
-        longitude: String(meta.center[0]), latitude: String(meta.center[1]),
-      });
-      const response = await fetch(`${apiBase}/api/v1/cities/hourly?${params.toString()}`, { cache: "no-store" });
-      if (!response.ok) throw new Error(await apiError(response));
-      const hourly = await response.json() as { hours: Array<{ hour: number; temperature: number; humidity: number; rainProbability: number; aqi: number; heatRisk: number }> };
+      const start = new Date(`${activity.date || dateString()}T00:00:00+08:00`);
+      const end = new Date(`${activity.endDate || activity.date || dateString()}T00:00:00+08:00`);
+      const dates: string[] = [];
+      for (let cursor = start; cursor <= end && dates.length < 5; cursor = new Date(cursor.getTime() + 86400000)) {
+        dates.push(cursor.toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" }));
+      }
+      const hourlyDays = await Promise.all(dates.map(async (date) => {
+        const params = new URLSearchParams({
+          cityId: targetMeta.id, date,
+          name: targetMeta.name, province: targetMeta.province, adcode: targetMeta.adcode,
+          longitude: String(targetMeta.center[0]), latitude: String(targetMeta.center[1]),
+        });
+        const response = await fetch(`${apiBase}/api/v1/cities/hourly?${params.toString()}`, { cache: "no-store" });
+        if (!response.ok) throw new Error(await apiError(response));
+        const payload = await response.json() as { hours: Array<{ hour: number; temperature: number; humidity: number; rainProbability: number; aqi: number; heatRisk: number }> };
+        return payload.hours.map((hour) => ({ ...hour, date }));
+      }));
       const modelConfig = readModelConfig();
       const data = await fetchTourismRoute(apiBase, {
-        cityName: meta.name,
-        province: meta.province,
-        longitude: meta.center[0],
-        latitude: meta.center[1],
-        date: input.date || dateString(),
-        hours: hourly.hours,
+        cityName: targetMeta.name,
+        province: targetMeta.province,
+        longitude: targetMeta.center[0],
+        latitude: targetMeta.center[1],
+        date: activity.date || dateString(),
+        endDate: activity.endDate || activity.date || dateString(),
+        hours: hourlyDays.flat(),
         config: { baseUrl: modelConfig.baseUrl, apiKey: modelConfig.apiKey, model: modelConfig.model },
       });
       setRoute(data);
@@ -461,6 +486,67 @@ export function DecisionDashboard() {
       setError(caught instanceof Error ? caught.message : "旅游路线服务暂时不可用");
     } finally {
       setIsPlanning(false);
+    }
+  }
+
+  async function submitConversation() {
+    const message = chatText.trim();
+    if (!message || chatBusy) return;
+    const userMessage: ChatMessage = { role: "user", content: message };
+    const history = [...chatMessages, userMessage];
+    setChatMessages(history);
+    setChatText("");
+    setChatBusy(true);
+    setError(null);
+    try {
+      const modelConfig = readModelConfig();
+      const response = await fetch("/conversation-planner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message, today: dateString(), context: input, history: history.slice(-6),
+          config: { baseUrl: modelConfig.baseUrl, apiKey: modelConfig.apiKey, model: modelConfig.model },
+        }),
+      });
+      if (!response.ok) throw new Error(await apiError(response));
+      const plan = await response.json() as ConversationResponse;
+      let targetMeta = meta;
+      let nextInput: ActivityInput = { ...input, ...plan.patch };
+      if (plan.patch.cityName && plan.patch.cityName !== meta.name) {
+        const matches = await searchChinaDistricts(plan.patch.cityName);
+        const match = matches[0];
+        if (!match) throw new Error(`没有找到“${plan.patch.cityName}”，请换用完整的市或区县名称`);
+        targetMeta = {
+          id: match.id, name: match.district && match.district !== match.name ? `${match.name}·${match.district}` : match.name,
+          province: match.province, adcode: match.adcode, center: [match.longitude, match.latitude],
+        };
+        saveSelectedCity(targetMeta);
+        nextInput = {
+          ...nextInput, cityId: targetMeta.id, cityName: targetMeta.name, province: targetMeta.province,
+          adcode: targetMeta.adcode, longitude: targetMeta.center[0], latitude: targetMeta.center[1],
+          locationName: `${targetMeta.name}活动地点`,
+        };
+        setSelectedDistrict(match.district && match.district !== match.name ? match.district : "");
+        setCity(null);
+        setIsLoadingCity(true);
+      }
+      if (nextInput.date && (!nextInput.endDate || nextInput.endDate < nextInput.date)) nextInput.endDate = nextInput.date;
+      setInput(nextInput);
+      setParticipantsText(String(Math.max(1, nextInput.participants)).padStart(4, "0"));
+      setResult(null);
+      setRoute(null);
+      setChatMessages((current) => [...current, { role: "assistant", content: `${plan.reply}${plan.provider ? `（${plan.provider}）` : ""}` }]);
+      if (plan.command === "clarify") return;
+      await loadCity(targetMeta);
+      if (nextInput.activityType === "旅游规划") await planTourism(nextInput, targetMeta);
+      else await analyze(nextInput, targetMeta);
+      setChatMessages((current) => [...current, { role: "assistant", content: "分析已完成：表单、中心地图、逐小时图表和右侧结论均已按本轮要求更新。你可以继续说“改成一小时”或“为什么推荐这个时段”。" }]);
+    } catch (caught) {
+      const detail = caught instanceof Error ? caught.message : "对话分析暂时不可用";
+      setError(detail);
+      setChatMessages((current) => [...current, { role: "assistant", content: detail }]);
+    } finally {
+      setChatBusy(false);
     }
   }
 
@@ -583,7 +669,7 @@ export function DecisionDashboard() {
           )}
           </section>
           {error && <div className="error-notice" role="alert"><WarningCircle size={17} /><span>{error}</span></div>}
-          <button className="analyze-button" type="button" onClick={isTourism ? planTourism : analyze} disabled={isAnalyzing || isPlanning || isLoadingCity || !city || !input.date}>
+          <button className="analyze-button" type="button" onClick={() => void (isTourism ? planTourism() : analyze())} disabled={isAnalyzing || isPlanning || isLoadingCity || !city || !input.date}>
             {isAnalyzing || isPlanning ? <span className="button-loader" /> : <Sparkle size={19} weight="fill" />}
             {isAnalyzing ? "Agent 正在分析" : isPlanning ? "AI 正在编排路线" : isTourism ? "生成旅游路线" : "生成活动决策"}
           </button>
@@ -617,6 +703,13 @@ export function DecisionDashboard() {
 
         <DecisionResultPanel isTourism={isTourism} route={route} result={result} liveTrace={liveTrace} activePanel={activePanel} onPanel={setActivePanel} isPlanning={isPlanning} isAnalyzing={isAnalyzing} />
       </section>
+      <button type="button" className={`conversation-launcher ${chatOpen ? "is-open" : ""}`} onClick={() => setChatOpen((value) => !value)} aria-label={chatOpen ? "关闭对话分析" : "打开对话分析"}><ChatCircleDots size={22} weight="duotone" /><span>对话分析</span></button>
+      {chatOpen && <section className="conversation-panel" aria-label="对话驱动数据分析">
+        <header><div><span className="conversation-icon"><ChatCircleDots size={19} weight="duotone" /></span><div><strong>适候分析助手</strong><small>对话会直接更新真实数据与图表</small></div></div><button type="button" onClick={() => setChatOpen(false)} aria-label="关闭"><X size={17} /></button></header>
+        <div className="conversation-messages" aria-live="polite">{chatMessages.map((message, index) => <div className={`conversation-message is-${message.role}`} key={`${message.role}-${index}`}>{message.content}</div>)}{chatBusy && <div className="conversation-message is-assistant is-thinking"><span className="button-loader dark" />正在理解条件并调用分析工具…</div>}</div>
+        {chatMessages.length === 1 && <div className="conversation-suggestions"><button type="button" onClick={() => setChatText("分析西安明天下午哪个时段适合举办两小时运动会")}>分析西安明天下午两小时运动会</button><button type="button" onClick={() => setChatText("规划杭州未来三天的旅游路线")}>规划杭州未来三天旅游路线</button></div>}
+        <form onSubmit={(event) => { event.preventDefault(); void submitConversation(); }}><textarea value={chatText} onChange={(event) => setChatText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitConversation(); } }} placeholder="例如：那改成一小时呢？" rows={2} /><button type="submit" disabled={!chatText.trim() || chatBusy} aria-label="发送分析要求"><PaperPlaneTilt size={18} weight="fill" /></button></form>
+      </section>}
     </main>
   );
 }

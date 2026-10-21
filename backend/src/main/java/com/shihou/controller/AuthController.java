@@ -50,7 +50,7 @@ public class AuthController {
     public UserView login(@Valid @RequestBody LoginRequest body, HttpServletRequest request, HttpServletResponse response) {
         Authentication authentication = authenticationManager.authenticate(
                 UsernamePasswordAuthenticationToken.unauthenticated(body.username(), body.password()));
-        boolean admin = authentication.getAuthorities().stream().anyMatch(role -> role.getAuthority().equals("ROLE_ADMIN"));
+        boolean admin = authentication.getAuthorities().stream().anyMatch(role -> role.getAuthority().equals("ROLE_ADMIN") || role.getAuthority().equals("ROLE_SUPER_ADMIN"));
         if (("ADMIN".equals(body.portal()) && !admin) || ("USER".equals(body.portal()) && admin))
             throw new org.springframework.security.authentication.BadCredentialsException("登录入口与账户类型不匹配");
         establish(authentication, request, response);

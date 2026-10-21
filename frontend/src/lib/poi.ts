@@ -8,6 +8,8 @@ export interface PoiSpot {
   sourceTitle?: string;
   sourceUrl?: string;
   searchKeyword?: string;
+  address?: string;
+  imageUrl?: string;
 }
 
 /**

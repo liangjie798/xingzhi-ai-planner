@@ -19,6 +19,9 @@ public class AdminBootstrap implements ApplicationRunner {
     @Value("${app.admin.username:}") private String username;
     @Value("${app.admin.password:}") private String password;
     @Value("${app.admin.display-name:平台管理员}") private String displayName;
+    @Value("${app.super-admin.username:}") private String superUsername;
+    @Value("${app.super-admin.password:}") private String superPassword;
+    @Value("${app.super-admin.display-name:超级管理员}") private String superDisplayName;
 
     public AdminBootstrap(UserRepository users, PasswordEncoder encoder) {
         this.users = users;
@@ -29,11 +32,18 @@ public class AdminBootstrap implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         if (username.isBlank() || password.isBlank()) {
             log.warn("管理员账户未初始化：请设置 ADMIN_USERNAME 与 ADMIN_PASSWORD");
-            return;
+        } else {
+            users.findByUsername(username).orElseGet(() -> {
+                log.info("初始化管理员账户 {}", username);
+                return users.save(new UserEntity(username, encoder.encode(password), displayName, "ADMIN"));
+            });
         }
-        users.findByUsername(username).orElseGet(() -> {
-            log.info("初始化管理员账户 {}", username);
-            return users.save(new UserEntity(username, encoder.encode(password), displayName, "ADMIN"));
-        });
+        if (!superUsername.isBlank() && !superPassword.isBlank()) {
+            UserEntity superAdmin = users.findByUsername(superUsername)
+                    .orElseGet(() -> new UserEntity(superUsername, encoder.encode(superPassword), superDisplayName, "SUPER_ADMIN"));
+            superAdmin.updateAdministrativeAccess(encoder.encode(superPassword), superDisplayName, "SUPER_ADMIN");
+            users.save(superAdmin);
+            log.info("超级管理员账户 {} 已就绪", superUsername);
+        }
     }
 }

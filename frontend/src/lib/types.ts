@@ -145,6 +145,8 @@ export interface TourismStop {
   tip: string;
   tag: string;
   category: "景点" | "美食";
+  day: number;
+  date: string;
   address?: string;
   imageUrl?: string;
   articleTitle?: string;
@@ -159,6 +161,8 @@ export interface TourismStop {
 export interface TourismRoute {
   cityName: string;
   date: string;
+  endDate: string;
+  dayCount: number;
   summary: string;
   bestHours: string;
   stops: TourismStop[];
