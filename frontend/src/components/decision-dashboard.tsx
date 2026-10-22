@@ -5,7 +5,7 @@ import {
   ChatCircleDots,
   Crosshair, Drop, Gauge, GearSix, Lightning, MagnifyingGlass, MapPin, MapTrifold, Path,
   Backpack, Barbell, Buildings, ChalkboardTeacher, NavigationArrow, ShieldCheck, Sparkle,
-  PaperPlaneTilt, SuitcaseRolling, ThermometerSimple, Trophy, UsersThree, WarningCircle, Wind, X,
+  PaperPlaneTilt, SuitcaseRolling, ThermometerSimple, Trophy, UsersThree, WarningCircle, Wind,
 } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -346,10 +346,6 @@ export function DecisionDashboard() {
       setIsResolvingLocation(false);
     }
   };
-  const showPanel = (panel: "plan" | "evidence" | "trace") => {
-    setActivePanel(panel);
-    if (window.innerWidth <= 820) document.querySelector(".decision-panel")?.scrollIntoView({ behavior: "smooth" });
-  };
   const changeCity = (cityId: string) => {
     const nextCity = cityById(cityId);
     const option: CityOption = { id: nextCity.id, name: nextCity.name, province: nextCity.province, adcode: nextCity.adcode, center: nextCity.center };
@@ -564,11 +560,7 @@ export function DecisionDashboard() {
           <div className="brand-mark" aria-hidden="true"><Compass size={23} weight="duotone" /></div>
           <div><p className="brand-name">适候</p><p className="brand-subtitle">户外活动环境决策系统</p></div>
         </div>
-        <nav className="primary-nav" aria-label="主导航">
-          <button type="button" className={`nav-item ${activePanel === "plan" ? "is-active" : ""}`} onClick={() => showPanel("plan")}>决策工作台</button>
-          <button type="button" className={`nav-item ${activePanel === "evidence" ? "is-active" : ""}`} onClick={() => showPanel("evidence")}>数据与依据</button>
-          <button type="button" className={`nav-item ${activePanel === "trace" ? "is-active" : ""}`} onClick={() => showPanel("trace")}>Agent轨迹</button>
-        </nav>
+        <div className="topbar-context"><ChatCircleDots size={16} weight="duotone" /><span>用一句话完成查询、分析与可视化</span></div>
         <div className="topbar-actions">
           <span className={`system-status ${error ? "has-error" : ""}`}><i /> {error ? "数据连接异常" : isLoadingCity ? "正在同步实时数据" : `实时数据 · ${updatedAt}`}</span>
           <Link className="icon-button" href="/hourly" title="逐小时数据" aria-label="逐小时数据页面"><Clock size={18} /></Link>
@@ -581,7 +573,7 @@ export function DecisionDashboard() {
       <section className="workspace">
         <aside className="control-rail">
           <div className="rail-heading">
-            <div><span className="section-kicker">活动条件</span><h1>规划一次更合适的户外活动</h1></div>
+            <div><span className="section-kicker">辅助条件</span><h1>校准分析范围</h1></div>
             <button type="button" className="icon-button compact" onClick={() => { const sameCity = input.cityId === initialInput.cityId; const today = dateString(); setError(null); setResult(null); setRoute(null); setSelectedDistrict(""); setParticipantsText("0500"); setInput({ ...initialInput, date: today, endDate: today }); if (!sameCity) { setIsLoadingCity(true); setCity(null); } else { void loadCity(cityById(initialInput.cityId)); } }} aria-label="重置活动条件"><ArrowClockwise size={17} /></button>
           </div>
 
@@ -634,7 +626,6 @@ export function DecisionDashboard() {
             <button type="button" className="icon-button location-resolve" onClick={() => void resolveActivityLocation()} disabled={isResolvingLocation} title="定位活动地点并读取该坐标数据" aria-label="定位活动地点">{isResolvingLocation ? <span className="button-loader dark" /> : <NavigationArrow size={17} weight="fill" />}</button>
           </div>
           <p className="field-help">输入学校、道路或场馆后定位；也可直接点击地图选点。</p>
-          <VenuePhotoAnalysis activityType={input.activityType} locationName={input.locationName} onAnalysis={(siteObservation) => setInput((current) => ({ ...current, siteObservation }))} />
           </section>
 
           <section className="control-section" aria-labelledby="time-section-title">
@@ -654,7 +645,9 @@ export function DecisionDashboard() {
           <p className="activity-profile"><strong>{activityProfiles[input.activityType].focus}</strong><span>{activityProfiles[input.activityType].detail}</span></p>
           </section>
 
-          <section className="control-section" aria-labelledby="people-section-title">
+          <details className="advanced-settings">
+          <summary><span><UsersThree size={15} />更多设置</span><CaretDown size={14} /></summary>
+          <div className="advanced-settings-body">
           <div className="control-section-title" id="people-section-title"><UsersThree size={15} /><span>规模与参与者</span></div>
           <div className="field-grid">
             <div><FieldLabel htmlFor="participants">参与人数</FieldLabel><div className="input-wrap"><UsersThree size={17} /><input id="participants" type="text" inputMode="numeric" value={participantsText} onChange={(event) => { const digits = event.target.value.replace(/\D/g, "").slice(0, 5); setParticipantsText(digits); if (digits) updateInput("participants", Math.max(1, Number(digits))); }} onBlur={() => setParticipantsText(String(Math.max(1, input.participants)).padStart(4, "0"))} /></div></div>
@@ -667,7 +660,9 @@ export function DecisionDashboard() {
           {isTourism && (
             <p className="tourism-hint"><Binoculars size={16} /> 旅游模式：结合逐小时天气、公开文旅资料与平台检索入口，编排景点＋美食路线并绘制在地图上。</p>
           )}
-          </section>
+          <VenuePhotoAnalysis activityType={input.activityType} locationName={input.locationName} onAnalysis={(siteObservation) => setInput((current) => ({ ...current, siteObservation }))} />
+          </div>
+          </details>
           {error && <div className="error-notice" role="alert"><WarningCircle size={17} /><span>{error}</span></div>}
           <button className="analyze-button" type="button" onClick={() => void (isTourism ? planTourism() : analyze())} disabled={isAnalyzing || isPlanning || isLoadingCity || !city || !input.date}>
             {isAnalyzing || isPlanning ? <span className="button-loader" /> : <Sparkle size={19} weight="fill" />}
@@ -677,6 +672,19 @@ export function DecisionDashboard() {
         </aside>
 
         <section className="map-workbench">
+          <section className={`analysis-console ${chatOpen ? "is-expanded" : ""}`} aria-label="对话驱动数据分析">
+            <div className="analysis-console-head">
+              <div><span className="conversation-icon"><ChatCircleDots size={19} weight="duotone" /></span><div><strong>对话分析</strong><small>描述城市、日期与活动，系统会直接更新数据、地图和结论</small></div></div>
+              <button type="button" className="conversation-history-toggle" onClick={() => setChatOpen((value) => !value)}>{chatOpen ? "收起记录" : `对话记录${chatMessages.length > 1 ? ` · ${chatMessages.length - 1}` : ""}`}</button>
+            </div>
+            {chatOpen && <div className="conversation-messages" aria-live="polite">{chatMessages.map((message, index) => <div className={`conversation-message is-${message.role}`} key={`${message.role}-${index}`}>{message.content}</div>)}{chatBusy && <div className="conversation-message is-assistant is-thinking"><span className="button-loader dark" />正在理解条件并调用分析工具…</div>}</div>}
+            {!chatOpen && chatMessages.length > 1 && <p className="conversation-latest">{chatMessages.at(-1)?.content}</p>}
+            <form className="analysis-console-form" onSubmit={(event) => { event.preventDefault(); void submitConversation(); }}>
+              <textarea value={chatText} onChange={(event) => setChatText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitConversation(); } }} placeholder="例如：分析西安明天下午哪个时段适合举办两小时运动会" rows={1} />
+              <button type="submit" disabled={!chatText.trim() || chatBusy} aria-label="发送分析要求">{chatBusy ? <span className="button-loader" /> : <PaperPlaneTilt size={18} weight="fill" />}<span>开始分析</span></button>
+            </form>
+            {chatMessages.length === 1 && <div className="conversation-suggestions"><button type="button" onClick={() => setChatText("分析西安明天下午哪个时段适合举办两小时运动会")}>西安明天下午运动会</button><button type="button" onClick={() => setChatText("规划杭州未来三天的旅游路线")}>杭州三日旅游路线</button></div>}
+          </section>
           <div className="city-summary">
             <div><span className="section-kicker">{meta.province} · {meta.adcode} · {city ? `实况更新 ${updatedAt}` : "正在连接数据源"}</span><h2>{meta.name}{selectedDistrict ? ` · ${selectedDistrict}` : ""}当前环境空间图</h2></div>
             <div className="city-metrics" aria-label="城市环境概览">
@@ -703,13 +711,6 @@ export function DecisionDashboard() {
 
         <DecisionResultPanel isTourism={isTourism} route={route} result={result} liveTrace={liveTrace} activePanel={activePanel} onPanel={setActivePanel} isPlanning={isPlanning} isAnalyzing={isAnalyzing} />
       </section>
-      <button type="button" className={`conversation-launcher ${chatOpen ? "is-open" : ""}`} onClick={() => setChatOpen((value) => !value)} aria-label={chatOpen ? "关闭对话分析" : "打开对话分析"}><ChatCircleDots size={22} weight="duotone" /><span>对话分析</span></button>
-      {chatOpen && <section className="conversation-panel" aria-label="对话驱动数据分析">
-        <header><div><span className="conversation-icon"><ChatCircleDots size={19} weight="duotone" /></span><div><strong>适候分析助手</strong><small>对话会直接更新真实数据与图表</small></div></div><button type="button" onClick={() => setChatOpen(false)} aria-label="关闭"><X size={17} /></button></header>
-        <div className="conversation-messages" aria-live="polite">{chatMessages.map((message, index) => <div className={`conversation-message is-${message.role}`} key={`${message.role}-${index}`}>{message.content}</div>)}{chatBusy && <div className="conversation-message is-assistant is-thinking"><span className="button-loader dark" />正在理解条件并调用分析工具…</div>}</div>
-        {chatMessages.length === 1 && <div className="conversation-suggestions"><button type="button" onClick={() => setChatText("分析西安明天下午哪个时段适合举办两小时运动会")}>分析西安明天下午两小时运动会</button><button type="button" onClick={() => setChatText("规划杭州未来三天的旅游路线")}>规划杭州未来三天旅游路线</button></div>}
-        <form onSubmit={(event) => { event.preventDefault(); void submitConversation(); }}><textarea value={chatText} onChange={(event) => setChatText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitConversation(); } }} placeholder="例如：那改成一小时呢？" rows={2} /><button type="submit" disabled={!chatText.trim() || chatBusy} aria-label="发送分析要求"><PaperPlaneTilt size={18} weight="fill" /></button></form>
-      </section>}
     </main>
   );
 }
