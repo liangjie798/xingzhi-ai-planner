@@ -60,8 +60,11 @@ function fallbackPlan(body: ConversationRequest): ConversationPlan {
   if (/上午|早上/.test(text)) patch.startHour = 9;
   if (/晚上|夜间/.test(text)) patch.startHour = 19;
   patch.activityType = activityTypes.find((type) => text.includes(type)) || (/运动会/.test(text) ? "校园运动会" : undefined);
-  const city = text.match(/(?:分析|查询|看看|规划)?([\u4e00-\u9fa5]{2,8})(?:市|区|县)(?=明天|今天|后天|的|天气|下午|上午|旅游|适合)/);
-  if (city) patch.cityName = `${city[1]}市`;
+  const cityPattern = /([\u4e00-\u9fa5]{2,8}?)(市|区|县)?(?=明天|今天|后天|的天气|天气|下午|上午|早上|晚上|夜间|旅游|举办|开展|举行)/;
+  const city = text.match(new RegExp(`(?:分析|查询|看看|规划|去|到|在)\\s*${cityPattern.source}`))
+    ?? text.match(new RegExp(`^${cityPattern.source}`))
+    ?? text.match(new RegExp(`[，。,.\\s]${cityPattern.source}`));
+  if (city && !/^(今天|明天|后天)$/.test(city[1])) patch.cityName = `${city[1]}${city[2] || "市"}`;
   return { command: "analyze", patch, reply: "我已根据上下文更新条件，正在查询真实逐小时数据并重新生成图表与结论。" };
 }
 
