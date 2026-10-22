@@ -17,7 +17,7 @@ export interface DecisionHistoryItem {
 
 interface CsrfResponse { headerName: string; token: string }
 
-async function csrf(): Promise<CsrfResponse> {
+export async function csrf(): Promise<CsrfResponse> {
   const response = await fetch("/api/v1/auth/csrf", { credentials: "same-origin", cache: "no-store" });
   if (!response.ok) throw new Error("无法建立安全会话");
   return response.json() as Promise<CsrfResponse>;

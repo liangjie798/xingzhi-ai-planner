@@ -27,6 +27,8 @@ server:
         secure: ${SESSION_COOKIE_SECURE:false}
 
 app:
+  model-config:
+    secret: ${MODEL_CONFIG_SECRET:local-development-model-config-secret}
   admin:
     username: ${ADMIN_USERNAME:}
     password: ${ADMIN_PASSWORD:}

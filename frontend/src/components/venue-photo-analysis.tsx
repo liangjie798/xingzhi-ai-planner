@@ -3,7 +3,6 @@
 import { Camera, CheckCircle, ImageSquare, WarningCircle, X } from "@phosphor-icons/react";
 import Image from "next/image";
 import { ChangeEvent, useState } from "react";
-import { readModelConfig } from "@/lib/model-config";
 import type { ActivityType } from "@/lib/types";
 
 interface ImageSignals { width: number; height: number; brightness: number; contrast: number; darkShare: number; brightShare: number; greenShare: number }
@@ -47,7 +46,7 @@ export function VenuePhotoAnalysis({ activityType, locationName, onAnalysis }: {
     setBusy(true); setError(""); setAnalysis(null); onAnalysis(undefined);
     try {
       const { imageDataUrl, signals } = await compress(file); setPreview(imageDataUrl);
-      const response = await fetch("/site-analysis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ imageDataUrl, signals, activityType, locationName, config: readModelConfig() }) });
+      const response = await fetch("/site-analysis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ imageDataUrl, signals, activityType, locationName }) });
       const body = await response.json() as Analysis & { detail?: string }; if (!response.ok) throw new Error(body.detail || "图片分析失败");
       setAnalysis(body); onAnalysis([body.summary, body.shade, body.drainage, body.surface, body.evacuation, body.crowd].filter(Boolean).join("；"));
     } catch (caught) { setError(caught instanceof Error ? caught.message : "图片分析失败"); }

@@ -23,10 +23,6 @@ export function searchChinaDistricts(query: string) {
   return gateway<CitySearchResult[]>(new URLSearchParams({ action: "search", q: query }));
 }
 
-export function geocodeActivityAddress(address: string, city: string) {
-  return gateway<ResolvedAddress>(new URLSearchParams({ action: "geocode", address, city }));
-}
-
 export function reverseGeocode(longitude: number, latitude: number) {
   return gateway<ResolvedAddress>(new URLSearchParams({
     action: "reverse",

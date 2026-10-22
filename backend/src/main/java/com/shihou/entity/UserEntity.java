@@ -4,6 +4,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Column;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
@@ -21,6 +22,13 @@ public class UserEntity {
     private String role;
     private boolean enabled;
     private Instant createdAt;
+    private String modelProviderId;
+    private String modelProviderLabel;
+    @Column(length = 500)
+    private String modelBaseUrl;
+    private String modelName;
+    @Column(length = 2000)
+    private String modelApiKeyCiphertext;
 
     protected UserEntity() { }
 
@@ -40,6 +48,19 @@ public class UserEntity {
     public String getRole() { return role; }
     public boolean isEnabled() { return enabled; }
     public Instant getCreatedAt() { return createdAt; }
+    public String getModelProviderId() { return modelProviderId; }
+    public String getModelProviderLabel() { return modelProviderLabel; }
+    public String getModelBaseUrl() { return modelBaseUrl; }
+    public String getModelName() { return modelName; }
+    public String getModelApiKeyCiphertext() { return modelApiKeyCiphertext; }
+
+    public void updateModelConfig(String providerId, String providerLabel, String baseUrl, String modelName, String apiKeyCiphertext) {
+        this.modelProviderId = providerId;
+        this.modelProviderLabel = providerLabel;
+        this.modelBaseUrl = baseUrl;
+        this.modelName = modelName;
+        if (apiKeyCiphertext != null) this.modelApiKeyCiphertext = apiKeyCiphertext;
+    }
 
     public void updateAdministrativeAccess(String nextPasswordHash, String nextDisplayName, String nextRole) {
         this.passwordHash = nextPasswordHash;

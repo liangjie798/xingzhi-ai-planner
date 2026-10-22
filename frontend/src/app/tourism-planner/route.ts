@@ -3,6 +3,7 @@ import { callLlm, extractJson } from "@/lib/llm-server";
 import { poisForCity, type PoiSpot } from "@/lib/poi";
 import type { TourismHourSnapshot, TourismRequestPayload } from "@/lib/tourism";
 import type { EvidenceItem, ToolTraceItem, TourismRoute, TourismStop } from "@/lib/types";
+import { resolveAccountModelConfig } from "@/lib/account-model-config-server";
 
 export const maxDuration = 60;
 type TourismRequestBody = TourismRequestPayload;
@@ -201,7 +202,8 @@ export async function POST(request: Request) {
 
   try {
     const modelStarted = Date.now();
-    const result = await callLlm({ system, prompt, config: body.config });
+    const config = await resolveAccountModelConfig(request);
+    const result = await callLlm({ system, prompt, config });
     const modelMs = Date.now() - modelStarted;
     const plan = extractJson<LlmRoutePlan>(result.text);
     const chosen: Array<{ poi: PoiSpot; day: number; time: string; tip?: string }> = [];

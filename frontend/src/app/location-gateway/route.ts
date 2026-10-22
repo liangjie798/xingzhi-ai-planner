@@ -26,26 +26,6 @@ export async function GET(request: NextRequest) {
     if (action === "search") {
       const query = request.nextUrl.searchParams.get("q")?.trim();
       if (!query || query.length < 2) return NextResponse.json([]);
-      const geocodeBody = await getAmap("/geocode/geo", new URLSearchParams({ address: query, city: "全国" })) as {
-        geocodes?: Array<Record<string, string | string[]>>;
-      };
-      const geocoded = (geocodeBody.geocodes ?? []).flatMap((item) => {
-        const center = typeof item.location === "string" ? item.location.split(",").map(Number) : [];
-        if (center.length !== 2 || !item.adcode) return [];
-        const scalar = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] || "" : value || "";
-        const city = scalar(item.city);
-        const district = scalar(item.district);
-        return [{
-          id: `amap-${scalar(item.adcode)}`,
-          name: district || city || scalar(item.province) || query,
-          province: scalar(item.province) || "中国大陆",
-          district,
-          adcode: scalar(item.adcode),
-          longitude: center[0],
-          latitude: center[1],
-        }];
-      });
-      if (geocoded.length) return NextResponse.json(geocoded.slice(0, 8));
       const body = await getAmap("/config/district", new URLSearchParams({
         keywords: query,
         subdistrict: "0",
@@ -65,28 +45,6 @@ export async function GET(request: NextRequest) {
         }];
       });
       return NextResponse.json(results);
-    }
-
-    if (action === "geocode") {
-      const address = request.nextUrl.searchParams.get("address")?.trim();
-      const city = request.nextUrl.searchParams.get("city")?.trim() || "全国";
-      if (!address) return NextResponse.json({ detail: "缺少地址" }, { status: 400 });
-      const body = await getAmap("/geocode/geo", new URLSearchParams({ address, city })) as {
-        geocodes?: Array<Record<string, string | string[]>>;
-      };
-      const item = body.geocodes?.[0];
-      const location = typeof item?.location === "string" ? item.location.split(",").map(Number) : [];
-      if (!item || location.length !== 2) return NextResponse.json({ detail: "未找到该活动地点" }, { status: 404 });
-      const scalar = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] || "" : value || "";
-      return NextResponse.json({
-        name: scalar(item.formatted_address) || address,
-        longitude: location[0],
-        latitude: location[1],
-        province: scalar(item.province) || "中国",
-        city: scalar(item.city) || city,
-        district: scalar(item.district),
-        adcode: scalar(item.adcode),
-      });
     }
 
     if (action === "reverse") {

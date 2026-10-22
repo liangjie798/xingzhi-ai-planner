@@ -75,3 +75,31 @@ export function readModelConfig(): ModelConfig {
 export function saveModelConfig(config: ModelConfig) {
   window.localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(config));
 }
+
+interface AccountModelConfig extends Partial<ModelConfig> { configured?: boolean; hasApiKey?: boolean }
+
+export async function readAccountModelConfig(): Promise<{ config: ModelConfig; bound: boolean; hasApiKey: boolean }> {
+  const response = await fetch("/api/v1/account/model-config", { credentials: "same-origin", cache: "no-store" });
+  if (response.status === 401 || response.status === 403) throw new Error("请先登录用户账户，再绑定模型配置");
+  if (!response.ok) throw new Error("账户模型配置读取失败");
+  const stored = await response.json() as AccountModelConfig;
+  if (!stored.configured || !stored.baseUrl || !stored.model) return { config: { ...DEFAULT_MODEL_CONFIG }, bound: false, hasApiKey: false };
+  return { config: {
+    providerId: stored.providerId || "custom", providerLabel: stored.providerLabel || "自定义",
+    baseUrl: stored.baseUrl, apiKey: "", model: stored.model,
+  }, bound: true, hasApiKey: Boolean(stored.hasApiKey) };
+}
+
+export async function saveAccountModelConfig(config: ModelConfig): Promise<void> {
+  const { csrf } = await import("./auth");
+  const token = await csrf();
+  const response = await fetch("/api/v1/account/model-config", {
+    method: "PUT", credentials: "same-origin",
+    headers: { "Content-Type": "application/json", [token.headerName]: token.token },
+    body: JSON.stringify(config),
+  });
+  if (response.status === 401 || response.status === 403) throw new Error("请先登录用户账户，再绑定模型配置");
+  const body = await response.json().catch(() => null) as { detail?: string } | null;
+  if (!response.ok) throw new Error(body?.detail || "模型配置保存失败");
+  window.localStorage.removeItem(MODEL_STORAGE_KEY);
+}

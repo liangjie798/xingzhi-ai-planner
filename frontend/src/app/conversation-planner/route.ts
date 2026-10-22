@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { callLlm, extractJson } from "@/lib/llm-server";
 import type { ActivityInput, ActivityType, GroupType, Intensity } from "@/lib/types";
+import { resolveAccountModelConfig } from "@/lib/account-model-config-server";
 
 export const maxDuration = 45;
 
@@ -9,7 +10,6 @@ interface ConversationRequest {
   today: string;
   context: ActivityInput;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
-  config?: { baseUrl: string; apiKey: string; model: string };
 }
 
 interface ConversationPatch {
@@ -82,7 +82,8 @@ export async function POST(request: Request) {
     "若请求足以执行或只是修改前文某一个条件，command 必须为 analyze；只有完全无法判断用户要分析什么时才 clarify。",
   ].join("\n");
   try {
-    const result = await callLlm({ system: "你是适候平台的对话式数据分析调度器，只负责理解条件和调用现有分析流程，不直接编造天气或结论。", prompt, config: body.config });
+    const config = await resolveAccountModelConfig(request);
+    const result = await callLlm({ system: "你是适候平台的对话式数据分析调度器，只负责理解条件和调用现有分析流程，不直接编造天气或结论。", prompt, config });
     return NextResponse.json({ ...safePlan(extractJson<ConversationPlan>(result.text)), provider: `${result.provider} · ${result.model}` });
   } catch {
     return NextResponse.json({ ...safePlan(fallbackPlan(body)), provider: "本地语义兜底" });

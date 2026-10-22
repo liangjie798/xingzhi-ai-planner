@@ -3,8 +3,8 @@
 import {
   ArrowClockwise, Binoculars, CalendarBlank, CaretDown, Clock, CloudSun, Compass,
   ChatCircleDots,
-  Crosshair, Drop, Gauge, GearSix, Lightning, MagnifyingGlass, MapPin, MapTrifold, Path,
-  Backpack, Barbell, Buildings, ChalkboardTeacher, NavigationArrow, ShieldCheck, Sparkle,
+  Crosshair, Drop, Gauge, GearSix, Lightning, MagnifyingGlass, MapPin, MapTrifold,
+  Backpack, Barbell, Buildings, ChalkboardTeacher, ShieldCheck, Sparkle,
   PaperPlaneTilt, SuitcaseRolling, ThermometerSimple, Trophy, UsersThree, WarningCircle, Wind,
 } from "@phosphor-icons/react";
 import Link from "next/link";
@@ -14,10 +14,9 @@ import { AccountBadge } from "./account-badge";
 import { VenuePhotoAnalysis } from "./venue-photo-analysis";
 import { DecisionResultPanel } from "./decision-result-panel";
 import type { MapSelection } from "./environment-map";
-import { geocodeActivityAddress, reverseGeocode, searchChinaDistricts } from "@/lib/amap-lbs";
+import { reverseGeocode, searchChinaDistricts } from "@/lib/amap-lbs";
 import { cities, cityById, saveSelectedCity } from "@/lib/cities";
 import type { CityOption } from "@/lib/cities";
-import { readModelConfig } from "@/lib/model-config";
 import { fetchTourismRoute } from "@/lib/tourism";
 import type {
   ActivityInput, ActivityType, CityEnvironment, CitySearchResult, DecisionResult,
@@ -132,7 +131,6 @@ export function DecisionDashboard() {
   const [searchResults, setSearchResults] = useState<CitySearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
-  const [isResolvingLocation, setIsResolvingLocation] = useState(false);
   const [participantsText, setParticipantsText] = useState("0500");
   const [selectedDistrict, setSelectedDistrict] = useState("");
   const searchTimer = useRef<number | null>(null);
@@ -321,31 +319,6 @@ export function DecisionDashboard() {
   }, []);
   const onPointSelected = useCallback((location: MapSelection) => applyActivityLocation(location), [applyActivityLocation]);
 
-  const resolveActivityLocation = async () => {
-    const query = input.locationName.trim();
-    if (!query) {
-      setError("请输入活动地点");
-      return;
-    }
-    setIsResolvingLocation(true);
-    setError(null);
-    try {
-      const resolved = await geocodeActivityAddress(query, meta.name);
-      applyActivityLocation({
-        name: resolved.name,
-        longitude: resolved.longitude,
-        latitude: resolved.latitude,
-        district: resolved.district,
-        adcode: resolved.adcode,
-        province: resolved.province,
-        city: resolved.city,
-      });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "活动地点定位失败");
-    } finally {
-      setIsResolvingLocation(false);
-    }
-  };
   const changeCity = (cityId: string) => {
     const nextCity = cityById(cityId);
     const option: CityOption = { id: nextCity.id, name: nextCity.name, province: nextCity.province, adcode: nextCity.adcode, center: nextCity.center };
@@ -463,7 +436,6 @@ export function DecisionDashboard() {
         const payload = await response.json() as { hours: Array<{ hour: number; temperature: number; humidity: number; rainProbability: number; aqi: number; heatRisk: number }> };
         return payload.hours.map((hour) => ({ ...hour, date }));
       }));
-      const modelConfig = readModelConfig();
       const data = await fetchTourismRoute(apiBase, {
         cityName: targetMeta.name,
         province: targetMeta.province,
@@ -472,7 +444,6 @@ export function DecisionDashboard() {
         date: activity.date || dateString(),
         endDate: activity.endDate || activity.date || dateString(),
         hours: hourlyDays.flat(),
-        config: { baseUrl: modelConfig.baseUrl, apiKey: modelConfig.apiKey, model: modelConfig.model },
       });
       setRoute(data);
       setResult(null);
@@ -495,13 +466,11 @@ export function DecisionDashboard() {
     setChatBusy(true);
     setError(null);
     try {
-      const modelConfig = readModelConfig();
       const response = await fetch("/conversation-planner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message, today: dateString(), context: input, history: history.slice(-6),
-          config: { baseUrl: modelConfig.baseUrl, apiKey: modelConfig.apiKey, model: modelConfig.model },
         }),
       });
       if (!response.ok) throw new Error(await apiError(response));
@@ -620,12 +589,6 @@ export function DecisionDashboard() {
           <button type="button" className="locate-button" onClick={locateCurrentCity} disabled={isLocating}><Crosshair size={16} />{isLocating ? "正在定位城市" : "自动定位当前城市"}</button>
           {city && <dl className="city-detail-grid" aria-label="所选城市详细环境信息"><div><dt>天气</dt><dd>{city.weather}</dd></div><div><dt>PM2.5</dt><dd>{city.pm25} μg/m³</dd></div><div><dt>风力</dt><dd>{city.windPower}级</dd></div><div><dt>降雨</dt><dd>{city.rainProbability}%</dd></div></dl>}
 
-          <FieldLabel htmlFor="location">活动地点</FieldLabel>
-          <div className="location-search-row">
-            <div className="input-wrap"><Path size={17} /><input id="location" value={input.locationName} onChange={(event) => updateInput("locationName", event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void resolveActivityLocation(); }} /></div>
-            <button type="button" className="icon-button location-resolve" onClick={() => void resolveActivityLocation()} disabled={isResolvingLocation} title="定位活动地点并读取该坐标数据" aria-label="定位活动地点">{isResolvingLocation ? <span className="button-loader dark" /> : <NavigationArrow size={17} weight="fill" />}</button>
-          </div>
-          <p className="field-help">输入学校、道路或场馆后定位；也可直接点击地图选点。</p>
           </section>
 
           <section className="control-section" aria-labelledby="time-section-title">
@@ -709,7 +672,7 @@ export function DecisionDashboard() {
           </div>
         </section>
 
-        <DecisionResultPanel isTourism={isTourism} route={route} result={result} liveTrace={liveTrace} activePanel={activePanel} onPanel={setActivePanel} isPlanning={isPlanning} isAnalyzing={isAnalyzing} />
+        <DecisionResultPanel input={input} isTourism={isTourism} route={route} result={result} liveTrace={liveTrace} activePanel={activePanel} onPanel={setActivePanel} isPlanning={isPlanning} isAnalyzing={isAnalyzing} />
       </section>
     </main>
   );

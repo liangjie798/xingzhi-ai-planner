@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { callLlm } from "@/lib/llm-server";
-import type { ClientModelConfig } from "@/lib/llm-server";
+import { resolveAccountModelConfig } from "@/lib/account-model-config-server";
 
 interface LlmRequestBody {
   system?: string;
   prompt?: string;
-  config?: ClientModelConfig;
   imageDataUrl?: string;
 }
 
@@ -28,7 +27,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ detail: "图片格式或大小不符合要求" }, { status: 413 });
 
   try {
-    const result = await callLlm({ system: body.system, prompt, imageDataUrl: body.imageDataUrl, config: body.config });
+    const config = await resolveAccountModelConfig(request);
+    const result = await callLlm({ system: body.system, prompt, imageDataUrl: body.imageDataUrl, config });
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
