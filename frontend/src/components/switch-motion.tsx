@@ -37,18 +37,13 @@ export function useSwitchEntrance(value: string) {
   return root;
 }
 
-/** Keep the same form mounted while interpolating the change in its natural height. */
+/** Animate content without changing the shared login card's vertical anchor. */
 export function LoginPanel({ value, children }: { value: string; children: ReactNode }) {
   const root = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
-  const previousHeight = useRef<number | null>(null);
   useGSAP(() => {
     if (!root.current || !content.current) return;
-    const height = content.current.offsetHeight;
-    const previous = previousHeight.current;
-    previousHeight.current = height;
-    if (previous === null || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    gsap.fromTo(root.current, { height: previous }, { height, duration: .32, ease: "power2.inOut", clearProps: "height" });
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     gsap.fromTo(content.current, { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: .28, delay: .04, clearProps: "opacity,transform" });
   }, { dependencies: [value], scope: root, revertOnUpdate: true });
   return <div ref={root} className="login-panel"><div ref={content} className="login-panel-content">{children}</div></div>;

@@ -60,6 +60,7 @@
 .report-tabs > .sliding-selection { background: #eef2e6; border-radius: 0; border-bottom: 3px solid #315d40; }
 .report-tabs button.is-active { background: transparent; border-bottom-color: transparent; }
 .login-panel { overflow: clip; }
+.auth-card { min-height: 600px; }
 .login-panel-content { display: flow-root; padding-bottom: 2px; }
 .login-panel-content > p { margin: 0 0 28px; color: var(--muted); font-size: 11px; }
 .welcome-greeting { margin: 0 0 14px; color: #315d40; font-size: 14px; line-height: 1.7; animation: welcome-arrive .4s ease both; }
