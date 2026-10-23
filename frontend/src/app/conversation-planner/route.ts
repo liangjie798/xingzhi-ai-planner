@@ -59,8 +59,17 @@ function fallbackPlan(body: ConversationRequest): ConversationPlan {
   if (/下午/.test(text)) patch.startHour = 14;
   if (/上午|早上/.test(text)) patch.startHour = 9;
   if (/晚上|夜间/.test(text)) patch.startHour = 19;
-  patch.activityType = activityTypes.find((type) => text.includes(type)) || (/运动会/.test(text) ? "校园运动会" : undefined);
-  const cityPattern = /([\u4e00-\u9fa5]{2,8}?)(市|区|县)?(?=明天|今天|后天|的天气|天气|下午|上午|早上|晚上|夜间|旅游|举办|开展|举行)/;
+  patch.activityType = activityTypes.find((type) => text.includes(type))
+    || (/运动会/.test(text) ? "校园运动会" : /旅游|行程|路线/.test(text) ? "旅游规划" : undefined);
+  const dayRange = text.match(/未来\s*([一二三四五六七\d]+)\s*天/);
+  if (dayRange) {
+    const days = Math.min(7, Math.max(1, Number(dayRange[1]) || values[dayRange[1]] || 1));
+    const first = new Date(`${body.today}T00:00:00+08:00`);
+    const last = new Date(first); last.setDate(last.getDate() + days - 1);
+    patch.date = first.toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
+    patch.endDate = last.toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
+  }
+  const cityPattern = /([\u4e00-\u9fa5]{2,8}?)(市|区|县)?(?=明天|今天|后天|未来|的天气|天气|下午|上午|早上|晚上|夜间|旅游|举办|开展|举行)/;
   const city = text.match(new RegExp(`(?:分析|查询|看看|规划|去|到|在)\\s*${cityPattern.source}`))
     ?? text.match(new RegExp(`^${cityPattern.source}`))
     ?? text.match(new RegExp(`[，。,.\\s]${cityPattern.source}`));

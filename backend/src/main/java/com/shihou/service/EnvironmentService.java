@@ -45,6 +45,8 @@ public class EnvironmentService {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final Map<String, CachedForecast> cache = new ConcurrentHashMap<>();
+    private final Map<String, CachedSources> sourceCache = new ConcurrentHashMap<>();
+    private final Map<String, Object> sourceLocks = new ConcurrentHashMap<>();
 
     public EnvironmentService(CityEnvironmentRepository repository, ObjectMapper objectMapper) {
         this.repository = repository;
@@ -156,18 +158,9 @@ public class EnvironmentService {
     }
 
     private ForecastBundle fetchForecast(CityDefinition city, LocalDate date) {
-        String coordinate = "latitude=" + city.latitude() + "&longitude=" + city.longitude();
-        String weatherUrl = "https://api.open-meteo.com/v1/forecast?" + coordinate
-                + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m"
-                + "&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m"
-                + "&timezone=Asia%2FShanghai&forecast_days=5";
-        String airUrl = "https://air-quality-api.open-meteo.com/v1/air-quality?" + coordinate
-                + "&current=pm2_5,us_aqi&hourly=pm2_5,us_aqi&timezone=Asia%2FShanghai&forecast_days=5";
-
-        CompletableFuture<JsonNode> weatherFuture = fetchJson(weatherUrl);
-        CompletableFuture<JsonNode> airFuture = fetchJson(airUrl);
-        JsonNode weather = weatherFuture.join();
-        JsonNode air = airFuture.join();
+        CachedSources sources = fetchSources(city);
+        JsonNode weather = sources.weather();
+        JsonNode air = sources.air();
 
         JsonNode currentWeather = weather.path("current");
         JsonNode currentAir = air.path("current");
@@ -196,17 +189,26 @@ public class EnvironmentService {
             String time = date + "T" + "%02d:00".formatted(hour);
             int weatherIndex = indexOf(weatherHourly.path("time"), time);
             int airIndex = indexOf(airHourly.path("time"), time);
-            if (weatherIndex < 0 || airIndex < 0) {
+            if (weatherIndex < 0) {
                 throw new IllegalArgumentException("所选日期超出逐小时预报范围");
             }
+            // 空气质量接口最多提供 7 个自然日。第 8 天使用最近一天相同小时的值，
+            // 使“从明天起未来七天”的路线仍可获得保守的空气风险估计。
+            if (airIndex < 0) {
+                int airCount = airHourly.path("time").size();
+                if (airCount < 24) throw new IllegalStateException("空气质量逐小时数据不足");
+                airIndex = airCount - 24 + hour;
+            }
+            while (airIndex >= 0 && (!airHourly.path("us_aqi").path(airIndex).isNumber()
+                    || !airHourly.path("pm2_5").path(airIndex).isNumber())) {
+                airIndex -= 24;
+            }
+            if (airIndex < 0) throw new IllegalStateException("缺少可用的空气质量逐小时数据");
             double hourlyTemperature = arrayDouble(weatherHourly, "temperature_2m", weatherIndex);
             int hourlyHumidity = arrayInt(weatherHourly, "relative_humidity_2m", weatherIndex);
             double hourlyApparent = arrayDouble(weatherHourly, "apparent_temperature", weatherIndex);
             points.add(new EnvironmentalForecastPoint(
-                    date.toString(),
-                    hour,
-                    round1(hourlyTemperature),
-                    hourlyHumidity,
+                    date.toString(), hour, round1(hourlyTemperature), hourlyHumidity,
                     arrayInt(weatherHourly, "precipitation_probability", weatherIndex),
                     arrayInt(airHourly, "us_aqi", airIndex),
                     (int) Math.round(arrayDouble(airHourly, "pm2_5", airIndex)),
@@ -214,6 +216,35 @@ public class EnvironmentService {
             ));
         }
         return new ForecastBundle(snapshot, List.copyOf(points));
+    }
+
+    private CachedSources fetchSources(CityDefinition city) {
+        String sourceKey = city.latitude() + ":" + city.longitude();
+        CachedSources cached = sourceCache.get(sourceKey);
+        if (cached != null && cached.fetchedAt().plus(CACHE_TTL).isAfter(Instant.now())) return cached;
+        Object lock = sourceLocks.computeIfAbsent(sourceKey, ignored -> new Object());
+        synchronized (lock) {
+            cached = sourceCache.get(sourceKey);
+            if (cached != null && cached.fetchedAt().plus(CACHE_TTL).isAfter(Instant.now())) return cached;
+        String coordinate = "latitude=" + city.latitude() + "&longitude=" + city.longitude();
+        String weatherUrl = "https://api.open-meteo.com/v1/forecast?" + coordinate
+                + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m"
+                + "&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m"
+                + "&timezone=Asia%2FShanghai&forecast_days=8";
+        String airUrl = "https://air-quality-api.open-meteo.com/v1/air-quality?" + coordinate
+                + "&current=pm2_5,us_aqi&hourly=pm2_5,us_aqi&timezone=Asia%2FShanghai&forecast_days=7";
+
+            try {
+                CompletableFuture<JsonNode> weatherFuture = fetchJson(weatherUrl);
+                CompletableFuture<JsonNode> airFuture = fetchJson(airUrl);
+                CachedSources loaded = new CachedSources(weatherFuture.join(), airFuture.join(), Instant.now());
+                sourceCache.put(sourceKey, loaded);
+                return loaded;
+            } catch (RuntimeException exception) {
+                if (cached != null) return cached;
+                throw exception;
+            }
+        }
     }
 
     private CompletableFuture<JsonNode> fetchJson(String url) {
@@ -233,8 +264,8 @@ public class EnvironmentService {
 
     private void validateForecastDate(LocalDate date) {
         LocalDate today = LocalDate.now(CHINA_ZONE);
-        if (date.isBefore(today) || date.isAfter(today.plusDays(4))) {
-            throw new IllegalArgumentException("活动日期仅支持今天至未来4天");
+        if (date.isBefore(today) || date.isAfter(today.plusDays(7))) {
+            throw new IllegalArgumentException("活动日期仅支持今天至未来7天");
         }
     }
 
@@ -312,6 +343,7 @@ public class EnvironmentService {
                                   double longitude, double latitude) { }
     private record ForecastBundle(CityEnvironmentEntity city, List<EnvironmentalForecastPoint> points) { }
     private record CachedForecast(ForecastBundle bundle, Instant fetchedAt) { }
+    private record CachedSources(JsonNode weather, JsonNode air, Instant fetchedAt) { }
 
     public static final class LiveDataUnavailableException extends RuntimeException {
         public LiveDataUnavailableException(String message, Throwable cause) {

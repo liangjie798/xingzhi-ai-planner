@@ -9,9 +9,10 @@ import {
 } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useGSAP } from "@gsap/react";
+import gsap from "gsap";
 import { EnvironmentMap } from "./environment-map";
 import { AccountBadge } from "./account-badge";
-import { VenuePhotoAnalysis } from "./venue-photo-analysis";
 import { DecisionResultPanel } from "./decision-result-panel";
 import type { MapSelection } from "./environment-map";
 import { reverseGeocode, searchChinaDistricts } from "@/lib/amap-lbs";
@@ -105,6 +106,7 @@ interface RegionBounds {
 }
 
 interface ChatMessage { role: "user" | "assistant"; content: string }
+type WorkspaceView = "studio" | "map" | "plan";
 interface ConversationResponse {
   reply: string;
   command: "analyze" | "clarify";
@@ -113,6 +115,7 @@ interface ConversationResponse {
 }
 
 export function DecisionDashboard() {
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("studio");
   const [input, setInput] = useState<ActivityInput>(initialInput);
   const [layer, setLayer] = useState<LayerKey>("comfort");
   const [city, setCity] = useState<CityEnvironment | null>(null);
@@ -137,11 +140,35 @@ export function DecisionDashboard() {
   const [chatOpen, setChatOpen] = useState(false);
   const [chatText, setChatText] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
+  const [thinkingSeconds, setThinkingSeconds] = useState(0);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     { role: "assistant", content: "直接告诉我城市、日期和活动要求。我会更新表单，查询真实逐小时数据，并同步刷新地图、图表与结论。" },
   ]);
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
   const isTourism = input.activityType === "旅游规划";
+
+  useEffect(() => {
+    const readView = () => {
+      const value = new URLSearchParams(window.location.search).get("view");
+      setWorkspaceView(value === "map" || value === "plan" ? value : "studio");
+    };
+    readView();
+    window.addEventListener("popstate", readView);
+    return () => window.removeEventListener("popstate", readView);
+  }, []);
+
+  useEffect(() => {
+    if (!chatBusy) return;
+    const startedAt = performance.now();
+    const timer = window.setInterval(() => setThinkingSeconds((performance.now() - startedAt) / 1000), 100);
+    return () => window.clearInterval(timer);
+  }, [chatBusy]);
+
+  const switchWorkspace = (view: WorkspaceView) => {
+    setWorkspaceView(view);
+    const url = view === "studio" ? "/dashboard" : `/dashboard?view=${view}`;
+    window.history.pushState({ view }, "", url);
+  };
 
   const meta: CityOption = useMemo(() => {
     if (input.longitude != null && input.latitude != null) {
@@ -294,7 +321,7 @@ export function DecisionDashboard() {
   useEffect(() => {
     queueMicrotask(() => {
       const today = dateString();
-      setDateRange({ min: today, max: dateString(4) });
+      setDateRange({ min: today, max: dateString(7) });
       setInput((current) => current.date ? current : { ...current, date: today, endDate: today });
     });
   }, []);
@@ -422,10 +449,10 @@ export function DecisionDashboard() {
       const start = new Date(`${activity.date || dateString()}T00:00:00+08:00`);
       const end = new Date(`${activity.endDate || activity.date || dateString()}T00:00:00+08:00`);
       const dates: string[] = [];
-      for (let cursor = start; cursor <= end && dates.length < 5; cursor = new Date(cursor.getTime() + 86400000)) {
+      for (let cursor = start; cursor <= end && dates.length < 7; cursor = new Date(cursor.getTime() + 86400000)) {
         dates.push(cursor.toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" }));
       }
-      const hourlyDays = await Promise.all(dates.map(async (date) => {
+      const hourlyResults = await Promise.allSettled(dates.map(async (date) => {
         const params = new URLSearchParams({
           cityId: targetMeta.id, date,
           name: targetMeta.name, province: targetMeta.province, adcode: targetMeta.adcode,
@@ -436,6 +463,7 @@ export function DecisionDashboard() {
         const payload = await response.json() as { hours: Array<{ hour: number; temperature: number; humidity: number; rainProbability: number; aqi: number; heatRisk: number }> };
         return payload.hours.map((hour) => ({ ...hour, date }));
       }));
+      const hourlyDays = hourlyResults.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
       const data = await fetchTourismRoute(apiBase, {
         cityName: targetMeta.name,
         province: targetMeta.province,
@@ -463,6 +491,7 @@ export function DecisionDashboard() {
     const history = [...chatMessages, userMessage];
     setChatMessages(history);
     setChatText("");
+    setThinkingSeconds(0);
     setChatBusy(true);
     setError(null);
     try {
@@ -505,7 +534,7 @@ export function DecisionDashboard() {
       await loadCity(targetMeta);
       if (nextInput.activityType === "旅游规划") await planTourism(nextInput, targetMeta);
       else await analyze(nextInput, targetMeta);
-      setChatMessages((current) => [...current, { role: "assistant", content: "分析已完成：表单、中心地图、逐小时图表和右侧结论均已按本轮要求更新。你可以继续说“改成一小时”或“为什么推荐这个时段”。" }]);
+      setChatMessages((current) => [...current, { role: "assistant", content: "分析已完成：条件、环境地图、逐小时图表和执行方案均已按本轮要求更新。你可以继续说“改成一小时”或“为什么推荐这个时段”。" }]);
     } catch (caught) {
       const detail = caught instanceof Error ? caught.message : "对话分析暂时不可用";
       setError(detail);
@@ -529,7 +558,11 @@ export function DecisionDashboard() {
           <div className="brand-mark" aria-hidden="true"><Compass size={23} weight="duotone" /></div>
           <div><p className="brand-name">适候</p><p className="brand-subtitle">户外活动环境决策系统</p></div>
         </div>
-        <div className="topbar-context"><ChatCircleDots size={16} weight="duotone" /><span>用一句话完成查询、分析与可视化</span></div>
+        <nav className="primary-nav" aria-label="工作区导航">
+          <button type="button" className={`nav-item ${workspaceView === "studio" ? "is-active" : ""}`} onClick={() => switchWorkspace("studio")}>分析台</button>
+          <button type="button" className={`nav-item ${workspaceView === "map" ? "is-active" : ""}`} onClick={() => switchWorkspace("map")}>环境地图</button>
+          <button type="button" className={`nav-item ${workspaceView === "plan" ? "is-active" : ""}`} onClick={() => switchWorkspace("plan")}>执行方案</button>
+        </nav>
         <div className="topbar-actions">
           <span className={`system-status ${error ? "has-error" : ""}`}><i /> {error ? "数据连接异常" : isLoadingCity ? "正在同步实时数据" : `实时数据 · ${updatedAt}`}</span>
           <Link className="icon-button" href="/hourly" title="逐小时数据" aria-label="逐小时数据页面"><Clock size={18} /></Link>
@@ -539,7 +572,7 @@ export function DecisionDashboard() {
         </div>
       </header>
 
-      <section className="workspace">
+      <section className={`workspace workspace-${workspaceView}`}>
         <aside className="control-rail">
           <div className="rail-heading">
             <div><span className="section-kicker">辅助条件</span><h1>校准分析范围</h1></div>
@@ -623,7 +656,6 @@ export function DecisionDashboard() {
           {isTourism && (
             <p className="tourism-hint"><Binoculars size={16} /> 旅游模式：结合逐小时天气、公开文旅资料与平台检索入口，编排景点＋美食路线并绘制在地图上。</p>
           )}
-          <VenuePhotoAnalysis activityType={input.activityType} locationName={input.locationName} onAnalysis={(siteObservation) => setInput((current) => ({ ...current, siteObservation }))} />
           </div>
           </details>
           {error && <div className="error-notice" role="alert"><WarningCircle size={17} /><span>{error}</span></div>}
@@ -640,13 +672,18 @@ export function DecisionDashboard() {
               <div><span className="conversation-icon"><ChatCircleDots size={19} weight="duotone" /></span><div><strong>对话分析</strong><small>描述城市、日期与活动，系统会直接更新数据、地图和结论</small></div></div>
               <button type="button" className="conversation-history-toggle" onClick={() => setChatOpen((value) => !value)}>{chatOpen ? "收起记录" : `对话记录${chatMessages.length > 1 ? ` · ${chatMessages.length - 1}` : ""}`}</button>
             </div>
-            {chatOpen && <div className="conversation-messages" aria-live="polite">{chatMessages.map((message, index) => <div className={`conversation-message is-${message.role}`} key={`${message.role}-${index}`}>{message.content}</div>)}{chatBusy && <div className="conversation-message is-assistant is-thinking"><span className="button-loader dark" />正在理解条件并调用分析工具…</div>}</div>}
+            {chatOpen && <div className="conversation-messages" aria-live="polite">{chatMessages.map((message, index) => <InkMessage message={message} key={`${message.role}-${index}`} />)}{chatBusy && <div className="conversation-message is-assistant is-thinking"><span className="ink-thinking-mark" aria-hidden="true" /><span>正在理解条件并调用分析工具</span><time>{thinkingSeconds.toFixed(1)}s</time></div>}</div>}
             {!chatOpen && chatMessages.length > 1 && <p className="conversation-latest">{chatMessages.at(-1)?.content}</p>}
             <form className="analysis-console-form" onSubmit={(event) => { event.preventDefault(); void submitConversation(); }}>
               <textarea value={chatText} onChange={(event) => setChatText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitConversation(); } }} placeholder="例如：分析西安明天下午哪个时段适合举办两小时运动会" rows={1} />
               <button type="submit" disabled={!chatText.trim() || chatBusy} aria-label="发送分析要求">{chatBusy ? <span className="button-loader" /> : <PaperPlaneTilt size={18} weight="fill" />}<span>开始分析</span></button>
             </form>
             {chatMessages.length === 1 && <div className="conversation-suggestions"><button type="button" onClick={() => setChatText("分析西安明天下午哪个时段适合举办两小时运动会")}>西安明天下午运动会</button><button type="button" onClick={() => setChatText("规划杭州未来三天的旅游路线")}>杭州三日旅游路线</button></div>}
+          </section>
+          <section className="studio-overview" aria-label="分析工作流概览">
+            <div className="studio-intro"><span className="section-kicker">一句话驱动完整分析</span><h2>先描述需求，再分别查看地图与方案</h2><p>城市、日期、活动类型和人数会自动写入条件；真实逐小时数据、行政区图层和决策结论在同一次分析中联动更新。</p></div>
+            <button type="button" className="workspace-card" onClick={() => switchWorkspace("map")}><span><MapTrifold size={24} weight="duotone" /></span><div><strong>查看环境地图</strong><small>{meta.name} · {layer === "comfort" ? "活动适宜度" : layers.find((item) => item.key === layer)?.label}</small></div><b>进入</b></button>
+            <button type="button" className="workspace-card" onClick={() => switchWorkspace("plan")}><span><ClipboardTextIcon /></span><div><strong>查看执行方案</strong><small>{result || route ? "已有最新分析结果" : "生成结果后在此查看完整方案"}</small></div><b>进入</b></button>
           </section>
           <div className="city-summary">
             <div><span className="section-kicker">{meta.province} · {meta.adcode} · {city ? `实况更新 ${updatedAt}` : "正在连接数据源"}</span><h2>{meta.name}{selectedDistrict ? ` · ${selectedDistrict}` : ""}当前环境空间图</h2></div>
@@ -658,9 +695,9 @@ export function DecisionDashboard() {
             </div>
           </div>
           <div className="layer-bar" aria-label="环境图层">{layers.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={layer === item.key ? "is-active" : ""} onClick={() => setLayer(item.key)}><Icon size={16} /> {item.label}</button>; })}</div>
-          {city
+          {workspaceView === "map" && (city
             ? <EnvironmentMap city={city} layer={layer} onPointSelected={onPointSelected} onRegionBounds={onRegionBounds} grid={grid} route={route} />
-            : <div className="map-shell map-unavailable"><span className="button-loader dark" /><p>{error ? "实时数据暂不可用" : "正在载入城市环境数据"}</p></div>}
+            : <div className="map-shell map-unavailable"><span className="button-loader dark" /><p>{error ? "实时数据暂不可用" : "正在载入城市环境数据"}</p></div>)}
           <div className="timeline-card">
             <div className="timeline-header"><div><span className="section-kicker">活动日期逐小时预测 · {input.date || "待选择日期"}</span><h3>{isTourism ? "旅游路线 · 推荐出行时段" : "候选时段活动适宜度"}</h3></div><div className="legend"><span className="good" />适宜 <span className="caution" />谨慎 <span className="bad" />不建议</div></div>
             {isTourism
@@ -680,3 +717,17 @@ export function DecisionDashboard() {
 
 function FieldLabel({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) { return <label className="field-label" htmlFor={htmlFor}>{children}</label>; }
 function Metric({ icon: Icon, value, label }: { icon: typeof Gauge; value: string; label: string }) { return <div className="metric-item"><Icon size={18} /><div><strong>{value}</strong><span>{label}</span></div></div>; }
+
+function ClipboardTextIcon() { return <Sparkle size={24} weight="duotone" />; }
+
+function InkMessage({ message }: { message: ChatMessage }) {
+  const root = useRef<HTMLDivElement>(null);
+  useGSAP(() => {
+    if (message.role !== "assistant" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    gsap.timeline()
+      .fromTo(".ink-bloom", { autoAlpha: 0, scale: 0.55 }, { autoAlpha: 0.78, scale: 1, duration: 0.72, ease: "power2.out" })
+      .fromTo(".ink-copy", { autoAlpha: 0, y: 7 }, { autoAlpha: 1, y: 0, duration: 0.42, ease: "power2.out" }, "-=0.42")
+      .to(".ink-bloom", { autoAlpha: 0.28, duration: 0.55, ease: "sine.out" });
+  }, { scope: root });
+  return <div ref={root} className={`conversation-message is-${message.role}`}><span className="ink-bloom" aria-hidden="true" /><span className="ink-copy">{message.content}</span></div>;
+}

@@ -18,8 +18,6 @@ export interface TourismRequestPayload {
   date: string;
   endDate: string;
   hours: TourismHourSnapshot[];
-  /** 用户在「AI 模型配置」页保存的模型配置（OpenAI 兼容） */
-  config?: { baseUrl: string; apiKey: string; model: string };
 }
 
 export async function fetchTourismRoute(apiBase: string, payload: TourismRequestPayload): Promise<TourismRoute> {

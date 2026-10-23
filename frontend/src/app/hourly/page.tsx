@@ -34,7 +34,7 @@ export default function HourlyPage() {
       const selected = readSelectedCity() as CityOption;
       setCityOption(selected);
       setDate(dateString());
-      setDateRange({ min: dateString(), max: dateString(4) });
+      setDateRange({ min: dateString(), max: dateString(7) });
     });
   }, []);
 

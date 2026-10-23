@@ -18,7 +18,7 @@ function tripDates(start: string, end?: string): string[] {
   const last = new Date(`${end || start}T00:00:00+08:00`);
   if (!Number.isFinite(first.getTime()) || !Number.isFinite(last.getTime()) || last < first) return [start];
   const dates: string[] = [];
-  for (let cursor = first; cursor <= last && dates.length < 5; cursor = new Date(cursor.getTime() + 86400000)) {
+  for (let cursor = first; cursor <= last && dates.length < 7; cursor = new Date(cursor.getTime() + 86400000)) {
     dates.push(cursor.toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" }));
   }
   return dates.length ? dates : [start];
