@@ -1,4 +1,4 @@
-export interface SocialItem { platform: "抖音" | "小红书"; title: string; excerpt: string; url: string; retrievedAt: string }
+export interface SocialItem { platform: string; title: string; excerpt: string; url: string; retrievedAt: string; provider?: string; publishedAt?: string }
 export interface SocialResearch { items: SocialItem[]; sources: Array<{ platform: string; status: "available" | "unavailable"; detail: string }>; durationMs: number }
 const decode = (s: string) => s.replace(/<[^>]*>/g, " ").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 export function socialPlatform(raw: string): SocialItem["platform"] | null {
@@ -7,6 +7,84 @@ export function socialPlatform(raw: string): SocialItem["platform"] | null {
   } catch { return null; }
 }
 function isPost(url: string) { return /\/(?:video|note|explore|discovery\/item)\/[\da-z]+/i.test(url); }
+
+type SearchSite = "xiaohongshu.com" | "douyin.com";
+export function normalizeSearchResults(payload: unknown, city: string, provider: "百度搜索" | "Tavily", site?: SearchSite): SocialItem[] {
+  const data = payload as { references?: unknown[]; results?: unknown[] } | null;
+  const rows = provider === "百度搜索" ? data?.references : data?.results;
+  if (!Array.isArray(rows)) return [];
+  const cityTerm = city.split(/[·（(]/)[0].trim().replace(/(?:特别行政区|自治区|自治州|地区|市|县|区)$/, "");
+  if (!cityTerm) return [];
+  const items: SocialItem[] = [];
+  for (const raw of rows.slice(0, 30)) {
+    if (!raw || typeof raw !== "object") continue;
+    const row = raw as Record<string, unknown>;
+    if (row.type && row.type !== "web") continue;
+    const title = typeof row.title === "string" ? decode(row.title).slice(0, 160) : "";
+    const excerpt = typeof row.content === "string" ? decode(row.content).slice(0, 650) : "";
+    if (!title || !`${title} ${excerpt}`.includes(cityTerm) || /登录后|安全验证|验证码|页面不存在/.test(title)) continue;
+    try {
+      const url = new URL(String(row.url || ""));
+      if (url.protocol !== "https:" || url.username || url.password || url.port || !/\.[a-z]{2,}$/i.test(url.hostname) || /(?:^|\.)(?:localhost|local|internal|test)$/.test(url.hostname)) continue;
+      if (site && !(url.hostname === site || url.hostname.endsWith(`.${site}`))) continue;
+      const platform = socialPlatform(url.href);
+      if (platform && !isPost(url.href)) continue;
+      url.hash = "";
+      items.push({ title, excerpt, url: url.href, platform: platform || url.hostname, provider, retrievedAt: new Date().toISOString(), ...(typeof row.date === "string" ? { publishedAt: row.date.slice(0, 40) } : {}) });
+    } catch { /* Invalid links never reach the document or model. */ }
+  }
+  return [...new Map(items.map((item) => [item.url, item])).values()].slice(0, site ? 3 : 4);
+}
+
+const searchCache = new Map<string, { expires: number; task: Promise<SocialItem[]> }>();
+async function searchWeb(city: string, activity: string, site?: SearchSite): Promise<SocialItem[]> {
+  const tavily = process.env.WEB_SEARCH_PROVIDER === "tavily";
+  const token = tavily ? process.env.TAVILY_API_KEY : process.env.BAIDU_SEARCH_API_KEY;
+  if (!token) throw new Error("missing-key");
+  const query = `${city.slice(0, 40)} ${activity.slice(0, 30)} ${/旅游|美食/.test(activity) ? "旅行攻略 景点 餐饮" : "活动组织 方案 实施安排"}`;
+  const cacheKey = `${tavily}:${query}:${site || "web"}`;
+  const cached = searchCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) return cached.task;
+  const task = (async () => {
+    const response = await fetch(tavily ? "https://api.tavily.com/search" : "https://qianfan.baidubce.com/v2/ai_search/web_search", {
+      method: "POST", redirect: "error", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(tavily ? { query, search_depth: "basic", max_results: 6, include_answer: false, include_raw_content: false, ...(site ? { include_domains: [site] } : {}) } : {
+        messages: [{ role: "user", content: query }], search_source: "baidu_search_v2", resource_type_filter: [{ type: "web", top_k: 6 }],
+        ...(site ? { search_filter: { match: { site: [site] } } } : {}),
+      }), signal: AbortSignal.timeout(6500), cache: "no-store",
+    });
+    if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "auth" : response.status === 429 ? "quota" : "upstream");
+    const payload = await response.json();
+    if (payload.code && String(payload.code) !== "0") throw new Error("upstream");
+    if (!Array.isArray(tavily ? payload.results : payload.references)) throw new Error("schema");
+    return normalizeSearchResults(payload, city, tavily ? "Tavily" : "百度搜索", site);
+  })();
+  if (searchCache.size >= 150) searchCache.delete(searchCache.keys().next().value!);
+  searchCache.set(cacheKey, { expires: Date.now() + 600000, task });
+  try { return await task; } catch (error) { searchCache.delete(cacheKey); throw error; }
+}
+
+export async function collectWebResearch(city: string, activity: string): Promise<SocialResearch> {
+  const started = performance.now();
+  const provider = process.env.WEB_SEARCH_PROVIDER === "tavily" ? "Tavily" : "百度搜索";
+  const key = provider === "Tavily" ? process.env.TAVILY_API_KEY : process.env.BAIDU_SEARCH_API_KEY;
+  if (!key) return { items: [], sources: [{ platform: provider, status: "unavailable", detail: "联网搜索尚未配置服务端 API Key，本轮未执行搜索；规划仍可使用天气与已核对地点。" }], durationMs: performance.now() - started };
+  const scopes = [{ label: "全网攻略", site: undefined }, { label: "小红书收录内容", site: "xiaohongshu.com" as const }, { label: "抖音收录内容", site: "douyin.com" as const }];
+  const results = await Promise.allSettled(scopes.map((scope) => searchWeb(city, activity, scope.site)));
+  const items: SocialItem[] = [];
+  const sources: SocialResearch["sources"] = [];
+  results.forEach((result, index) => {
+    const platform = `${provider} · ${scopes[index].label}`;
+    if (result.status === "fulfilled") {
+      items.push(...result.value);
+      sources.push({ platform, status: result.value.length ? "available" : "unavailable", detail: result.value.length ? `获得 ${result.value.length} 条匹配目的地的搜索摘要，附原文链接；未验证全文，不代表平台热榜或实时热度。` : "未获得可核对且匹配目的地的结果；不代表该平台没有相关内容。" });
+    } else {
+      const reason = result.reason instanceof Error ? result.reason.message : "";
+      sources.push({ platform, status: "unavailable", detail: reason === "auth" ? "搜索密钥无效或未开通权限，请管理员检查配置。" : reason === "quota" ? "搜索服务限流或额度不足，请稍后重试。" : "搜索服务暂不可用或请求超时，本轮未计入搜索内容。" });
+    }
+  });
+  return { items: [...new Map(items.map((item) => [item.url, item])).values()].slice(0, 8), sources, durationMs: performance.now() - started };
+}
 export function parseSocialHtml(html: string, url: string): SocialItem[] {
   const platform = socialPlatform(url);
   if (!platform) return [];
@@ -38,8 +116,9 @@ async function readPublic(url: string): Promise<{ html: string; url: string }> {
 }
 export async function collectSocialResearch(city: string, activity: string, urls: string[] = []): Promise<SocialResearch> {
   const started = performance.now();
-  const items: SocialItem[] = [];
-  const sources: SocialResearch["sources"] = [];
+  const web = await collectWebResearch(city, activity);
+  const items: SocialItem[] = [...web.items];
+  const sources: SocialResearch["sources"] = [...web.sources];
   // Optional authorized service. Credentials stay on the server; schema is documented in docs/social-research.md.
   if (process.env.SOCIAL_RESEARCH_ENDPOINT) {
     try {
@@ -53,20 +132,13 @@ export async function collectSocialResearch(city: string, activity: string, urls
     } catch { /* Public pages remain available as a separate attempt. */ }
   }
   await Promise.all((["抖音", "小红书"] as const).map(async (platform) => {
-    const query = encodeURIComponent(`${city} ${activity} 攻略`);
-    const searchUrl = platform === "抖音" ? `https://www.douyin.com/search/${query}` : `https://www.xiaohongshu.com/search_result?keyword=${query}`;
+    const provided = urls.filter((url) => socialPlatform(url) === platform).slice(0, 2);
+    if (!provided.length) return;
     try {
-      const provided = urls.filter((url) => socialPlatform(url) === platform).slice(0, 2);
-      // Search pages often require login. Only actual post metadata counts as collected content.
-      const pages = await Promise.allSettled((provided.length ? provided : [searchUrl]).map(readPublic));
+      const pages = await Promise.allSettled(provided.map(readPublic));
       for (const page of pages) {
         if (page.status !== "fulfilled") continue;
         items.push(...parseSocialHtml(page.value.html, page.value.url));
-        if (!provided.length) {
-          const found = [...page.value.html.matchAll(/https:\/\/(?:www\.)?(?:douyin|xiaohongshu)\.com\/(?:video|note|explore)\/[\da-z]+/gi)].map((m) => m[0]);
-          const posts = await Promise.allSettled([...new Set(found)].slice(0, 2).map(readPublic));
-          posts.forEach((post) => { if (post.status === "fulfilled") items.push(...parseSocialHtml(post.value.html, post.value.url)); });
-        }
       }
     } catch { /* Record absence honestly below. */ }
     const count = items.filter((item) => item.platform === platform).length;

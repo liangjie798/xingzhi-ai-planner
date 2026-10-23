@@ -555,10 +555,10 @@ export function DecisionDashboard() {
           if (socialResponse.ok) {
             const social = await socialResponse.json() as SocialResearch;
             completed.socialResearch = social;
-            completed.evidence.push(...social.items.map((item) => ({ title: item.title, publisher: item.platform, excerpt: item.excerpt || "公开内容，作为活动灵感参考", sourceUrl: item.url, tag: "平台公开内容" })));
-            completed.trace.push({ id: "social-public", name: "采集平台公开内容", detail: social.sources.map((source) => source.platform + "：" + source.detail).join("；"), status: social.items.length ? "done" : "fallback", durationMs: social.durationMs });
+            completed.evidence.push(...social.items.map((item) => ({ title: item.title, publisher: item.provider ? `${item.platform} · ${item.provider}` : item.platform, excerpt: item.excerpt || "联网资料，作为活动灵感参考", sourceUrl: item.url, tag: "联网检索资料" })));
+            completed.trace.push({ id: "social-public", name: "联网搜索攻略与活动资料", detail: social.sources.map((source) => source.platform + "：" + source.detail).join("；"), status: social.items.length ? "done" : "fallback", durationMs: social.durationMs });
           }
-        } catch { completed.trace.push({ id: "social-public", name: "采集平台公开内容", detail: "公开内容检索未完成，本次仅使用真实环境数据与场景规则", status: "fallback", durationMs: performance.now() - socialStarted }); }
+        } catch { completed.trace.push({ id: "social-public", name: "联网搜索攻略与活动资料", detail: "联网检索未完成，本次仅使用真实环境数据与场景规则", status: "fallback", durationMs: performance.now() - socialStarted }); }
       }
       completed.totalDurationMs = performance.now() - conversationStarted;
       if ("recommendation" in completed) { setLiveTrace(completed.trace); setResult({ ...completed }); }
