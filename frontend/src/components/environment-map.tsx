@@ -50,6 +50,8 @@ interface EnvironmentMapProps {
   onRegionBounds?: (bounds: { minLng: number; maxLng: number; minLat: number; maxLat: number }) => void;
   grid?: GridPoint[];
   route?: TourismRoute | null;
+  national?: boolean;
+  sampledAdcodes?: string[];
 }
 
 export interface MapSelection {
@@ -58,6 +60,8 @@ export interface MapSelection {
   latitude: number;
   district?: string;
   adcode?: string;
+  city?: string;
+  province?: string;
 }
 
 const layerLabel: Record<LayerKey, string> = {
@@ -112,6 +116,10 @@ function createRasterSurface(points: GridPoint[], layer: LayerKey, rings: number
   const maxLat = Math.max(...latitudes);
   const renderLngSpan = Math.max(0.01, maxLng - minLng);
   const renderLatSpan = Math.max(0.01, maxLat - minLat);
+  const mercator = (latitude: number) => Math.log(Math.tan(Math.PI / 4 + latitude * Math.PI / 360));
+  const northY = mercator(maxLat);
+  const southY = mercator(minLat);
+  const projectedSpan = Math.max(1e-6, northY - southY);
   const values = points.map((point) => metricValue(point, layer));
   const valueMin = Math.min(...values);
   const valueMax = Math.max(...values);
@@ -129,7 +137,7 @@ function createRasterSurface(points: GridPoint[], layer: LayerKey, rings: number
 
   for (let row = 0; row < height; row += 1) {
     const y = row / (height - 1);
-    const latitude = minLat + renderLatSpan * (1 - y);
+    const latitude = (Math.atan(Math.exp(northY - y * projectedSpan)) * 2 - Math.PI / 2) * 180 / Math.PI;
     for (let column = 0; column < width; column += 1) {
       const x = column / (width - 1);
       const longitude = minLng + renderLngSpan * x;
@@ -164,7 +172,7 @@ function createRasterSurface(points: GridPoint[], layer: LayerKey, rings: number
   rings.forEach((ring) => {
     ring.forEach(([longitude, latitude], index) => {
       const x = (longitude - minLng) / renderLngSpan * width;
-      const y = (maxLat - latitude) / renderLatSpan * height;
+      const y = (northY - mercator(latitude)) / projectedSpan * height;
       if (index === 0) context.moveTo(x, y);
       else context.lineTo(x, y);
     });
@@ -176,7 +184,7 @@ function createRasterSurface(points: GridPoint[], layer: LayerKey, rings: number
   return { canvas, bounds: [minLng, minLat, maxLng, maxLat] as [number, number, number, number] };
 }
 
-export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, grid, route }: EnvironmentMapProps) {
+export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, grid, route, national = false, sampledAdcodes }: EnvironmentMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const initialCenterRef = useRef(city.center);
   const mapRef = useRef<MapInstance | null>(null);
@@ -220,8 +228,8 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
         if (cancelled || !containerRef.current) return;
         const map = new AMap.Map(containerRef.current, {
           viewMode: "3D",
-          zoom: 11.2,
-          pitch: 30,
+          zoom: national ? 4 : 11.2,
+          pitch: national ? 0 : 30,
           center: initialCenterRef.current,
           mapStyle: "amap://styles/whitesmoke",
           showLabel: true,
@@ -254,7 +262,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
       // 让后续图层 effect 先从仍存活的地图解绑，再销毁底图实例。
       window.setTimeout(() => mapToDestroy?.destroy(), 0);
     };
-  }, [amapKey, securityCode, serviceHost, onPointSelected]);
+  }, [amapKey, securityCode, serviceHost, onPointSelected, national]);
 
   useEffect(() => {
     if (mapState === "ready") mapRef.current?.setCenter?.(city.center);
@@ -264,7 +272,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
   useEffect(() => {
     const AMap = amapRef.current;
     const map = mapRef.current;
-    if (mapState !== "ready" || !AMap || !map || !onRegionBounds) return;
+    if (mapState !== "ready" || !AMap || !map || (!onRegionBounds && !national)) return;
     let active = true;
     setRegionRings([]);
     let boundaryOverlays: unknown[] = [];
@@ -272,7 +280,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
     const fallback = () => {
       if (!active) return;
       const [longitude, latitude] = city.center;
-      onRegionBounds({
+      onRegionBounds?.({
         minLng: longitude - 0.32,
         maxLng: longitude + 0.32,
         minLat: latitude - 0.24,
@@ -297,23 +305,27 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
         const response = await fetch(`/region-data/${city.adcode}`, { signal: controller.signal });
         if (!response.ok) throw new Error("行政区边界不可用");
         const geoJson = await response.json() as { features?: Array<{
-          properties?: { name?: string; center?: [number, number]; centroid?: [number, number] };
-          geometry?: { coordinates?: unknown };
+          properties?: { name?: string; adcode?: string | number; center?: [number, number]; centroid?: [number, number] };
+          geometry?: { type?: string; coordinates?: unknown };
         }> };
+        const features = (geoJson.features ?? []).filter((feature) => /^(Multi)?Polygon$/.test(feature.geometry?.type || ""));
         const rings: number[][][] = [];
-        geoJson.features?.forEach((feature) => collectRings(feature.geometry?.coordinates, rings));
+        features.forEach((feature) => collectRings(feature.geometry?.coordinates, rings));
         const points = rings.flat();
         if (!active || points.length < 3) throw new Error("行政区边界为空");
-        setRegionRings(rings);
+        const sampledRings: number[][][] = [];
+        features.filter((feature) => !national || sampledAdcodes?.includes(String(feature.properties?.adcode))).forEach((feature) => collectRings(feature.geometry?.coordinates, sampledRings));
+        setRegionRings(sampledRings);
         boundaryOverlays = rings.map((ring) => new AMap.Polygon({
           path: ring,
           strokeColor: "#087f6d",
           strokeWeight: 1.5,
           strokeOpacity: 0.66,
           fillColor: "#dff3ed",
-          fillOpacity: 0.025,
+          fillOpacity: national ? 0.24 : 0.025,
+          zIndex: 5,
         }));
-        boundaryLabels = (geoJson.features ?? []).flatMap((feature) => {
+        boundaryLabels = features.flatMap((feature) => {
           const name = feature.properties?.name?.trim();
           const position = feature.properties?.centroid ?? feature.properties?.center;
           if (!name || !position || !Number.isFinite(position[0]) || !Number.isFinite(position[1])) return [];
@@ -327,10 +339,10 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
         });
         map.add([...boundaryOverlays, ...boundaryLabels]);
         const isDistrict = !city.adcode.endsWith("00");
-        map.setFitView?.(boundaryOverlays, true, [34, 34, 34, 34], isDistrict ? 13 : 10);
+        map.setFitView?.(boundaryOverlays, true, [34, 34, 34, 34], national ? 5 : isDistrict ? 13 : 10);
         const longitudes = points.map((point) => point[0]);
         const latitudes = points.map((point) => point[1]);
-        onRegionBounds({
+        onRegionBounds?.({
           minLng: Math.min(...longitudes),
           maxLng: Math.max(...longitudes),
           minLat: Math.min(...latitudes),
@@ -347,7 +359,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
       if (boundaryOverlays.length) map.remove(boundaryOverlays);
       if (boundaryLabels.length) map.remove(boundaryLabels);
     };
-  }, [mapState, city.id, city.name, city.adcode, city.center, onRegionBounds]);
+  }, [mapState, city.id, city.name, city.adcode, city.center, onRegionBounds, national, sampledAdcodes]);
 
   // 图层着色：将逐像素插值结果作为 Canvas 栅格覆盖层，不使用圆形热力核。
   useEffect(() => {
@@ -362,22 +374,22 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
       content: isCurrentLocation ? '<div class="user-location-marker"><span></span></div>' : undefined,
       label: { content: `${isCurrentLocation ? "你的位置 · " : ""}${layerLabel[layer]} ${pointLabel}`, direction: "top" },
     });
-    map.add(centerMarker);
+    if (!national) map.add(centerMarker);
 
     const raster = createRasterSurface(grid ?? [], layer, regionRings);
     const rasterLayer = raster ? new AMap.CanvasLayer({
       canvas: raster.canvas,
       bounds: raster.bounds,
       opacity: 0.78,
-      zooms: [7, 17],
+      zooms: [2, 17],
       zIndex: 6,
     }) : null;
     if (rasterLayer) map.add(rasterLayer);
     return () => {
-      map.remove(centerMarker);
+      if (!national) map.remove(centerMarker);
       if (rasterLayer) map.remove(rasterLayer);
     };
-  }, [mapState, city, layer, pointLabel, grid, regionRings]);
+  }, [mapState, city, layer, pointLabel, grid, regionRings, national]);
 
   // 旅游路线：折线 + 编号站点
   useEffect(() => {
@@ -457,7 +469,8 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
     <div className="map-shell">
       <div ref={containerRef} className={`amap-canvas ${showFallback ? "is-hidden" : ""}`} />
 
-      {showFallback && (
+      {showFallback && national && <div className="map-unavailable"><WarningCircle size={24} /><p>全国地图底图暂不可用，请检查网络后刷新。下方仍可查看已获取的环境数据。</p></div>}
+      {showFallback && !national && (
         <div className="coordinate-canvas" role="img" aria-label={`${city.name}${layerLabel[layer]}城市坐标视图`}>
           <div className="map-orbit orbit-one" />
           <div className="map-orbit orbit-two" />
@@ -507,9 +520,9 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
         </div>
       )}
 
-      {mapState === "loading" && <div className="map-loading" aria-live="polite"><span /><p>正在载入城市空间图层</p></div>}
+      {mapState === "loading" && <div className="map-loading" aria-live="polite"><span /><p>正在载入{national ? "全国" : "城市"}空间图层</p></div>}
 
-      <div className="map-legend" aria-label={`${layerLabel[layer]}图例`}>
+      {(!national || !!grid?.length) && <div className="map-legend" aria-label={`${layerLabel[layer]}图例`}>
         <span className="map-legend-title">{layerLabel[layer]}</span>
         <span className={`map-legend-bar ${layer === "comfort" ? "is-good" : "is-risk"}`} aria-hidden="true" />
         <span className="map-legend-scale">
@@ -517,10 +530,11 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
         </span>
       </div>
 
+      }
       <div className="map-mode-badge">
         {mapState === "ready" ? <Crosshair size={14} /> : <WarningCircle size={14} />}
         {mapState === "ready"
-          ? (route ? "高德地图 · 路线绘制" : "当前实况插值 · 行政区内裁切")
+          ? (national ? "全国代表地点采样插值 · 缺测区域不着色" : route ? "高德地图 · 路线绘制" : "当前实况插值 · 行政区内裁切")
           : mapState === "error" ? "高德地图鉴权待配置" : "城市坐标 · 实时数据"}
       </div>
     </div>

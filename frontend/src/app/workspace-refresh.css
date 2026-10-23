@@ -61,6 +61,15 @@
 .report-tabs button.is-active { background: transparent; border-bottom-color: transparent; }
 .login-panel { overflow: clip; }
 .auth-card { min-height: 600px; }
+.national-map-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 0 12px; color: #577565; font-size: 12px; }
+.national-map-status button { border: 1px solid #cddbcc; border-radius: 7px; padding: 5px 12px; background: white; color: #315d40; cursor: pointer; }
+.national-map-note { margin: 14px 0 24px; color: #6b7b71; font-size: 12px; line-height: 1.9; }
+.national-samples { border-top: 1px solid #d8decd; padding-top: 20px; }
+.national-samples h3 { margin: 0 0 18px; font-size: 18px; color: #294b36; }
+.national-sample-list { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 1px; background: #dfe5d9; border: 1px solid #dfe5d9; border-radius: 12px; overflow: hidden; }
+.national-sample-list article { display: grid; gap: 7px; padding: 15px; background: #fafbf7; }
+.national-sample-list strong { font-size: 13px; }.national-sample-list span,.national-sample-list small { font-size: 11px; color: #668071; }
+@media (max-width:760px) { .national-sample-list { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 .login-panel-content { display: flow-root; padding-bottom: 2px; }
 .login-panel-content > p { margin: 0 0 28px; color: var(--muted); font-size: 11px; }
 .welcome-greeting { margin: 0 0 14px; color: #315d40; font-size: 14px; line-height: 1.7; animation: welcome-arrive .4s ease both; }
