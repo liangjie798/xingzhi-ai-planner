@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Theme } from "@radix-ui/themes";
 import "@radix-ui/themes/styles.css";
 import "./globals.css";
+import "./workspace-refresh.css";
 
 export const metadata: Metadata = {
   title: "适候 | AI 户外活动环境决策平台",

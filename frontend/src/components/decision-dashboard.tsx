@@ -14,6 +14,8 @@ import gsap from "gsap";
 import { EnvironmentMap } from "./environment-map";
 import { AccountBadge } from "./account-badge";
 import { DecisionResultPanel } from "./decision-result-panel";
+import { AgentProgress } from "./agent-progress";
+import { answerAgentAction, detectAgentAction, type AgentAction } from "@/lib/agent-actions";
 import type { MapSelection } from "./environment-map";
 import { reverseGeocode, searchChinaDistricts } from "@/lib/amap-lbs";
 import { cities, cityById, saveSelectedCity } from "@/lib/cities";
@@ -137,15 +139,19 @@ export function DecisionDashboard() {
   const [participantsText, setParticipantsText] = useState("0500");
   const [selectedDistrict, setSelectedDistrict] = useState("");
   const searchTimer = useRef<number | null>(null);
-  const [chatOpen, setChatOpen] = useState(false);
+  const chatScroll = useRef<HTMLDivElement>(null);
+  const [agentPhase, setAgentPhase] = useState("");
   const [chatText, setChatText] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
-  const [thinkingSeconds, setThinkingSeconds] = useState(0);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     { role: "assistant", content: "直接告诉我城市、日期和活动要求。我会更新表单，查询真实逐小时数据，并同步刷新地图、图表与结论。" },
   ]);
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
   const isTourism = input.activityType === "旅游规划";
+
+  useEffect(() => {
+    chatScroll.current?.scrollTo({ top: chatScroll.current.scrollHeight, behavior: "smooth" });
+  }, [chatMessages, chatBusy]);
 
   useEffect(() => {
     const readView = () => {
@@ -157,12 +163,6 @@ export function DecisionDashboard() {
     return () => window.removeEventListener("popstate", readView);
   }, []);
 
-  useEffect(() => {
-    if (!chatBusy) return;
-    const startedAt = performance.now();
-    const timer = window.setInterval(() => setThinkingSeconds((performance.now() - startedAt) / 1000), 100);
-    return () => window.clearInterval(timer);
-  }, [chatBusy]);
 
   const switchWorkspace = (view: WorkspaceView) => {
     setWorkspaceView(view);
@@ -421,6 +421,7 @@ export function DecisionDashboard() {
     setResult(null);
     setLiveTrace([]);
     setActivePanel("trace");
+    setAgentPhase("正在读取环境与执行分析工具");
     const startedAt = Date.now();
     try {
       const response = await fetch(`${apiBase}/api/v2/agent/stream`, {
@@ -433,9 +434,11 @@ export function DecisionDashboard() {
       setRoute(null);
       await loadCity(targetMeta);
       setActivePanel("plan");
+      return decision;
     } catch (caught) {
       setResult(null);
       setError(caught instanceof Error ? caught.message : "决策服务暂时不可用");
+      return null;
     } finally {
       const elapsed = Date.now() - startedAt;
       window.setTimeout(() => setIsAnalyzing(false), Math.max(0, 520 - elapsed));
@@ -444,6 +447,8 @@ export function DecisionDashboard() {
 
   async function planTourism(activity: ActivityInput = input, targetMeta: CityOption = meta) {
     setIsPlanning(true);
+    setLiveTrace([]);
+    setAgentPhase("正在读取出行日期的逐小时数据");
     setError(null);
     try {
       const start = new Date(`${activity.date || dateString()}T00:00:00+08:00`);
@@ -464,6 +469,8 @@ export function DecisionDashboard() {
         return payload.hours.map((hour) => ({ ...hour, date }));
       }));
       const hourlyDays = hourlyResults.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+      setLiveTrace([{ id: "tourism-environment", name: "读取逐小时环境", detail: `已读取 ${hourlyDays.length}/${dates.length} 天的逐小时数据`, status: hourlyDays.length === dates.length ? "done" : "fallback", durationMs: 0 }]);
+      setAgentPhase("正在检索景点、美食并编排旅行路线");
       const data = await fetchTourismRoute(apiBase, {
         cityName: targetMeta.name,
         province: targetMeta.province,
@@ -476,12 +483,20 @@ export function DecisionDashboard() {
       setRoute(data);
       setResult(null);
       setActivePanel("plan");
+      setLiveTrace(data.trace);
+      return data;
     } catch (caught) {
       setRoute(null);
       setError(caught instanceof Error ? caught.message : "旅游路线服务暂时不可用");
+      return null;
     } finally {
       setIsPlanning(false);
     }
+  }
+
+  function runAgentAction(action: AgentAction) {
+    const names = { explain: "解释本次推荐依据", compare: "比较前三个候选时段", checklist: "生成筹备检查清单" };
+    setChatMessages((current) => [...current, { role: "user", content: names[action] }, { role: "assistant", content: answerAgentAction(action, input, result, route) }]);
   }
 
   async function submitConversation() {
@@ -491,7 +506,11 @@ export function DecisionDashboard() {
     const history = [...chatMessages, userMessage];
     setChatMessages(history);
     setChatText("");
-    setThinkingSeconds(0);
+    const action = detectAgentAction(message);
+    if (action) {
+      setChatMessages([...history, { role: "assistant", content: answerAgentAction(action, input, result, route) }]);
+      return;
+    }
     setChatBusy(true);
     setError(null);
     try {
@@ -532,9 +551,9 @@ export function DecisionDashboard() {
       setChatMessages((current) => [...current, { role: "assistant", content: `${plan.reply}${plan.provider ? `（${plan.provider}）` : ""}` }]);
       if (plan.command === "clarify") return;
       await loadCity(targetMeta);
-      if (nextInput.activityType === "旅游规划") await planTourism(nextInput, targetMeta);
-      else await analyze(nextInput, targetMeta);
-      setChatMessages((current) => [...current, { role: "assistant", content: "分析已完成：条件、环境地图、逐小时图表和执行方案均已按本轮要求更新。你可以继续说“改成一小时”或“为什么推荐这个时段”。" }]);
+      const completed = nextInput.activityType === "旅游规划" ? await planTourism(nextInput, targetMeta) : await analyze(nextInput, targetMeta);
+      if (!completed) throw new Error("本次分析未完成，请查看错误提示后重试。");
+      setChatMessages((current) => [...current, { role: "assistant", content: "recommendation" in completed ? `${completed.recommendation}。\n${completed.summary}\n完整规划书已生成，可在执行方案中阅读或下载。也可以继续询问依据、比较时段或生成筹备清单。` : `${completed.cityName}${completed.dayCount}日规划已完成。\n${completed.summary}\n共安排 ${completed.stops.length} 个景点与美食站点。前往执行方案阅读完整规划书并下载。` }]);
     } catch (caught) {
       const detail = caught instanceof Error ? caught.message : "对话分析暂时不可用";
       setError(detail);
@@ -667,21 +686,23 @@ export function DecisionDashboard() {
         </aside>
 
         <section className="map-workbench">
-          <section className={`analysis-console ${chatOpen ? "is-expanded" : ""}`} aria-label="对话驱动数据分析">
+          <header className="studio-page-heading"><span>适候 / 智能规划工作室</span><h1>从一个想法，到一份可执行的计划。</h1><p>告诉我想去哪、何时出发、准备做什么。</p></header>
+          <section className="analysis-console is-expanded" aria-label="对话驱动数据分析">
             <div className="analysis-console-head">
               <div><span className="conversation-icon"><ChatCircleDots size={19} weight="duotone" /></span><div><strong>对话分析</strong><small>描述城市、日期与活动，系统会直接更新数据、地图和结论</small></div></div>
-              <button type="button" className="conversation-history-toggle" onClick={() => setChatOpen((value) => !value)}>{chatOpen ? "收起记录" : `对话记录${chatMessages.length > 1 ? ` · ${chatMessages.length - 1}` : ""}`}</button>
+              <span className="conversation-count">{chatMessages.length} 条消息 · 自动显示</span>
             </div>
-            {chatOpen && <div className="conversation-messages" aria-live="polite">{chatMessages.map((message, index) => <InkMessage message={message} key={`${message.role}-${index}`} />)}{chatBusy && <div className="conversation-message is-assistant is-thinking"><span className="ink-thinking-mark" aria-hidden="true" /><span>正在理解条件并调用分析工具</span><time>{thinkingSeconds.toFixed(1)}s</time></div>}</div>}
-            {!chatOpen && chatMessages.length > 1 && <p className="conversation-latest">{chatMessages.at(-1)?.content}</p>}
+            <div ref={chatScroll} className="conversation-messages" aria-live="polite">{chatMessages.map((message, index) => <InkMessage message={message} key={`${message.role}-${index}`} />)}{chatBusy && <ThinkingIndicator />}</div>
+            <div className="agent-actions" aria-label="Agent 分析工具"><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("explain")}>解释推荐依据</button><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("compare")}>对比候选时段</button><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("checklist")}>生成筹备清单</button></div>
             <form className="analysis-console-form" onSubmit={(event) => { event.preventDefault(); void submitConversation(); }}>
               <textarea value={chatText} onChange={(event) => setChatText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitConversation(); } }} placeholder="例如：分析西安明天下午哪个时段适合举办两小时运动会" rows={1} />
               <button type="submit" disabled={!chatText.trim() || chatBusy} aria-label="发送分析要求">{chatBusy ? <span className="button-loader" /> : <PaperPlaneTilt size={18} weight="fill" />}<span>开始分析</span></button>
             </form>
             {chatMessages.length === 1 && <div className="conversation-suggestions"><button type="button" onClick={() => setChatText("分析西安明天下午哪个时段适合举办两小时运动会")}>西安明天下午运动会</button><button type="button" onClick={() => setChatText("规划杭州未来三天的旅游路线")}>杭州三日旅游路线</button></div>}
           </section>
+          <div className="studio-agent-progress"><AgentProgress items={liveTrace.length ? liveTrace : route?.trace ?? result?.trace ?? []} running={isAnalyzing || isPlanning || chatBusy} phase={chatBusy && !isAnalyzing && !isPlanning ? "正在理解活动条件" : agentPhase} /></div>
           <section className="studio-overview" aria-label="分析工作流概览">
-            <div className="studio-intro"><span className="section-kicker">一句话驱动完整分析</span><h2>先描述需求，再分别查看地图与方案</h2><p>城市、日期、活动类型和人数会自动写入条件；真实逐小时数据、行政区图层和决策结论在同一次分析中联动更新。</p></div>
+            <div className="studio-intro"><span className="section-kicker">本轮工作成果</span><h2>{route ? `${route.cityName}${route.dayCount}日旅行规划` : result ? result.recommendation : "地图、方案与执行记录，随分析一起生成。"}</h2><p>{route?.summary || result?.summary || "你可以随时补充人数、调整时长，或让我比较不同的活动时段。"}</p></div>
             <button type="button" className="workspace-card" onClick={() => switchWorkspace("map")}><span><MapTrifold size={24} weight="duotone" /></span><div><strong>查看环境地图</strong><small>{meta.name} · {layer === "comfort" ? "活动适宜度" : layers.find((item) => item.key === layer)?.label}</small></div><b>进入</b></button>
             <button type="button" className="workspace-card" onClick={() => switchWorkspace("plan")}><span><ClipboardTextIcon /></span><div><strong>查看执行方案</strong><small>{result || route ? "已有最新分析结果" : "生成结果后在此查看完整方案"}</small></div><b>进入</b></button>
           </section>
@@ -719,6 +740,16 @@ function FieldLabel({ children, htmlFor }: { children: React.ReactNode; htmlFor?
 function Metric({ icon: Icon, value, label }: { icon: typeof Gauge; value: string; label: string }) { return <div className="metric-item"><Icon size={18} /><div><strong>{value}</strong><span>{label}</span></div></div>; }
 
 function ClipboardTextIcon() { return <Sparkle size={24} weight="duotone" />; }
+
+function ThinkingIndicator() {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const started = performance.now();
+    const timer = window.setInterval(() => setSeconds((performance.now() - started) / 1000), 100);
+    return () => window.clearInterval(timer);
+  }, []);
+  return <div className="conversation-message is-assistant is-thinking"><span className="ink-thinking-mark" aria-hidden="true" /><span>正在理解条件并调用分析工具</span><time aria-label="已用时">{seconds.toFixed(1)}s</time></div>;
+}
 
 function InkMessage({ message }: { message: ChatMessage }) {
   const root = useRef<HTMLDivElement>(null);

@@ -43,13 +43,13 @@ function safePlan(plan: ConversationPlan | null): ConversationPlan {
   if (patch.startHour != null) patch.startHour = Math.min(23, Math.max(0, Math.round(patch.startHour)));
   if (patch.duration != null) patch.duration = Math.min(12, Math.max(1, Math.round(patch.duration)));
   if (patch.participants != null) patch.participants = Math.min(9999, Math.max(1, Math.round(patch.participants)));
-  return { command: plan.command === "clarify" ? "clarify" : "analyze", reply: plan.reply || "条件已理解，正在重新读取数据并更新分析。", patch };
+  return { command: plan.command === "clarify" ? "clarify" : "analyze", reply: plan.reply && /[\u4e00-\u9fa5]/.test(plan.reply) ? plan.reply : "条件已理解，正在重新读取数据并更新分析。", patch };
 }
 
 function fallbackPlan(body: ConversationRequest): ConversationPlan {
   const text = body.message;
   const patch: ConversationPatch = {};
-  const duration = text.match(/(?:改成|持续|举办)?\s*([一二三四五六七八九十\d]+)\s*个?小时/);
+  const duration = text.match(/(?:改成|持续|举办)?\s*([一二两三四五六七八九十\d]+)\s*个?小时/);
   const values: Record<string, number> = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
   if (duration) patch.duration = Number(duration[1]) || values[duration[1]];
   if (/明天/.test(text)) {
@@ -88,6 +88,7 @@ export async function POST(request: Request) {
     `最近对话：${JSON.stringify((body.history ?? []).slice(-6))}。`,
     `用户新要求：${body.message.trim()}。`,
     "理解用户对前文条件的省略引用。将自然语言转换为表单增量 patch；未提及的字段不要输出，不能臆造城市。",
+    "reply 必须使用简洁自然的中文，说明本轮实际要读取或比较的内容，避免英文状态消息。",
     "日期必须为 YYYY-MM-DD；明天、后天等按当前日期换算。下午默认14时、上午默认9时、晚上默认19时。",
     `activityType 只能为：${activityTypes.join("、")}；intensity 只能为：${intensities.join("、")}；group 只能为：${groups.join("、")}。`,
     "只输出 JSON：{\"reply\":\"简短说明将更新什么\",\"command\":\"analyze或clarify\",\"patch\":{\"cityName\":\"西安市\",\"date\":\"YYYY-MM-DD\",\"endDate\":\"YYYY-MM-DD\",\"startHour\":14,\"duration\":2,\"activityType\":\"校园运动会\"}}。",

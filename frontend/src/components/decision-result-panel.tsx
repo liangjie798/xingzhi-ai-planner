@@ -4,6 +4,8 @@ import { Binoculars, Brain, CalendarCheck, CheckCircle, ClipboardText, Database,
 import Image from "next/image";
 import { useState } from "react";
 import { cityById } from "@/lib/cities";
+import { AgentProgress } from "./agent-progress";
+import { buildPlanningDocument, documentMarkdown, downloadBlob, downloadWord, type PlanningDocument } from "@/lib/planning-document";
 import type { ActivityInput, DecisionResult, EvidenceItem, ToolTraceItem, TourismRoute } from "@/lib/types";
 
 type Panel = "plan" | "evidence" | "trace";
@@ -30,6 +32,7 @@ function TraceVisualizer({ items, running }: { items: ToolTraceItem[]; running: 
   const elapsed = items.reduce((sum, item) => sum + item.durationMs, 0);
   const fallbackCount = items.filter((item) => item.status === "fallback").length;
   return <div className="trace-report">
+    <AgentProgress items={items} running={running} />
     <div className="report-stats">
       <div><span>执行状态</span><strong><Pulse size={18} />{running ? "执行中" : "已完成"}</strong></div>
       <div><span>工具步骤</span><strong>{items.length}<small>步</small></strong></div>
@@ -53,6 +56,22 @@ function TraceVisualizer({ items, running }: { items: ToolTraceItem[]; running: 
         <div className="report-note"><Info size={18} /><p>这里展示工具执行记录与输出摘要，便于核对 Agent 实际完成的工作。</p></div>
       </section>}
     </div> : <div className="report-note"><Clock size={18} /><p>{running ? "正在准备首个工具，执行记录将自动更新。" : "本次分析暂无工具执行记录。"}</p></div>}
+  </div>;
+}
+
+function PlanDocumentReader({ document }: { document: PlanningDocument }) {
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+  return <div className="document-reader">
+    <div className="document-toolbar"><span><ClipboardText size={17} />完整规划书</span><div>
+      <button type="button" disabled={exporting} onClick={async () => { setExporting(true); setExportError(""); try { await downloadWord(document); } catch { setExportError("Word 下载失败，请重试或下载 Markdown。"); } finally { setExporting(false); } }}>{exporting ? "正在导出…" : "下载 Word"}</button>
+      <button type="button" onClick={() => downloadBlob(new Blob([documentMarkdown(document)], { type: "text/markdown;charset=utf-8" }), `${document.title}.md`)}>下载 Markdown</button>
+      <button type="button" onClick={() => window.print()}>打印 / 存为 PDF</button>
+    </div></div>
+    {exportError && <p role="alert">{exportError}</p>}
+    <div className="document-layout"><nav className="document-toc" aria-label="规划书目录"><span>文档目录</span>{document.sections.map((section, index) => <a href={`#plan-chapter-${index}`} key={section.title}>{section.title}</a>)}</nav>
+      <article className="planning-manuscript"><header><span>适候 / 活动与出行规划</span><h2>{document.title}</h2><p>{document.subtitle}</p></header>{document.sections.map((section, index) => <section id={`plan-chapter-${index}`} key={section.title}><h3>{section.title}</h3>{section.paragraphs.map((paragraph, i) => <p key={i}>{paragraph}</p>)}</section>)}<footer>本规划基于本轮条件与数据生成，执行前请确认现场安排。</footer></article>
+    </div>
   </div>;
 }
 
@@ -131,7 +150,8 @@ export function DecisionResultPanel({ input, isTourism, route, result, liveTrace
   const ready = isTourism ? !!route : !!result;
   const running = isTourism ? isPlanning : isAnalyzing;
   const evidence = isTourism ? route?.evidence ?? [] : result?.evidence ?? [];
-  const trace = isTourism ? route?.trace ?? [] : result?.trace ?? liveTrace;
+  const trace = isTourism ? route?.trace ?? liveTrace : result?.trace ?? liveTrace;
+  const document = buildPlanningDocument(input, result, route);
   const tabs: Array<{ key: Panel; label: string; detail: string; icon: typeof Brain }> = [
     { key: "plan", label: isTourism ? "行程方案" : "执行方案", detail: "结论与行动安排", icon: ClipboardText },
     { key: "evidence", label: "数据与证据", detail: "来源与参考依据", icon: Database },
@@ -139,12 +159,12 @@ export function DecisionResultPanel({ input, isTourism, route, result, liveTrace
   ];
   return <section className="decision-panel result-report" aria-label="执行方案报告">
     <header className="report-header"><div><span className="section-kicker">决策报告</span><h1>{isTourism ? "让行程有据可循" : "从分析到现场执行"}</h1><p>{input.cityName || cityById(input.cityId).name} · {input.activityType} · {input.date || "待选择日期"}{input.endDate && input.endDate !== input.date ? ` 至 ${input.endDate}` : ""}</p></div><span className={`report-badge ${running ? "is-warning" : ""}`}>{running ? <Pulse size={15} /> : <CheckCircle size={15} />}{running ? "正在更新" : ready ? "分析已完成" : "等待分析"}</span></header>
-    <div className="report-tabs" role="tablist" aria-label="报告内容" onKeyDown={(event) => { const current = tabs.findIndex((tab) => tab.key === activePanel); const next = event.key === "ArrowRight" ? (current + 1) % tabs.length : event.key === "ArrowLeft" ? (current + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1; if (next >= 0) { event.preventDefault(); onPanel(tabs[next].key); document.getElementById(`report-tab-${tabs[next].key}`)?.focus(); } }}>
+    <div className="report-tabs" role="tablist" aria-label="报告内容" onKeyDown={(event) => { const current = tabs.findIndex((tab) => tab.key === activePanel); const next = event.key === "ArrowRight" ? (current + 1) % tabs.length : event.key === "ArrowLeft" ? (current + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1; if (next >= 0) { event.preventDefault(); onPanel(tabs[next].key); window.document.getElementById(`report-tab-${tabs[next].key}`)?.focus(); } }}>
       {tabs.map(({ key, label, detail, icon: Icon }) => <button type="button" role="tab" id={`report-tab-${key}`} aria-selected={activePanel === key} aria-controls={`report-content-${key}`} tabIndex={activePanel === key ? 0 : -1} className={activePanel === key ? "is-active" : ""} key={key} onClick={() => onPanel(key)}><Icon size={22} weight={activePanel === key ? "duotone" : "regular"} /><span><strong>{label}</strong><small>{detail}</small></span></button>)}
     </div>
     <div className={`report-body report-body-${activePanel}`} role="tabpanel" id={`report-content-${activePanel}`} aria-labelledby={`report-tab-${activePanel}`} tabIndex={0}>
       {!ready && !(activePanel === "trace" && trace.length > 0) ? <div className="report-empty">{running ? <Pulse size={36} /> : isTourism ? <Binoculars size={36} /> : <Sparkle size={36} />}<h2>{running ? "正在准备这份报告" : "先完成一次对话分析"}</h2><p>{running ? "工具返回后，方案、证据与执行轨迹会自动更新。" : "在分析台描述城市、日期与活动需求，完成后即可在这里查看详细内容。"}</p><a href="/dashboard">返回分析台 <ArrowUpRight size={16} /></a></div>
-        : activePanel === "plan" ? isTourism && route ? <TourismPlan key={`${route.cityName}-${route.date}-${route.endDate}`} route={route} /> : result && <ActivityPlan input={input} result={result} />
+        : activePanel === "plan" ? <>{document && <PlanDocumentReader document={document} />}<details className="structured-plan"><summary>{isTourism ? "查看按天行程与地点图片" : "查看时间线与执行卡片"}</summary>{isTourism && route ? <TourismPlan key={`${route.cityName}-${route.date}-${route.endDate}`} route={route} /> : result && <ActivityPlan input={input} result={result} />}</details></>
         : activePanel === "evidence" ? <EvidenceReport items={evidence} isTourism={isTourism} />
         : <TraceVisualizer items={trace} running={running} />}
     </div>
