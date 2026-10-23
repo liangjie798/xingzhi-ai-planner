@@ -12,6 +12,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { EnvironmentMap } from "./environment-map";
+import { SlidingSelection, useSwitchEntrance } from "./switch-motion";
+import { WelcomeGreeting } from "./welcome-greeting";
 import { AccountBadge } from "./account-badge";
 import { DecisionResultPanel } from "./decision-result-panel";
 import { AgentProgress } from "./agent-progress";
@@ -118,6 +120,7 @@ interface ConversationResponse {
 
 export function DecisionDashboard() {
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("studio");
+  const workspaceMotion = useSwitchEntrance(workspaceView);
   const [input, setInput] = useState<ActivityInput>(initialInput);
   const [layer, setLayer] = useState<LayerKey>("comfort");
   const [city, setCity] = useState<CityEnvironment | null>(null);
@@ -586,7 +589,7 @@ export function DecisionDashboard() {
           <div className="brand-mark" aria-hidden="true"><Compass size={23} weight="duotone" /></div>
           <div><p className="brand-name">适候</p><p className="brand-subtitle">户外活动环境决策系统</p></div>
         </div>
-        <nav className="primary-nav" aria-label="工作区导航">
+        <nav className="primary-nav" aria-label="工作区导航"><SlidingSelection value={workspaceView} />
           <button type="button" className={`nav-item ${workspaceView === "studio" ? "is-active" : ""}`} onClick={() => switchWorkspace("studio")}>分析台</button>
           <button type="button" className={`nav-item ${workspaceView === "map" ? "is-active" : ""}`} onClick={() => switchWorkspace("map")}>环境地图</button>
           <button type="button" className={`nav-item ${workspaceView === "plan" ? "is-active" : ""}`} onClick={() => switchWorkspace("plan")}>执行方案</button>
@@ -600,7 +603,7 @@ export function DecisionDashboard() {
         </div>
       </header>
 
-      <section className={`workspace workspace-${workspaceView}`}>
+      <section ref={workspaceMotion} className={`workspace workspace-${workspaceView}`}>
         <aside className="control-rail">
           <div className="rail-heading">
             <div><span className="section-kicker">辅助条件</span><h1>校准分析范围</h1></div>
@@ -695,7 +698,7 @@ export function DecisionDashboard() {
         </aside>
 
         <section className="map-workbench">
-          <header className="studio-page-heading"><span>适候 / 智能规划工作室</span><h1>从一个想法，到一份可执行的计划。</h1><p>告诉我想去哪、何时出发、准备做什么。</p></header>
+          <header className="studio-page-heading"><WelcomeGreeting /><span>适候 / 智能规划工作室</span><h1>从一个想法，到一份可执行的计划。</h1><p>告诉我想去哪、何时出发、准备做什么。</p></header>
           <section className="analysis-console is-expanded" aria-label="对话驱动数据分析">
             <div className="analysis-console-head">
               <div><span className="conversation-icon"><ChatCircleDots size={19} weight="duotone" /></span><div><strong>对话分析</strong><small>描述城市、日期与活动，系统会直接更新数据、地图和结论</small></div></div>

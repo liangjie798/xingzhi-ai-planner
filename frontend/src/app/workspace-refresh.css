@@ -42,3 +42,26 @@
   .workspace.workspace-plan,.workspace-plan .result-report,.report-body,.document-layout,.planning-manuscript { display: block !important; max-width: none !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; overflow: visible !important; }
   .planning-manuscript h2 { font-size: 22pt; }.planning-manuscript h3 { font-size: 14pt; break-after: avoid; }.planning-manuscript section p { font-size: 10.5pt; line-height: 1.8; orphans: 3; widows: 3; }.planning-manuscript footer { font-size: 9pt; }
 }
+/* Shared moving selection, sized to the actual active button. */
+.portal-tabs, .app-shell .primary-nav, .report-tabs { isolation: isolate; }
+.portal-tabs, .app-shell .primary-nav { position: relative; }
+.sliding-selection { position: absolute; top: 0; left: 0; z-index: -1; pointer-events: none; border-radius: 8px; transition: transform .32s cubic-bezier(.22,1,.36,1), width .32s cubic-bezier(.22,1,.36,1), height .32s cubic-bezier(.22,1,.36,1); }
+.portal-tabs > .sliding-selection { background: white; box-shadow: 0 3px 10px #0c423b14; }
+.portal-tabs button.is-active { background: transparent; box-shadow: none; }
+.portal-tabs button, .app-shell .nav-item, .report-tabs button { transition: color .2s ease, background-color .2s ease; }
+.portal-tabs button:disabled { cursor: wait; }
+.app-shell .primary-nav > .sliding-selection { background: #2d4937; border-radius: 7px; }
+.app-shell .primary-nav .nav-item.is-active { background: transparent; }
+.report-tabs > .sliding-selection { background: #eef2e6; border-radius: 0; border-bottom: 3px solid #315d40; }
+.report-tabs button.is-active { background: transparent; border-bottom-color: transparent; }
+.login-panel { overflow: clip; }
+.login-panel-content { display: flow-root; padding-bottom: 2px; }
+.login-panel-content > p { margin: 0 0 28px; color: var(--muted); font-size: 11px; }
+.welcome-greeting { margin: 0 0 14px; color: #315d40; font-size: 14px; line-height: 1.7; animation: welcome-arrive .4s ease both; }
+.studio-page-heading .welcome-greeting { margin: 0 0 10px; font-size: 13px; color: #315d40; }
+.studio-page-heading:has(.welcome-greeting) { min-height: 140px; }
+@keyframes welcome-arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .sliding-selection, .portal-tabs button, .app-shell .nav-item, .report-tabs button { transition: none !important; }
+  .welcome-greeting { animation: none !important; }
+}

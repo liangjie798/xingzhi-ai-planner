@@ -3,6 +3,7 @@
 import { Binoculars, Brain, CalendarCheck, CheckCircle, ClipboardText, Database, Info, MapPin, Pulse, ShieldCheck, Sparkle, UsersThree, ArrowUpRight, Clock } from "@phosphor-icons/react";
 import Image from "next/image";
 import { useState } from "react";
+import { SlidingSelection, useSwitchEntrance } from "./switch-motion";
 import { cityById } from "@/lib/cities";
 import { AgentProgress } from "./agent-progress";
 import { formatDuration } from "@/lib/timing";
@@ -149,6 +150,7 @@ function TourismPlan({ route }: { route: TourismRoute }) {
 }
 
 export function DecisionResultPanel({ input, isTourism, route, result, liveTrace, activePanel, onPanel, isPlanning, isAnalyzing }: Props) {
+  const panelMotion = useSwitchEntrance(activePanel);
   const ready = isTourism ? !!route : !!result;
   const running = isTourism ? isPlanning : isAnalyzing;
   const evidence = isTourism ? route?.evidence ?? [] : result?.evidence ?? [];
@@ -162,9 +164,10 @@ export function DecisionResultPanel({ input, isTourism, route, result, liveTrace
   return <section className="decision-panel result-report" aria-label="执行方案报告">
     <header className="report-header"><div><span className="section-kicker">决策报告</span><h1>{isTourism ? "让行程有据可循" : "从分析到现场执行"}</h1><p>{input.cityName || cityById(input.cityId).name} · {input.activityType} · {input.date || "待选择日期"}{input.endDate && input.endDate !== input.date ? ` 至 ${input.endDate}` : ""}</p></div><span className={`report-badge ${running ? "is-warning" : ""}`}>{running ? <Pulse size={15} /> : <CheckCircle size={15} />}{running ? "正在更新" : ready ? "分析已完成" : "等待分析"}</span></header>
     <div className="report-tabs" role="tablist" aria-label="报告内容" onKeyDown={(event) => { const current = tabs.findIndex((tab) => tab.key === activePanel); const next = event.key === "ArrowRight" ? (current + 1) % tabs.length : event.key === "ArrowLeft" ? (current + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1; if (next >= 0) { event.preventDefault(); onPanel(tabs[next].key); window.document.getElementById(`report-tab-${tabs[next].key}`)?.focus(); } }}>
+      <SlidingSelection value={activePanel} />
       {tabs.map(({ key, label, detail, icon: Icon }) => <button type="button" role="tab" id={`report-tab-${key}`} aria-selected={activePanel === key} aria-controls={`report-content-${key}`} tabIndex={activePanel === key ? 0 : -1} className={activePanel === key ? "is-active" : ""} key={key} onClick={() => onPanel(key)}><Icon size={22} weight={activePanel === key ? "duotone" : "regular"} /><span><strong>{label}</strong><small>{detail}</small></span></button>)}
     </div>
-    <div className={`report-body report-body-${activePanel}`} role="tabpanel" id={`report-content-${activePanel}`} aria-labelledby={`report-tab-${activePanel}`} tabIndex={0}>
+    <div ref={panelMotion} className={`report-body report-body-${activePanel}`} role="tabpanel" id={`report-content-${activePanel}`} aria-labelledby={`report-tab-${activePanel}`} tabIndex={0}>
       {!ready && !(activePanel === "trace" && trace.length > 0) ? <div className="report-empty">{running ? <Pulse size={36} /> : isTourism ? <Binoculars size={36} /> : <Sparkle size={36} />}<h2>{running ? "正在准备这份报告" : "先完成一次对话分析"}</h2><p>{running ? "工具返回后，方案、证据与执行轨迹会自动更新。" : "在分析台描述城市、日期与活动需求，完成后即可在这里查看详细内容。"}</p><a href="/dashboard">返回分析台 <ArrowUpRight size={16} /></a></div>
         : activePanel === "plan" ? <>{document && <PlanDocumentReader document={document} />}<details className="structured-plan"><summary>{isTourism ? "查看按天行程与地点图片" : "查看时间线与执行卡片"}</summary>{isTourism && route ? <TourismPlan key={`${route.cityName}-${route.date}-${route.endDate}`} route={route} /> : result && <ActivityPlan input={input} result={result} />}</details></>
         : activePanel === "evidence" ? <EvidenceReport items={evidence} isTourism={isTourism} />
