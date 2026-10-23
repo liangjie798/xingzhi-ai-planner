@@ -147,25 +147,37 @@ function routeEvidence(stops: TourismStop[]): EvidenceItem[] {
   ];
 }
 
-function routeTrace(hours: number, candidates: number, days: number, generatedBy: "llm" | "curated", modelMs: number, poiMs: number): ToolTraceItem[] {
+interface RouteTimings { forecastMs: number; retrieveMs: number; planMs: number; enrichMs: number; validateMs: number }
+function routeTrace(hours: number, candidates: number, days: number, generatedBy: "llm" | "curated", timing: RouteTimings): ToolTraceItem[] {
   return [
-    { id: "tour-forecast", name: "读取逐小时环境", detail: `接收 ${hours} 个小时的气温、降水、AQI 与热风险数据，计算推荐出行时段。`, status: "done", durationMs: 0 },
-    { id: "tour-retrieve", name: "检索城市候选地点", detail: `从城市候选库筛选 ${candidates} 个景点与美食，并执行类别约束。`, status: candidates ? "done" : "fallback", durationMs: 0 },
-    { id: "tour-plan", name: "编排多日游览顺序", detail: generatedBy === "llm" ? `模型在限定候选集内编排 ${days} 日路线、每日用餐时间和天气适配。` : `模型不可用，使用可解释规则生成 ${days} 日路线。`, status: generatedBy === "llm" ? "done" : "fallback", durationMs: modelMs },
-    { id: "tour-enrich", name: "校准 POI 与链接", detail: "使用高德 POI 校准地点坐标、地址和图片，并生成导航及内容平台检索入口。", status: "done", durationMs: poiMs },
-    { id: "tour-validate", name: "路线约束校验", detail: "检查站点去重、时间顺序，以及景点与美食的最低数量要求。", status: "done", durationMs: 0 },
+    { id: "tour-forecast", name: "读取逐小时环境", detail: `接收 ${hours} 个小时的气温、降水、AQI 与热风险数据，计算推荐出行时段。`, status: "done", durationMs: timing.forecastMs },
+    { id: "tour-retrieve", name: "检索城市候选地点", detail: `从城市候选库筛选 ${candidates} 个景点与美食，并执行类别约束。`, status: candidates ? "done" : "fallback", durationMs: timing.retrieveMs },
+    { id: "tour-plan", name: "编排多日游览顺序", detail: generatedBy === "llm" ? `模型在限定候选集内编排 ${days} 日路线、每日用餐时间和天气适配。` : `使用可解释规则生成 ${days} 日路线；若尝试过模型调用，耗时包含等待失败及切换规则的时间。`, status: generatedBy === "llm" ? "done" : "fallback", durationMs: timing.planMs },
+    { id: "tour-enrich", name: "校准 POI 与链接", detail: "使用高德 POI 校准地点坐标、地址和图片，并生成导航及内容平台检索入口。", status: "done", durationMs: timing.enrichMs },
+    { id: "tour-validate", name: "路线约束校验", detail: "检查站点名称是否重复、日期与时间是否合法，并整理引用依据。", status: "done", durationMs: timing.validateMs },
   ];
 }
 
-async function fallbackRoute(body: TourismRequestBody): Promise<TourismRoute> {
-  const poiStarted = Date.now();
+function validateStops(stops: TourismStop[], dates: string[]) {
+  if (new Set(stops.map((stop) => stop.name)).size !== stops.length) throw new Error("路线包含重复站点");
+  if (stops.some((stop) => !dates.includes(stop.date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(stop.time))) throw new Error("路线日期或时间无效");
+  return routeEvidence(stops);
+}
+
+async function fallbackRoute(body: TourismRequestBody, candidates: PoiSpot[], timing: RouteTimings): Promise<TourismRoute> {
+  const planStarted = performance.now();
   const dates = tripDates(body.date, body.endDate);
-  const candidates = await candidatesFor(body);
   const selected = curatedPois(candidates, dates.length * DAY_TIMES.length);
+  timing.planMs += performance.now() - planStarted;
+  const poiStarted = performance.now();
   const stops = await Promise.all(selected.map((poi, index) => {
     const day = Math.floor(index / DAY_TIMES.length) + 1;
     return enrichStop(body.cityName, poi, DAY_TIMES[index % DAY_TIMES.length], day, dates[day - 1] ?? dates.at(-1)!);
   }));
+  timing.enrichMs = performance.now() - poiStarted;
+  const validationStarted = performance.now();
+  const evidence = validateStops(stops, dates);
+  timing.validateMs = performance.now() - validationStarted;
   const tripName = dates.length === 1 ? "一日" : `${dates.length}日`;
   return {
     cityName: body.cityName, date: body.date, endDate: dates.at(-1)!, dayCount: dates.length,
@@ -173,8 +185,8 @@ async function fallbackRoute(body: TourismRequestBody): Promise<TourismRoute> {
     bestHours: bestHoursText(body.hours ?? []), stops,
     notes: ["推荐参考公开文旅资料，并提供抖音、小红书关键词检索入口；平台热度会变化，不代表实时排名。", "图片与地址来自高德公开 POI 信息，出发前请再次确认营业时间、预约和交通状态。"],
     generatedBy: "curated",
-    evidence: routeEvidence(stops),
-    trace: routeTrace(body.hours?.length ?? 0, candidates.length, dates.length, "curated", 0, Date.now() - poiStarted),
+    evidence,
+    trace: routeTrace(body.hours?.length ?? 0, candidates.length, dates.length, "curated", timing),
   };
 }
 
@@ -185,8 +197,13 @@ export async function POST(request: Request) {
   if (!body.cityName || !body.date) return NextResponse.json({ detail: "缺少城市或日期参数" }, { status: 400 });
 
   const dates = tripDates(body.date, body.endDate);
+  const retrieveStarted = performance.now();
   const pois = await candidatesFor(body);
-  if (pois.length < 3) return NextResponse.json(await fallbackRoute(body));
+  const timing: RouteTimings = { forecastMs: 0, retrieveMs: performance.now() - retrieveStarted, planMs: 0, enrichMs: 0, validateMs: 0 };
+  const forecastStarted = performance.now();
+  const bestHours = bestHoursText(body.hours ?? []);
+  timing.forecastMs = performance.now() - forecastStarted;
+  if (pois.length < 3) return NextResponse.json(await fallbackRoute(body, pois, timing));
   const desiredStops = Math.min(pois.length, dates.length * DAY_TIMES.length);
   const weatherSummary = (body.hours ?? []).filter((hour) => hour.hour >= 8 && hour.hour <= 21)
     .map((hour) => `${hour.date} ${hour.hour}时 ${hour.temperature}°C 湿度${hour.humidity}% 降水${hour.rainProbability}% AQI${hour.aqi} 热风险${hour.heatRisk}`).join("；");
@@ -200,11 +217,10 @@ export async function POST(request: Request) {
     `共选择 ${desiredStops} 站并分配到第 1-${dates.length} 日，每天优先安排 3-4 站并包含正餐；按日期和实际游览顺序排列。`,
   ].filter(Boolean).join("\n");
 
+  const modelStarted = performance.now();
   try {
-    const modelStarted = Date.now();
     const config = await resolveAccountModelConfig(request);
     const result = await callLlm({ system, prompt, config });
-    const modelMs = Date.now() - modelStarted;
     const plan = extractJson<LlmRoutePlan>(result.text);
     const chosen: Array<{ poi: PoiSpot; day: number; time: string; tip?: string }> = [];
     for (const [index, stop] of (Array.isArray(plan?.stops) ? plan.stops.slice(0, desiredStops) : []).entries()) {
@@ -219,19 +235,30 @@ export async function POST(request: Request) {
       const index = chosen.length;
       chosen.push({ poi, day: Math.min(dates.length, Math.floor(index / DAY_TIMES.length) + 1), time: DAY_TIMES[index % DAY_TIMES.length] });
     }
-    if (chosen.length < 3) return NextResponse.json({ ...(await fallbackRoute(body)), provider: result.provider });
+    if (chosen.length < 3) {
+      timing.planMs = performance.now() - modelStarted;
+      return NextResponse.json({ ...(await fallbackRoute(body, pois, timing)), provider: result.provider });
+    }
     chosen.sort((a, b) => a.day - b.day || a.time.localeCompare(b.time));
-    const poiStarted = Date.now();
+    timing.planMs = performance.now() - modelStarted;
+    const poiStarted = performance.now();
     const stops = await Promise.all(chosen.map((item) => enrichStop(body.cityName, item.poi, item.time, item.day, dates[item.day - 1], item.tip)));
-    const poiMs = Date.now() - poiStarted;
+    timing.enrichMs = performance.now() - poiStarted;
+    const validationStarted = performance.now();
+    const evidence = validateStops(stops, dates);
+    timing.validateMs = performance.now() - validationStarted;
     return NextResponse.json({
       cityName: body.cityName, date: body.date, endDate: dates.at(-1)!, dayCount: dates.length,
       summary: plan?.summary?.trim() || `${body.cityName}景点与美食${dates.length === 1 ? "一日" : `${dates.length}日`}路线，结合每日天气编排。`,
-      bestHours: plan?.bestHours?.trim() || bestHoursText(body.hours ?? []), stops,
+      bestHours: plan?.bestHours?.trim() || bestHours, stops,
       notes: [...(Array.isArray(plan?.notes) ? plan.notes.slice(0, 2).map(String) : []), "抖音、小红书按钮打开对应关键词的实时检索结果，平台内容与热度由平台更新。"],
       generatedBy: "llm", provider: `${result.provider} · ${result.model}`,
-      evidence: routeEvidence(stops),
-      trace: routeTrace(body.hours?.length ?? 0, pois.length, dates.length, "llm", modelMs, poiMs),
+      evidence,
+      trace: routeTrace(body.hours?.length ?? 0, pois.length, dates.length, "llm", timing),
     } satisfies TourismRoute);
-  } catch { return NextResponse.json(await fallbackRoute(body)); }
+  } catch {
+    // Keep failed model wait visible rather than replacing it with a zero-duration fallback.
+    if (!timing.planMs) timing.planMs = performance.now() - modelStarted;
+    return NextResponse.json(await fallbackRoute(body, pois, timing));
+  }
 }

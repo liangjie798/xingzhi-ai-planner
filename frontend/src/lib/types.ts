@@ -101,6 +101,7 @@ export interface ToolTraceItem {
 }
 
 export interface DecisionResult {
+  totalDurationMs?: number;
   recommendation: string;
   summary: string;
   overallScore: number;
@@ -159,6 +160,7 @@ export interface TourismStop {
 }
 
 export interface TourismRoute {
+  totalDurationMs?: number;
   cityName: string;
   date: string;
   endDate: string;

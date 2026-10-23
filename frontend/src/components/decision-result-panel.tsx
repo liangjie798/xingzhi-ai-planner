@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { cityById } from "@/lib/cities";
 import { AgentProgress } from "./agent-progress";
+import { formatDuration } from "@/lib/timing";
 import { buildPlanningDocument, documentMarkdown, downloadBlob, downloadWord, type PlanningDocument } from "@/lib/planning-document";
 import type { ActivityInput, DecisionResult, EvidenceItem, ToolTraceItem, TourismRoute } from "@/lib/types";
 
@@ -26,7 +27,7 @@ function SectionHeading({ number, title, detail }: { number: string; title: stri
   return <header className="report-section-heading"><span>{number}</span><div><h3>{title}</h3>{detail && <p>{detail}</p>}</div></header>;
 }
 
-function TraceVisualizer({ items, running }: { items: ToolTraceItem[]; running: boolean }) {
+function TraceVisualizer({ items, running, totalDurationMs }: { items: ToolTraceItem[]; running: boolean; totalDurationMs?: number }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = items.find((item) => item.id === selectedId) ?? items.at(-1);
   const elapsed = items.reduce((sum, item) => sum + item.durationMs, 0);
@@ -34,17 +35,18 @@ function TraceVisualizer({ items, running }: { items: ToolTraceItem[]; running: 
   return <div className="trace-report">
     <AgentProgress items={items} running={running} />
     <div className="report-stats">
-      <div><span>执行状态</span><strong><Pulse size={18} />{running ? "执行中" : "已完成"}</strong></div>
+      <div><span>整轮耗时</span><strong className="duration-value"><Pulse size={18} />{running ? "执行中" : formatDuration(totalDurationMs)}</strong></div>
       <div><span>工具步骤</span><strong>{items.length}<small>步</small></strong></div>
-      <div><span>累计工具耗时</span><strong>{(elapsed / 1000).toFixed(1)}<small>秒</small></strong></div>
+      <div><span>已记录工具耗时合计</span><strong className="duration-value">{formatDuration(elapsed)}</strong></div>
       <div><span>规则兜底</span><strong>{fallbackCount}<small>步</small></strong></div>
     </div>
+    <p className="timing-explanation">整轮耗时包含本轮请求、数据查询和等待；工具耗时只统计已记录步骤。快速计算以毫秒显示，耗时短不代表模型没有执行。</p>
     {items.length ? <div className="trace-layout">
       <section><SectionHeading number="01" title="工具执行流程" detail="点击步骤，查看真实调用结果与耗时" />
         <ol className="trace-step-list">{items.map((item, index) => <li key={item.id}>
           <button type="button" className={selected?.id === item.id ? "is-selected" : ""} onClick={() => setSelectedId(item.id)} aria-pressed={selected?.id === item.id}>
             <span className={item.status === "fallback" ? "step-index is-fallback" : "step-index"}>{index + 1}</span>
-            <span className="step-label"><strong>{toolLabel(item.name)}</strong><small>{item.status === "fallback" ? "规则兜底" : "已完成"} · {(item.durationMs / 1000).toFixed(2)} 秒</small></span><ArrowUpRight size={17} />
+            <span className="step-label"><strong>{toolLabel(item.name)}</strong><small>{item.status === "fallback" ? "规则兜底" : "已完成"} · {formatDuration(item.durationMs)}</small></span><ArrowUpRight size={17} />
           </button>
         </li>)}</ol>
       </section>
@@ -52,7 +54,7 @@ function TraceVisualizer({ items, running }: { items: ToolTraceItem[]; running: 
         <span className="section-kicker">步骤 {items.findIndex((item) => item.id === selected.id) + 1} / {items.length}</span>
         <Brain size={32} weight="duotone" /><h3>{toolLabel(selected.name)}</h3>
         <span className={selected.status === "fallback" ? "report-badge is-warning" : "report-badge"}>{selected.status === "fallback" ? "使用规则完成" : "工具执行完成"}</span>
-        <p>{selected.detail}</p><dl><div><dt>工具耗时</dt><dd>{selected.durationMs} ms</dd></div><div><dt>记录来源</dt><dd>实际工具调用</dd></div></dl>
+        <p>{selected.detail}</p><dl><div><dt>工具耗时</dt><dd>{formatDuration(selected.durationMs)}</dd></div><div><dt>记录来源</dt><dd>实际工具调用</dd></div></dl>
         <div className="report-note"><Info size={18} /><p>这里展示工具执行记录与输出摘要，便于核对 Agent 实际完成的工作。</p></div>
       </section>}
     </div> : <div className="report-note"><Clock size={18} /><p>{running ? "正在准备首个工具，执行记录将自动更新。" : "本次分析暂无工具执行记录。"}</p></div>}
@@ -166,7 +168,7 @@ export function DecisionResultPanel({ input, isTourism, route, result, liveTrace
       {!ready && !(activePanel === "trace" && trace.length > 0) ? <div className="report-empty">{running ? <Pulse size={36} /> : isTourism ? <Binoculars size={36} /> : <Sparkle size={36} />}<h2>{running ? "正在准备这份报告" : "先完成一次对话分析"}</h2><p>{running ? "工具返回后，方案、证据与执行轨迹会自动更新。" : "在分析台描述城市、日期与活动需求，完成后即可在这里查看详细内容。"}</p><a href="/dashboard">返回分析台 <ArrowUpRight size={16} /></a></div>
         : activePanel === "plan" ? <>{document && <PlanDocumentReader document={document} />}<details className="structured-plan"><summary>{isTourism ? "查看按天行程与地点图片" : "查看时间线与执行卡片"}</summary>{isTourism && route ? <TourismPlan key={`${route.cityName}-${route.date}-${route.endDate}`} route={route} /> : result && <ActivityPlan input={input} result={result} />}</details></>
         : activePanel === "evidence" ? <EvidenceReport items={evidence} isTourism={isTourism} />
-        : <TraceVisualizer items={trace} running={running} />}
+        : <TraceVisualizer items={trace} running={running} totalDurationMs={isTourism ? route?.totalDurationMs : result?.totalDurationMs} />}
     </div>
   </section>;
 }

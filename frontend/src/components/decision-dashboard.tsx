@@ -428,7 +428,8 @@ export function DecisionDashboard() {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(activity),
       });
       if (!response.ok) throw new Error(await apiError(response));
-      const decision = await readAgentStream(response, (item) => setLiveTrace((current) => [...current, item]));
+      const streamed = await readAgentStream(response, (item) => setLiveTrace((current) => [...current, item]));
+      const decision = { ...streamed, totalDurationMs: Date.now() - startedAt };
       setResult(decision);
       setLiveTrace([]);
       setRoute(null);
@@ -446,6 +447,7 @@ export function DecisionDashboard() {
   }
 
   async function planTourism(activity: ActivityInput = input, targetMeta: CityOption = meta) {
+    const startedAt = performance.now();
     setIsPlanning(true);
     setLiveTrace([]);
     setAgentPhase("正在读取出行日期的逐小时数据");
@@ -469,7 +471,8 @@ export function DecisionDashboard() {
         return payload.hours.map((hour) => ({ ...hour, date }));
       }));
       const hourlyDays = hourlyResults.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
-      setLiveTrace([{ id: "tourism-environment", name: "读取逐小时环境", detail: `已读取 ${hourlyDays.length}/${dates.length} 天的逐小时数据`, status: hourlyDays.length === dates.length ? "done" : "fallback", durationMs: 0 }]);
+      const environmentMs = performance.now() - startedAt;
+      setLiveTrace([{ id: "tourism-environment", name: "读取逐小时环境", detail: `已读取 ${hourlyDays.length}/${dates.length} 天的逐小时数据`, status: hourlyDays.length === dates.length ? "done" : "fallback", durationMs: environmentMs }]);
       setAgentPhase("正在检索景点、美食并编排旅行路线");
       const data = await fetchTourismRoute(apiBase, {
         cityName: targetMeta.name,
@@ -480,6 +483,8 @@ export function DecisionDashboard() {
         endDate: activity.endDate || activity.date || dateString(),
         hours: hourlyDays.flat(),
       });
+      data.totalDurationMs = performance.now() - startedAt;
+      data.trace = data.trace.map((item) => item.id === "tour-forecast" ? { ...item, durationMs: item.durationMs + environmentMs, detail: `已读取 ${hourlyDays.length}/${dates.length} 天的逐小时环境数据，并计算推荐出行时段。` } : item);
       setRoute(data);
       setResult(null);
       setActivePanel("plan");
@@ -500,6 +505,7 @@ export function DecisionDashboard() {
   }
 
   async function submitConversation() {
+    const conversationStarted = performance.now();
     const message = chatText.trim();
     if (!message || chatBusy) return;
     const userMessage: ChatMessage = { role: "user", content: message };
@@ -553,6 +559,9 @@ export function DecisionDashboard() {
       await loadCity(targetMeta);
       const completed = nextInput.activityType === "旅游规划" ? await planTourism(nextInput, targetMeta) : await analyze(nextInput, targetMeta);
       if (!completed) throw new Error("本次分析未完成，请查看错误提示后重试。");
+      completed.totalDurationMs = performance.now() - conversationStarted;
+      if ("recommendation" in completed) setResult({ ...completed });
+      else setRoute({ ...completed });
       setChatMessages((current) => [...current, { role: "assistant", content: "recommendation" in completed ? `${completed.recommendation}。\n${completed.summary}\n完整规划书已生成，可在执行方案中阅读或下载。也可以继续询问依据、比较时段或生成筹备清单。` : `${completed.cityName}${completed.dayCount}日规划已完成。\n${completed.summary}\n共安排 ${completed.stops.length} 个景点与美食站点。前往执行方案阅读完整规划书并下载。` }]);
     } catch (caught) {
       const detail = caught instanceof Error ? caught.message : "对话分析暂时不可用";
