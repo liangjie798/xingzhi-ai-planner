@@ -110,8 +110,8 @@ async function enrichStop(cityName: string, poi: PoiSpot, time: string, day: num
       const result = data.status === "1" ? data.pois?.[0] : undefined;
       const [lng, lat] = String(result?.location ?? "").split(",").map(Number);
       if (Number.isFinite(lng) && Number.isFinite(lat)) { longitude = lng; latitude = lat; }
-      address = typeof result?.address === "string" ? result.address : undefined;
-      imageUrl = result?.photos?.find((photo) => typeof photo.url === "string")?.url?.replace(/^http:/, "https:");
+      address = typeof result?.address === "string" ? result.address : address;
+      imageUrl = result?.photos?.find((photo) => typeof photo.url === "string")?.url?.replace(/^http:/, "https:") || imageUrl;
     } catch { /* 内置坐标与文字仍可保证路线可用 */ }
   }
   return {

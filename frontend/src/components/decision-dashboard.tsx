@@ -571,7 +571,7 @@ export function DecisionDashboard() {
       <header className="topbar">
         <div className="brand-block">
           <div className="brand-mark" aria-hidden="true"><Compass size={23} weight="duotone" /></div>
-          <div><p className="brand-name">适候</p><p className="brand-subtitle">户外活动环境决策系统</p></div>
+          <div><p className="brand-name">行知</p><p className="brand-subtitle">AI 活动与旅行规划</p></div>
         </div>
         <nav className="primary-nav" aria-label="工作区导航"><SlidingSelection value={workspaceView} />
           <button type="button" className={`nav-item ${workspaceView === "studio" ? "is-active" : ""}`} onClick={() => switchWorkspace("studio")}>分析台</button>
@@ -658,7 +658,7 @@ export function DecisionDashboard() {
         </aside>
 
         <section className="map-workbench">
-          <header className="studio-page-heading"><WelcomeGreeting /><span>适候 / 智能规划工作室</span><h1>从一个想法，到一份可执行的计划。</h1><p>告诉我想去哪、何时出发、准备做什么。</p></header>
+          <header className="studio-page-heading"><WelcomeGreeting /><span>行知 / 智能规划工作室</span><h1>从一个想法，到一份可执行的计划。</h1><p>告诉我想去哪、何时出发、准备做什么。</p></header>
           <section className="analysis-console is-expanded" aria-label="对话驱动数据分析">
             <div className="analysis-console-head">
               <div><span className="conversation-icon"><ChatCircleDots size={19} weight="duotone" /></span><div><strong>对话分析</strong><small>先聊需求，再补充条件；确认后生成地图与详细方案</small></div></div>

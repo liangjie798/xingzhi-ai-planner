@@ -21,7 +21,7 @@ export default function AccountPage() {
   }
 
   return <main className="account-page">
-    <header className="account-topbar"><Link href="/dashboard"><ArrowLeft size={17} />返回工作台</Link><span><Compass size={21} weight="duotone" />适候</span><button onClick={signOut}><SignOut size={17} />退出登录</button></header>
+    <header className="account-topbar"><Link href="/dashboard"><ArrowLeft size={17} />返回工作台</Link><span><Compass size={21} weight="duotone" />行知</span><button onClick={signOut}><SignOut size={17} />退出登录</button></header>
     <div className="account-body"><WelcomeGreeting user={user} />
       <section className="account-hero"><div className="account-monogram">{user?.displayName?.slice(0, 2) || "SH"}</div><div><span className="section-kicker">{user?.role === "SUPER_ADMIN" ? "超级管理员账户" : user?.role === "ADMIN" ? "管理员账户" : "个人账户"}</span><h1>{user?.displayName || "正在读取账户"}</h1><p>@{user?.username || "--"} · 登录后生成的决策会自动保存在这里</p></div></section>
       <section className="history-section"><div className="history-heading"><div><span className="section-kicker">决策档案</span><h2>最近 50 次活动判断</h2></div><Link href="/dashboard"><Sparkle size={17} />新建决策</Link></div>

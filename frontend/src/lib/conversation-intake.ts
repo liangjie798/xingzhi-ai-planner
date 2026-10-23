@@ -36,7 +36,8 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   if (duration) patch.duration = number(duration[1]);
   const people = text.match(/([一二两三四五六七八九十\d]+)\s*(?:个)?(?:人|位|名|成年人)/);
   if (people) patch.participants = number(people[1]);
-  if (/儿童|学生|初中生|高中生|亲子|孩子|青少年/.test(text)) patch.group = "儿童青少年";
+  if (/大学生|研究生|成年人|成人/.test(text)) patch.group = "普通人群";
+  else if (/儿童|学生|初中生|高中生|亲子|孩子|青少年/.test(text)) patch.group = "儿童青少年";
   else if (/老人|老年|长者/.test(text)) patch.group = "老年人";
   else if (/敏感人群/.test(text)) patch.group = "敏感人群";
   else if (/成人|成年|普通人群|年轻人/.test(text)) patch.group = "普通人群";

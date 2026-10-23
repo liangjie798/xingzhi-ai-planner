@@ -5,8 +5,8 @@ import "./globals.css";
 import "./workspace-refresh.css";
 
 export const metadata: Metadata = {
-  title: "适候 | AI 户外活动环境决策平台",
-  description: "基于实时天气、空气质量与逐小时预报，为校园和社区户外活动生成可解释的时段决策。",
+  title: "行知 · AI 活动与旅行规划",
+  description: "通过对话确认目的地、日期与参与人群，结合真实环境数据，生成图文旅行规划与按时间执行的活动方案。",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

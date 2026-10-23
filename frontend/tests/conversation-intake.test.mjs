@@ -61,3 +61,5 @@ test("invalid and out-of-forecast dates require correction", () => {
   assert.equal(result.command, "clarify");
   assert.match(result.reply, /调整出发或结束日期/);
 });
+
+test("university students are classified as adults", () => { assert.equal(turn({}, "大学生").intake.known.group, "普通人群"); });
