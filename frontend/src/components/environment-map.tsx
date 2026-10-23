@@ -412,12 +412,10 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
       marker.on("click", () => {
         activeInfoWindow?.close();
         const image = stop.imageUrl ? `<img src="${escapeHtml(stop.imageUrl)}" alt="" />` : "";
-        const navigation = stop.links.find((link) => link.kind === "map")?.url;
-        const action = navigation ? `<a href="${escapeHtml(navigation)}" target="_blank" rel="noopener noreferrer">打开高德导航</a>` : "";
         activeInfoWindow = new AMap.InfoWindow({
           anchor: "bottom-center",
           offset: [0, -19],
-          content: `<article class="route-map-popover">${image}<div><small>第${stop.day}日 · ${escapeHtml(stop.date)} · ${escapeHtml(stop.category)} · ${escapeHtml(stop.time)}</small><strong>${escapeHtml(stop.name)}</strong><p>${escapeHtml(stop.tip)}</p>${action}</div></article>`,
+          content: `<article class="route-map-popover">${image}<div><small>第${stop.day}日 · ${escapeHtml(stop.date)} · ${escapeHtml(stop.category)} · ${escapeHtml(stop.time)}</small><strong>${escapeHtml(stop.name)}</strong><p><b>推荐理由：</b>${escapeHtml(stop.tip)}</p></div></article>`,
         });
         activeInfoWindow.open(map, [stop.longitude, stop.latitude]);
       });

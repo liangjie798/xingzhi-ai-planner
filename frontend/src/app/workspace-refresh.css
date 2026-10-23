@@ -60,6 +60,13 @@
 .welcome-greeting { margin: 0 0 14px; color: #315d40; font-size: 14px; line-height: 1.7; animation: welcome-arrive .4s ease both; }
 .studio-page-heading .welcome-greeting { margin: 0 0 10px; font-size: 13px; color: #315d40; }
 .studio-page-heading:has(.welcome-greeting) { min-height: 140px; }
+.intake-summary { margin-top: 18px; padding-top: 18px; border-top: 1px solid #e2e6d9; }
+.intake-summary > p { color: #76816f; font-size: 12px; line-height: 1.8; }
+.intake-summary dl { margin: 12px 0; }
+.intake-summary dl > div { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 10px; padding: 8px 0; border-bottom: 1px solid #edf0e7; font-size: 12px; line-height: 1.6; }
+.intake-summary dt { color: #7c8576; }.intake-summary dd { margin: 0; color: #2d4937; overflow-wrap: anywhere; }
+.intake-summary > button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; margin-top: 16px; padding: 11px; border: 1px solid #d8dfcf; border-radius: 7px; color: #315d40; background: #f2f5ed; font: inherit; font-size: 12px; cursor: pointer; }
+.trip-stop-copy .stop-reason strong { display: block; margin-bottom: 5px; font-size: 11px; color: #315d40; }
 @keyframes welcome-arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) {
   .sliding-selection, .portal-tabs button, .app-shell .nav-item, .report-tabs button { transition: none !important; }

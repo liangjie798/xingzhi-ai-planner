@@ -21,7 +21,7 @@ export function answerAgentAction(action: AgentAction, input: ActivityInput, res
     "□ 确认转场或延期条件，结束后清点人员。",
   ].join("\n");
   if (action === "compare") {
-    if (!result) return `本次为 ${route!.dayCount} 日旅行规划，共 ${route!.stops.length} 个停靠点。推荐出行时段：${route!.bestHours}。当前路线结果不包含各时段独立评分，不能据此给出精确分差；如需比较活动时段，请切换活动场景后重新分析。`;
+    if (!result) return `本次为 ${route!.dayCount} 日旅行规划，共 ${route!.stops.length} 个停靠点。推荐出行时段：${route!.bestHours}。当前路线结果不包含各时段独立评分，不能据此给出精确分差；如需比较活动时段，请在对话中说明活动类型后重新分析。`;
     const slots = [...result.slots].sort((a, b) => b.score - a.score).slice(0, 3);
     return "按本轮实际评分，前三个候选时段为：\n" + slots.map((slot, index) => `${index + 1}. ${slot.date || input.date} ${slot.label}：${slot.score} 分（${slot.level}），气温 ${slot.temperature}℃，US AQI ${slot.aqi}，降雨概率 ${slot.rainProbability}%。`).join("\n") + "\n评分同时考虑活动强度与参与人群，临近执行时仍需复核。";
   }

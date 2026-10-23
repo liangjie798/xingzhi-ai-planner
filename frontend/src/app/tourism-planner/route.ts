@@ -86,12 +86,11 @@ function bestHoursText(hours: TourismHourSnapshot[]): string {
     .map((hour) => `${String(hour.hour).padStart(2, "0")}:00 前后`).join("、");
 }
 
-function platformLinks(cityName: string, poi: PoiSpot, longitude: number, latitude: number): TourismStop["links"] {
+function platformLinks(cityName: string, poi: PoiSpot): TourismStop["links"] {
   const keyword = encodeURIComponent(`${cityName} ${poi.name} 攻略`);
   const links: TourismStop["links"] = [
     { label: "抖音攻略", kind: "douyin", url: `https://www.douyin.com/search/${keyword}` },
     { label: "小红书笔记", kind: "xiaohongshu", url: `https://www.xiaohongshu.com/search_result?keyword=${keyword}` },
-    { label: "高德导航", kind: "map", url: `https://uri.amap.com/marker?position=${longitude},${latitude}&name=${encodeURIComponent(poi.name)}&src=shihou` },
   ];
   if (poi.sourceUrl) links.push({ label: "官方资料", kind: "source", url: poi.sourceUrl });
   return links;
@@ -119,7 +118,7 @@ async function enrichStop(cityName: string, poi: PoiSpot, time: string, day: num
     name: poi.name, longitude, latitude, time, day, date, tip: tip?.trim() || poi.blurb, tag: poi.tag,
     category: poiCategory(poi), address, imageUrl,
     articleTitle: poi.sourceTitle || `${poi.name}游玩提示`, articleUrl: poi.sourceUrl,
-    links: platformLinks(cityName, poi, longitude, latitude),
+    links: platformLinks(cityName, poi),
   };
 }
 
@@ -183,7 +182,7 @@ async function fallbackRoute(body: TourismRequestBody, candidates: PoiSpot[], ti
     cityName: body.cityName, date: body.date, endDate: dates.at(-1)!, dayCount: dates.length,
     summary: stops.length ? `${body.cityName}${tripName}路线串联代表景点与本地美食，每日按上午游览、中午用餐、下午体验、傍晚街区的节奏编排，并结合逐小时天气调整户外停留。` : `${body.cityName}的公开 POI 暂时不足，请稍后重试或选择更明确的市、区县名称。`,
     bestHours: bestHoursText(body.hours ?? []), stops,
-    notes: ["推荐参考公开文旅资料，并提供抖音、小红书关键词检索入口；平台热度会变化，不代表实时排名。", "图片与地址来自高德公开 POI 信息，出发前请再次确认营业时间、预约和交通状态。"],
+    notes: [`同行安排：${body.participants ?? 1}人，${body.group ?? "普通人群"}；老人和儿童同行时缩短连续步行，增加补水与休息。`, "推荐参考公开文旅资料，并提供抖音、小红书关键词检索入口；平台热度会变化，不代表实时排名。", "图片与地址来自高德公开 POI 信息，出发前请再次确认营业时间、预约和交通状态。"],
     generatedBy: "curated",
     evidence,
     trace: routeTrace(body.hours?.length ?? 0, candidates.length, dates.length, "curated", timing),
@@ -211,6 +210,7 @@ export async function POST(request: Request) {
   const prompt = [
     `请为${body.cityName}（${body.province ?? "中国"}）规划 ${dates.length} 日路线，日期为 ${dates.join("、")}。`,
     "路线必须每天同时包含代表性景点和本地美食，兼顾相邻地点、用餐时间与当天逐小时天气。",
+    `同行情况：${body.participants ?? 1}人，${body.group ?? "普通人群"}，${body.intensity ?? "低强度"}。根据同行人群调整步行、休息与餐饮安排。tip必须具体说明推荐该地点的理由与行程作用，不能虚构平台热度或营业信息。`,
     weatherSummary ? `逐小时天气：${weatherSummary}。` : "",
     pois.length ? `候选地点（只能从中选择且名称必须一致）：${pois.map((poi) => `${poi.name}[${poiCategory(poi)}·${poi.tag}]`).join("、")}。` : "",
     `输出：{"summary":"路线概述","bestHours":"推荐时段","stops":[{"name":"地点名","day":1,"time":"HH:MM","tip":"20-40字具体建议"}],"notes":["2-3条注意事项"]}`,

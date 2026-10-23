@@ -1,11 +1,11 @@
 "use client";
 
 import {
-  ArrowClockwise, Binoculars, CalendarBlank, CaretDown, Clock, CloudSun, Compass,
+  ArrowClockwise, CaretDown, Clock, CloudSun, Compass,
   ChatCircleDots,
-  Crosshair, Drop, Gauge, GearSix, Lightning, MagnifyingGlass, MapPin, MapTrifold,
-  Backpack, Barbell, Buildings, ChalkboardTeacher, ShieldCheck, Sparkle,
-  PaperPlaneTilt, SuitcaseRolling, ThermometerSimple, Trophy, UsersThree, WarningCircle, Wind,
+  Crosshair, Drop, Gauge, GearSix, MagnifyingGlass, MapPin, MapTrifold,
+  ShieldCheck, Sparkle,
+  PaperPlaneTilt, ThermometerSimple, WarningCircle, Wind,
 } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -22,10 +22,11 @@ import type { MapSelection } from "./environment-map";
 import { reverseGeocode, searchChinaDistricts } from "@/lib/amap-lbs";
 import { cities, cityById, saveSelectedCity } from "@/lib/cities";
 import type { CityOption } from "@/lib/cities";
+import type { IntakeState } from "@/lib/conversation-intake";
 import { fetchTourismRoute } from "@/lib/tourism";
 import type {
-  ActivityInput, ActivityType, CityEnvironment, CitySearchResult, DecisionResult,
-  GridPoint, GroupType, Intensity, LayerKey, ToolTraceItem, TourismRoute,
+  ActivityInput, CityEnvironment, CitySearchResult, DecisionResult,
+  GridPoint, LayerKey, ToolTraceItem, TourismRoute,
 } from "@/lib/types";
 
 const layers: Array<{ key: LayerKey; label: string; icon: typeof Gauge }> = [
@@ -35,26 +36,6 @@ const layers: Array<{ key: LayerKey; label: string; icon: typeof Gauge }> = [
   { key: "aqi", label: "US AQI", icon: Wind },
   { key: "heat", label: "热风险", icon: CloudSun },
 ];
-const activityTypes: ActivityType[] = ["校园运动会", "体育课", "社区活动", "户外训练", "研学活动", "旅游规划"];
-const activityIcons: Record<ActivityType, typeof Gauge> = {
-  "校园运动会": Trophy,
-  "体育课": ChalkboardTeacher,
-  "社区活动": Buildings,
-  "户外训练": Barbell,
-  "研学活动": Backpack,
-  "旅游规划": SuitcaseRolling,
-};
-const intensities: Intensity[] = ["低强度", "中强度", "高强度"];
-const groups: GroupType[] = ["普通人群", "儿童青少年", "老年人", "敏感人群"];
-const activityProfiles: Record<ActivityType, { focus: string; detail: string }> = {
-  "校园运动会": { focus: "多人连续、多项目联动", detail: "重点评估热风险、空气质量、医疗保障和延期条件。" },
-  "体育课": { focus: "单课时、教师可控", detail: "重点评估学生负荷、课时内天气变化和室内替代课程。" },
-  "社区活动": { focus: "年龄跨度大、开放场地", detail: "重点照顾老幼、敏感人群、无障碍动线和分批参与。" },
-  "户外训练": { focus: "强度高、体能负荷大", detail: "加重高温与空气污染惩罚，关注心率、补水和强度下调。" },
-  "研学活动": { focus: "路线长、节点多", detail: "重点评估交通衔接、集合清点、步行暴露和临时避险点。" },
-  "旅游规划": { focus: "多站点、跨时段出行", detail: "根据逐小时环境避开高风险时段，并结合景点位置生成可视化路线。" },
-};
-
 function dateString(offsetDays = 0) {
   const date = new Date();
   date.setDate(date.getDate() + offsetDays);
@@ -116,6 +97,8 @@ interface ConversationResponse {
   command: "analyze" | "clarify";
   patch: Partial<ActivityInput> & { cityName?: string };
   provider?: string;
+  intake: IntakeState;
+  missing: string[];
 }
 
 export function DecisionDashboard() {
@@ -134,12 +117,11 @@ export function DecisionDashboard() {
   const [liveTrace, setLiveTrace] = useState<ToolTraceItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<"plan" | "evidence" | "trace">("plan");
-  const [dateRange, setDateRange] = useState({ min: "", max: "" });
+  const [intake, setIntake] = useState<IntakeState>({ known: {} });
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CitySearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
-  const [participantsText, setParticipantsText] = useState("0500");
   const [selectedDistrict, setSelectedDistrict] = useState("");
   const searchTimer = useRef<number | null>(null);
   const chatScroll = useRef<HTMLDivElement>(null);
@@ -147,7 +129,7 @@ export function DecisionDashboard() {
   const [chatText, setChatText] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    { role: "assistant", content: "直接告诉我城市、日期和活动要求。我会更新表单，查询真实逐小时数据，并同步刷新地图、图表与结论。" },
+    { role: "assistant", content: "告诉我你想做什么就好，例如“帮我规划三天旅游路线”。我会先问清目的地、日期和同行情况，确认后再查询天气并生成方案。" },
   ]);
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
   const isTourism = input.activityType === "旅游规划";
@@ -209,7 +191,8 @@ export function DecisionDashboard() {
   }, [apiBase]);
 
   const onRegionBounds = useCallback((bounds: Omit<RegionBounds, "cityId">) => {
-    setGrid([]);
+    // Re-entering the map reports the same bounds. Keep its samples: unchanged
+    // bounds do not rerun the sampling effect, so clearing here loses the raster.
     setRegionBounds((current) => {
       const next = { cityId: meta.id, ...bounds };
       if (current?.cityId === next.cityId
@@ -301,6 +284,7 @@ export function DecisionDashboard() {
       center: [item.longitude, item.latitude],
     };
     saveSelectedCity(option);
+    setIntake((current) => ({ known: { ...current.known, cityName: option.name } }));
     setError(null);
     setResult(null);
     setRoute(null);
@@ -324,13 +308,10 @@ export function DecisionDashboard() {
   useEffect(() => {
     queueMicrotask(() => {
       const today = dateString();
-      setDateRange({ min: today, max: dateString(7) });
       setInput((current) => current.date ? current : { ...current, date: today, endDate: today });
     });
   }, []);
 
-  const updateInput = <K extends keyof ActivityInput>(key: K, value: ActivityInput[K]) =>
-    setInput((current) => ({ ...current, [key]: value }));
   const applyActivityLocation = useCallback((location: MapSelection & { province?: string; city?: string }) => {
     setError(null);
     setResult(null);
@@ -353,6 +334,7 @@ export function DecisionDashboard() {
     const nextCity = cityById(cityId);
     const option: CityOption = { id: nextCity.id, name: nextCity.name, province: nextCity.province, adcode: nextCity.adcode, center: nextCity.center };
     saveSelectedCity(option);
+    setIntake((current) => ({ known: { ...current.known, cityName: option.name } }));
     setIsLoadingCity(true);
     setError(null);
     setCity(null);
@@ -377,6 +359,7 @@ export function DecisionDashboard() {
     const applyLocation = (longitude: number, latitude: number, name: string, province: string, district: string, adcode: string, precise: boolean) => {
       const option: CityOption = { id: "geo-current", name, province, adcode, center: [longitude, latitude] };
       saveSelectedCity(option);
+      setIntake((current) => ({ known: { ...current.known, cityName: name } }));
       setCity(null);
       setResult(null);
       setRoute(null);
@@ -485,6 +468,7 @@ export function DecisionDashboard() {
         date: activity.date || dateString(),
         endDate: activity.endDate || activity.date || dateString(),
         hours: hourlyDays.flat(),
+        participants: activity.participants, group: activity.group, intensity: activity.intensity,
       });
       data.totalDurationMs = performance.now() - startedAt;
       data.trace = data.trace.map((item) => item.id === "tour-forecast" ? { ...item, durationMs: item.durationMs + environmentMs, detail: `已读取 ${hourlyDays.length}/${dates.length} 天的逐小时环境数据，并计算推荐出行时段。` } : item);
@@ -527,11 +511,14 @@ export function DecisionDashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message, today: dateString(), context: input, history: history.slice(-6),
+          message, today: dateString(), intake, history: history.slice(-6),
         }),
       });
       if (!response.ok) throw new Error(await apiError(response));
       const plan = await response.json() as ConversationResponse;
+      setIntake(plan.intake);
+      setChatMessages((current) => [...current, { role: "assistant", content: plan.reply }]);
+      if (plan.command === "clarify") return;
       let targetMeta = meta;
       let nextInput: ActivityInput = { ...input, ...plan.patch };
       if (plan.patch.cityName && plan.patch.cityName !== meta.name) {
@@ -554,11 +541,8 @@ export function DecisionDashboard() {
       }
       if (nextInput.date && (!nextInput.endDate || nextInput.endDate < nextInput.date)) nextInput.endDate = nextInput.date;
       setInput(nextInput);
-      setParticipantsText(String(Math.max(1, nextInput.participants)).padStart(4, "0"));
       setResult(null);
       setRoute(null);
-      setChatMessages((current) => [...current, { role: "assistant", content: `${plan.reply}${plan.provider ? `（${plan.provider}）` : ""}` }]);
-      if (plan.command === "clarify") return;
       await loadCity(targetMeta);
       const completed = nextInput.activityType === "旅游规划" ? await planTourism(nextInput, targetMeta) : await analyze(nextInput, targetMeta);
       if (!completed) throw new Error("本次分析未完成，请查看错误提示后重试。");
@@ -606,8 +590,8 @@ export function DecisionDashboard() {
       <section ref={workspaceMotion} className={`workspace workspace-${workspaceView}`}>
         <aside className="control-rail">
           <div className="rail-heading">
-            <div><span className="section-kicker">辅助条件</span><h1>校准分析范围</h1></div>
-            <button type="button" className="icon-button compact" onClick={() => { const sameCity = input.cityId === initialInput.cityId; const today = dateString(); setError(null); setResult(null); setRoute(null); setSelectedDistrict(""); setParticipantsText("0500"); setInput({ ...initialInput, date: today, endDate: today }); if (!sameCity) { setIsLoadingCity(true); setCity(null); } else { void loadCity(cityById(initialInput.cityId)); } }} aria-label="重置活动条件"><ArrowClockwise size={17} /></button>
+            <div><span className="section-kicker">目的地与需求</span><h1>一起完善这份规划</h1></div>
+            <button type="button" className="icon-button compact" onClick={() => { const sameCity = input.cityId === initialInput.cityId; const today = dateString(); setError(null); setResult(null); setRoute(null); setSelectedDistrict(""); setIntake({ known: {} }); setChatMessages([{ role: "assistant", content: "开始一份新规划。你想去哪里，准备开展什么活动？" }]); setInput({ ...initialInput, date: today, endDate: today }); if (!sameCity) { setIsLoadingCity(true); setCity(null); } else { void loadCity(cityById(initialInput.cityId)); } }} aria-label="重置活动条件"><ArrowClockwise size={17} /></button>
           </div>
 
           <section className="control-section" aria-labelledby="place-section-title">
@@ -655,45 +639,21 @@ export function DecisionDashboard() {
 
           </section>
 
-          <section className="control-section" aria-labelledby="time-section-title">
-          <div className="control-section-title" id="time-section-title"><CalendarBlank size={15} /><span>日期与时段</span></div>
-          <div className="field-grid date-range-grid">
-            <div><FieldLabel htmlFor="date">开始日期</FieldLabel><div className="input-wrap"><CalendarBlank size={17} /><input id="date" type="date" min={dateRange.min} max={dateRange.max} value={input.date} onChange={(event) => { const date = event.target.value; setInput((current) => ({ ...current, date, endDate: !current.endDate || current.endDate < date ? date : current.endDate })); setResult(null); setRoute(null); }} /></div></div>
-            <div><FieldLabel htmlFor="end-date">结束日期</FieldLabel><div className="input-wrap"><CalendarBlank size={17} /><input id="end-date" type="date" min={input.date || dateRange.min} max={dateRange.max} value={input.endDate || input.date} onChange={(event) => { updateInput("endDate", event.target.value); setResult(null); setRoute(null); }} /></div></div>
-          </div>
-          <FieldLabel htmlFor="hour">每日开始时间</FieldLabel><div className="select-wrap no-icon"><select id="hour" value={input.startHour} onChange={(event) => updateInput("startHour", Number(event.target.value))}>{Array.from({ length: 15 }, (_, index) => index + 6).map((hour) => <option value={hour} key={hour}>{String(hour).padStart(2, "0")}:00</option>)}</select><CaretDown size={14} /></div>
+          <section className="intake-summary" aria-label="对话已确认条件">
+            <div className="control-section-title"><ChatCircleDots size={16} /><span>对话已确认</span></div>
+            {Object.keys(intake.known).length === 0 ? <p>日期、活动和同行信息会在对话中逐步确认。</p> : <dl>
+              {intake.known.cityName && <div><dt>目的地</dt><dd>{intake.known.cityName}</dd></div>}
+              {intake.known.activityType && <div><dt>活动</dt><dd>{intake.known.activityType}</dd></div>}
+              {intake.known.date && <div><dt>日期</dt><dd>{intake.known.date}{intake.known.endDate && intake.known.endDate !== intake.known.date ? ' 至 ' + intake.known.endDate : ''}</dd></div>}
+              {intake.known.tripDays && <div><dt>天数</dt><dd>{intake.known.tripDays}天</dd></div>}
+              {intake.known.participants && <div><dt>人数</dt><dd>{intake.known.participants}人 · {intake.known.group || '人群待确认'}</dd></div>}
+              {intake.known.duration && <div><dt>单次时长</dt><dd>{intake.known.duration}小时</dd></div>}
+              {intake.known.intensity && <div><dt>强度</dt><dd>{intake.known.intensity}</dd></div>}
+              {intake.known.startHour !== undefined && <div><dt>偏好时段</dt><dd>{String(intake.known.startHour).padStart(2, '0')}:00 起</dd></div>}
+            </dl>}
+            <button type="button" onClick={() => document.getElementById('conversation-input')?.focus()}>在对话中补充或修改 <ChatCircleDots size={15} /></button>
           </section>
-
-          <section className="control-section" aria-labelledby="activity-section-title">
-          <div className="control-section-title" id="activity-section-title"><Lightning size={15} /><span>活动场景</span></div>
-          <div className="activity-type-grid" role="group" aria-label="选择活动类型">
-            {activityTypes.map((item) => { const Icon = activityIcons[item]; return <button type="button" key={item} className={input.activityType === item ? "is-selected" : ""} onClick={() => { updateInput("activityType", item); setResult(null); setRoute(null); }}><Icon size={17} weight={input.activityType === item ? "fill" : "regular"} /><span>{item}</span></button>; })}
-          </div>
-          <p className="activity-profile"><strong>{activityProfiles[input.activityType].focus}</strong><span>{activityProfiles[input.activityType].detail}</span></p>
-          </section>
-
-          <details className="advanced-settings">
-          <summary><span><UsersThree size={15} />更多设置</span><CaretDown size={14} /></summary>
-          <div className="advanced-settings-body">
-          <div className="control-section-title" id="people-section-title"><UsersThree size={15} /><span>规模与参与者</span></div>
-          <div className="field-grid">
-            <div><FieldLabel htmlFor="participants">参与人数</FieldLabel><div className="input-wrap"><UsersThree size={17} /><input id="participants" type="text" inputMode="numeric" value={participantsText} onChange={(event) => { const digits = event.target.value.replace(/\D/g, "").slice(0, 5); setParticipantsText(digits); if (digits) updateInput("participants", Math.max(1, Number(digits))); }} onBlur={() => setParticipantsText(String(Math.max(1, input.participants)).padStart(4, "0"))} /></div></div>
-            <div><FieldLabel htmlFor="duration">时长</FieldLabel><div className="select-wrap no-icon"><select id="duration" value={input.duration} onChange={(event) => updateInput("duration", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6].map((hour) => <option value={hour} key={hour}>{hour} 小时</option>)}</select><CaretDown size={14} /></div></div>
-          </div>
-          <FieldLabel>活动强度</FieldLabel>
-          <div className="segmented-control">{intensities.map((item) => <button type="button" key={item} className={input.intensity === item ? "is-selected" : ""} onClick={() => updateInput("intensity", item)}>{item.replace("强度", "")}</button>)}</div>
-          <FieldLabel htmlFor="group">参与人群</FieldLabel>
-          <div className="select-wrap"><UsersThree size={17} /><select id="group" value={input.group} onChange={(event) => { setResult(null); setRoute(null); updateInput("group", event.target.value as GroupType); }}>{groups.map((item) => <option value={item} key={item}>{item}</option>)}</select><CaretDown size={14} /></div>
-          {isTourism && (
-            <p className="tourism-hint"><Binoculars size={16} /> 旅游模式：结合逐小时天气、公开文旅资料与平台检索入口，编排景点＋美食路线并绘制在地图上。</p>
-          )}
-          </div>
-          </details>
           {error && <div className="error-notice" role="alert"><WarningCircle size={17} /><span>{error}</span></div>}
-          <button className="analyze-button" type="button" onClick={() => void (isTourism ? planTourism() : analyze())} disabled={isAnalyzing || isPlanning || isLoadingCity || !city || !input.date}>
-            {isAnalyzing || isPlanning ? <span className="button-loader" /> : <Sparkle size={19} weight="fill" />}
-            {isAnalyzing ? "Agent 正在分析" : isPlanning ? "AI 正在编排路线" : isTourism ? "生成旅游路线" : "生成活动决策"}
-          </button>
           <p className="rail-footnote"><ShieldCheck size={14} /> 实时预报计算，AI 仅生成可解释文字</p>
         </aside>
 
@@ -701,14 +661,14 @@ export function DecisionDashboard() {
           <header className="studio-page-heading"><WelcomeGreeting /><span>适候 / 智能规划工作室</span><h1>从一个想法，到一份可执行的计划。</h1><p>告诉我想去哪、何时出发、准备做什么。</p></header>
           <section className="analysis-console is-expanded" aria-label="对话驱动数据分析">
             <div className="analysis-console-head">
-              <div><span className="conversation-icon"><ChatCircleDots size={19} weight="duotone" /></span><div><strong>对话分析</strong><small>描述城市、日期与活动，系统会直接更新数据、地图和结论</small></div></div>
+              <div><span className="conversation-icon"><ChatCircleDots size={19} weight="duotone" /></span><div><strong>对话分析</strong><small>先聊需求，再补充条件；确认后生成地图与详细方案</small></div></div>
               <span className="conversation-count">{chatMessages.length} 条消息 · 自动显示</span>
             </div>
             <div ref={chatScroll} className="conversation-messages" aria-live="polite">{chatMessages.map((message, index) => <InkMessage message={message} key={`${message.role}-${index}`} />)}{chatBusy && <ThinkingIndicator />}</div>
             <div className="agent-actions" aria-label="Agent 分析工具"><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("explain")}>解释推荐依据</button><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("compare")}>对比候选时段</button><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("checklist")}>生成筹备清单</button></div>
             <form className="analysis-console-form" onSubmit={(event) => { event.preventDefault(); void submitConversation(); }}>
-              <textarea value={chatText} onChange={(event) => setChatText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitConversation(); } }} placeholder="例如：分析西安明天下午哪个时段适合举办两小时运动会" rows={1} />
-              <button type="submit" disabled={!chatText.trim() || chatBusy} aria-label="发送分析要求">{chatBusy ? <span className="button-loader" /> : <PaperPlaneTilt size={18} weight="fill" />}<span>开始分析</span></button>
+              <textarea id="conversation-input" aria-label="对话规划需求" value={chatText} onChange={(event) => setChatText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitConversation(); } }} placeholder="例如：分析西安明天下午哪个时段适合举办两小时运动会" rows={1} />
+              <button type="submit" disabled={!chatText.trim() || chatBusy} aria-label="发送分析要求">{chatBusy ? <span className="button-loader" /> : <PaperPlaneTilt size={18} weight="fill" />}<span>发送</span></button>
             </form>
             {chatMessages.length === 1 && <div className="conversation-suggestions"><button type="button" onClick={() => setChatText("分析西安明天下午哪个时段适合举办两小时运动会")}>西安明天下午运动会</button><button type="button" onClick={() => setChatText("规划杭州未来三天的旅游路线")}>杭州三日旅游路线</button></div>}
           </section>

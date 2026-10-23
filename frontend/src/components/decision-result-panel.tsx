@@ -139,7 +139,7 @@ function TourismPlan({ route }: { route: TourismRoute }) {
       <section className="trip-day-content"><SectionHeading number={String(activeDay ?? 1).padStart(2, "0")} title={`第 ${activeDay ?? 1} 天 · 景点与美食`} detail={`${stops[0]?.date ?? route.date} · ${stops.length} 个停靠点`} />
         <div className="trip-stop-list">{stops.map((stop) => <article className="trip-stop" key={`${stop.day}-${stop.index}`} id={`tour-stop-${stop.index}`}>
           <div className="trip-stop-time"><time>{stop.time}</time><span className={stop.category === "美食" ? "is-food" : ""}>{stop.category}</span></div>
-          <div className="trip-stop-main"><div className="trip-stop-copy"><span className="section-kicker">{stop.tag}</span><h3>{stop.name}</h3><p>{stop.tip}</p>{stop.address && <address><MapPin size={14} />{stop.address}</address>}<div className="stop-links">{stop.links.map((link) => <a key={`${link.kind}-${link.url}`} href={link.url} target="_blank" rel="noopener noreferrer">{link.label}<ArrowUpRight size={13} /></a>)}</div></div>
+          <div className="trip-stop-main"><div className="trip-stop-copy"><span className="section-kicker">{stop.tag}</span><h3>{stop.name}</h3><p className="stop-reason"><strong>推荐理由</strong>{stop.tip}</p>{stop.address && <address><MapPin size={14} />{stop.address}</address>}<div className="stop-links">{stop.links.filter((link) => link.kind !== "map").map((link) => <a key={`${link.kind}-${link.url}`} href={link.url} target="_blank" rel="noopener noreferrer">{link.label}<ArrowUpRight size={13} /></a>)}</div></div>
             {stop.imageUrl && <Image src={stop.imageUrl} alt={`${stop.name}地点图片`} width={280} height={210} sizes="(max-width: 640px) 85vw, 180px" unoptimized />}
           </div>
         </article>)}</div>

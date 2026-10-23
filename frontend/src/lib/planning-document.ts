@@ -14,9 +14,9 @@ export function buildPlanningDocument(input: ActivityInput, result: DecisionResu
     [...new Set(route.stops.map((stop) => stop.day))].sort((a, b) => a - b).forEach((day) => {
       const stops = route.stops.filter((stop) => stop.day === day);
       sections.push({ title: `第 ${day} 天 · ${stops[0]?.date ?? route.date}`, paragraphs: stops.flatMap((stop) => [
-        `${stop.time}｜${stop.name}（${stop.category}）`, stop.tip,
+        `${stop.time}｜${stop.name}（${stop.category}）`, `推荐理由：${stop.tip || (stop.category === "美食" ? "安排本地餐饮停靠，与当日游览节奏衔接。" : "结合当日景点顺序安排到访，兼顾游览与休息。")}`,
         ...(stop.address ? [`地址：${stop.address}`] : []),
-        ...stop.links.filter((link) => link.kind === "map" || link.kind === "source").map((link) => `${link.label}：${link.url}`),
+        ...stop.links.filter((link) => link.kind === "source").map((link) => `${link.label}：${link.url}`),
       ]) });
     });
     sections.push({ title: "出行准备与调整", paragraphs: [...route.notes, "出发前一日与出发前两小时复核天气、预约和交通；遇到明显不利的天气，将户外站点换为已核实开放的室内场馆，并预留交通缓冲。", "携带饮水、雨具、充电设备和个人必需用品；团队出行应指定联络人，约定集合与失联处理方式。"] });

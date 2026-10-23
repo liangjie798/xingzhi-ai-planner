@@ -1,4 +1,4 @@
-import type { TourismRoute } from "./types";
+import type { TourismRoute, GroupType, Intensity } from "./types";
 
 export interface TourismHourSnapshot {
   date: string;
@@ -18,6 +18,9 @@ export interface TourismRequestPayload {
   date: string;
   endDate: string;
   hours: TourismHourSnapshot[];
+  participants?: number;
+  group?: GroupType;
+  intensity?: Intensity;
 }
 
 export async function fetchTourismRoute(apiBase: string, payload: TourismRequestPayload): Promise<TourismRoute> {
