@@ -1,6 +1,6 @@
 import type { ActivityInput } from "./types";
 
-export type IntakePatch = Partial<Pick<ActivityInput, "cityName" | "activityType" | "date" | "endDate" | "startHour" | "duration" | "participants" | "intensity" | "group">> & { tripDays?: number };
+export type IntakePatch = Partial<Pick<ActivityInput, "cityName" | "activityType" | "date" | "endDate" | "startHour" | "duration" | "participants" | "intensity" | "group" | "referenceUrls">> & { tripDays?: number };
 export interface IntakeState { known: IntakePatch }
 const activities = ["校园运动会", "体育课", "社区活动", "户外训练", "研学活动", "旅游规划"] as const;
 const numbers: Record<string, number> = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
@@ -13,6 +13,7 @@ function validDate(value: unknown): value is string {
 }
 export function cleanIntake(raw: IntakePatch = {}): IntakePatch {
   const out: IntakePatch = {};
+  if (Array.isArray(raw.referenceUrls)) out.referenceUrls = raw.referenceUrls.filter((url) => typeof url === "string" && /^https:\/\/(?:[a-z0-9-]+\.)*(?:douyin|xiaohongshu)\.com\//i.test(url)).slice(0, 4);
   if (typeof raw.cityName === "string" && raw.cityName.trim()) out.cityName = raw.cityName.trim().slice(0, 40);
   if (activities.includes(raw.activityType!)) out.activityType = raw.activityType;
   if (validDate(raw.date)) out.date = raw.date;
@@ -29,6 +30,8 @@ export function cleanIntake(raw: IntakePatch = {}): IntakePatch {
 /** Explicit facts only: the dashboard's initial Hangzhou/date/500 students are not answers. */
 export function extractIntake(text: string, today: string, known: IntakePatch): IntakePatch {
   const patch: IntakePatch = {};
+  const links = text.match(/https:\/\/(?:[a-z0-9-]+\.)*(?:douyin|xiaohongshu)\.com\/[^\s，。；<>]+/gi);
+  if (links) patch.referenceUrls = [...new Set([...(known.referenceUrls || []), ...links])].slice(0, 4);
   patch.activityType = activities.find((item) => text.includes(item)) || (/运动会/.test(text) ? "校园运动会" : /旅游|旅行|行程|游玩|游览/.test(text) ? "旅游规划" : undefined);
   const days = text.match(/([一二两三四五六七八九十\d]+)\s*(?:天|日)(?!期)/);
   if (days) patch.tripDays = number(days[1]);

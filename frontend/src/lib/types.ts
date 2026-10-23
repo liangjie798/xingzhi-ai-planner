@@ -1,3 +1,4 @@
+import type { SocialResearch } from "./social-research";
 export type LayerKey = "comfort" | "temperature" | "humidity" | "aqi" | "heat";
 
 export type ActivityType = "校园运动会" | "体育课" | "社区活动" | "户外训练" | "研学活动" | "旅游规划";
@@ -39,6 +40,7 @@ export interface ActivityInput {
   longitude?: number;
   latitude?: number;
   siteObservation?: string;
+  referenceUrls?: string[];
 }
 
 export interface CitySearchResult {
@@ -101,6 +103,7 @@ export interface ToolTraceItem {
 }
 
 export interface DecisionResult {
+  socialResearch?: SocialResearch;
   totalDurationMs?: number;
   recommendation: string;
   summary: string;
@@ -160,6 +163,7 @@ export interface TourismStop {
 }
 
 export interface TourismRoute {
+  socialResearch?: SocialResearch;
   totalDurationMs?: number;
   cityName: string;
   date: string;

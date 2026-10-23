@@ -11,6 +11,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
+import { EnvironmentCharts } from "./environment-charts";
+import type { SocialResearch } from "@/lib/social-research";
 import { EnvironmentMap } from "./environment-map";
 import { SlidingSelection, useSwitchEntrance } from "./switch-motion";
 import { WelcomeGreeting } from "./welcome-greeting";
@@ -468,7 +470,7 @@ export function DecisionDashboard() {
         date: activity.date || dateString(),
         endDate: activity.endDate || activity.date || dateString(),
         hours: hourlyDays.flat(),
-        participants: activity.participants, group: activity.group, intensity: activity.intensity,
+        participants: activity.participants, group: activity.group, intensity: activity.intensity, referenceUrls: activity.referenceUrls,
       });
       data.totalDurationMs = performance.now() - startedAt;
       data.trace = data.trace.map((item) => item.id === "tour-forecast" ? { ...item, durationMs: item.durationMs + environmentMs, detail: `已读取 ${hourlyDays.length}/${dates.length} 天的逐小时环境数据，并计算推荐出行时段。` } : item);
@@ -546,8 +548,20 @@ export function DecisionDashboard() {
       await loadCity(targetMeta);
       const completed = nextInput.activityType === "旅游规划" ? await planTourism(nextInput, targetMeta) : await analyze(nextInput, targetMeta);
       if (!completed) throw new Error("本次分析未完成，请查看错误提示后重试。");
+      if (nextInput.activityType !== "旅游规划") {
+        const socialStarted = performance.now();
+        try {
+          const socialResponse = await fetch("/social-research", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ city: targetMeta.name, activity: nextInput.activityType, urls: nextInput.referenceUrls }), signal: AbortSignal.timeout(13000) });
+          if (socialResponse.ok) {
+            const social = await socialResponse.json() as SocialResearch;
+            completed.socialResearch = social;
+            completed.evidence.push(...social.items.map((item) => ({ title: item.title, publisher: item.platform, excerpt: item.excerpt || "公开内容，作为活动灵感参考", sourceUrl: item.url, tag: "平台公开内容" })));
+            completed.trace.push({ id: "social-public", name: "采集平台公开内容", detail: social.sources.map((source) => source.platform + "：" + source.detail).join("；"), status: social.items.length ? "done" : "fallback", durationMs: social.durationMs });
+          }
+        } catch { completed.trace.push({ id: "social-public", name: "采集平台公开内容", detail: "公开内容检索未完成，本次仅使用真实环境数据与场景规则", status: "fallback", durationMs: performance.now() - socialStarted }); }
+      }
       completed.totalDurationMs = performance.now() - conversationStarted;
-      if ("recommendation" in completed) setResult({ ...completed });
+      if ("recommendation" in completed) { setLiveTrace(completed.trace); setResult({ ...completed }); }
       else setRoute({ ...completed });
       setChatMessages((current) => [...current, { role: "assistant", content: "recommendation" in completed ? `${completed.recommendation}。\n${completed.summary}\n完整规划书已生成，可在执行方案中阅读或下载。也可以继续询问依据、比较时段或生成筹备清单。` : `${completed.cityName}${completed.dayCount}日规划已完成。\n${completed.summary}\n共安排 ${completed.stops.length} 个景点与美食站点。前往执行方案阅读完整规划书并下载。` }]);
     } catch (caught) {
@@ -691,6 +705,7 @@ export function DecisionDashboard() {
           {workspaceView === "map" && (city
             ? <EnvironmentMap city={city} layer={layer} onPointSelected={onPointSelected} onRegionBounds={onRegionBounds} grid={grid} route={route} />
             : <div className="map-shell map-unavailable"><span className="button-loader dark" /><p>{error ? "实时数据暂不可用" : "正在载入城市环境数据"}</p></div>)}
+          {workspaceView === "map" && city && <EnvironmentCharts city={city} date={input.date || dateString()} grid={grid} />}
           <div className="timeline-card">
             <div className="timeline-header"><div><span className="section-kicker">活动日期逐小时预测 · {input.date || "待选择日期"}</span><h3>{isTourism ? "旅游路线 · 推荐出行时段" : "候选时段活动适宜度"}</h3></div><div className="legend"><span className="good" />适宜 <span className="caution" />谨慎 <span className="bad" />不建议</div></div>
             {isTourism

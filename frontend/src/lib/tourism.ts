@@ -21,6 +21,7 @@ export interface TourismRequestPayload {
   participants?: number;
   group?: GroupType;
   intensity?: Intensity;
+  referenceUrls?: string[];
 }
 
 export async function fetchTourismRoute(apiBase: string, payload: TourismRequestPayload): Promise<TourismRoute> {

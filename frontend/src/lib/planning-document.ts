@@ -32,6 +32,8 @@ export function buildPlanningDocument(input: ActivityInput, result: DecisionResu
     );
     activityDates(input).forEach((date, index) => sections.splice(2 + index, 0, { title: `第 ${index + 1} 天 · ${date} 逐时执行安排`, paragraphs: [`以下为建议执行时间表，覆盖到场准备、${input.duration}小时正式活动与离场交接。负责人为建议岗位，执行前请填入具体姓名与联系方式。`, result.slots.some((slot) => (slot.date || input.date) === date) ? "执行表优先遵守对话确认的上午、下午或夜间偏好，在可容纳完整活动的候选小时内比较评分；若全时段最优建议不在偏好时段，以本执行表为准。活动时长超过该时段时需协调跨时段安排，执行前复核天气。" : "该日尚无独立候选时段评分，暂沿用推荐开始时间；需在执行前补查当日逐小时数据后确认。"], agenda: activityAgenda(input, result, date) }));
   }
+  const social = route?.socialResearch ?? result?.socialResearch;
+  if (social) sections.push({ title: "平台公开内容与策划参考", paragraphs: [...social.sources.map((source) => source.platform + "：" + source.detail), ...social.items.map((item) => item.title + "\n" + item.excerpt + "\n原文：" + item.url + "\n采集时间：" + item.retrievedAt), social.items.length ? "应用方式：旅游编排会优先核对公开内容提到且已通过 POI 校准的候选地点；其他活动可参考其中组织形式，再依据逐小时环境和参与者情况调整。公开内容不等于官方通知或实时热榜。" : "本轮未获得有效平台原文，方案依据真实环境数据、已核对地点与场景规则生成。可以在对话中补充公开笔记或视频链接后重新规划。"] });
   sections.push({ title: "数据依据与适用范围", paragraphs: ["天气与空气数据来自 Open-Meteo；空气质量远期缺失小时可能沿用最近可用日相同小时的值，仅供趋势参考。执行前应复核最新预报、当地预警与现场情况。", ...evidence.map((item, i) => `[${i + 1}] ${item.title}｜${item.publisher}\n${item.excerpt}${item.sourceUrl ? `\n原文：${item.sourceUrl}` : ""}`)] });
   return { title: route ? `${city}${route.dayCount}日旅行规划书` : `${city} · ${input.activityType}执行规划书`, subtitle: `${input.date} — ${input.endDate || input.date} · 行知规划`, sections };
 }
@@ -66,7 +68,7 @@ export async function downloadWord(document: PlanningDocument) {
       if (data) content.push(new Paragraph({ children: [new ImageRun({ type: "png", data, transformation: { width: 500, height: 290 } })] }), paragraph(stop.name + " · 地点资料图片，实际环境以现场为准。"));
       content.push(...stopText(stop).slice(1).map(paragraph));
     }
-    for (const item of section.agenda ?? []) content.push(new Paragraph({ text: item.time + " · " + item.title, heading: HeadingLevel.HEADING_2 }), paragraph(item.action), paragraph("负责岗位：" + item.owner));
+    for (const item of section.agenda ?? []) content.push(new Paragraph({ text: item.time + " · " + item.title, heading: HeadingLevel.HEADING_2 }), paragraph(item.action), paragraph("负责岗位：" + item.owner), ...(item.reference ? [paragraph("组织灵感（执行前由负责人确认）：" + item.reference.excerpt + "\n" + item.reference.title + "\n原文：" + item.reference.url)] : []));
   }
   const file = new Document({ creator: "行知", title: document.title, styles: { default: { document: { run: { font: "Microsoft YaHei", size: 22 }, paragraph: { spacing: { after: 180, line: 340 } } } } }, sections: [{ properties: { page: { margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, children: content }] });
   downloadBlob(await Packer.toBlob(file), `${document.title}.docx`);
