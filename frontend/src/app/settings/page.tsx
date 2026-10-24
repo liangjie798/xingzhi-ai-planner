@@ -92,8 +92,8 @@ export default function SettingsPage() {
             <h1>配置你的 AI 模型</h1>
           </div>
           <p className="settings-lede">
-            系统默认已接入 Pollinations 托管的开放模型（openai-fast，无需密钥）。
-            你也可以改用自己的模型服务，旅游路线规划与文字解释将使用你配置的模型。
+            绑定有调用权限的模型服务后，旅游编排与文字解释将使用你的账户配置。
+            未配置或调用失败时会显示具体原因，并提供基于真实天气与已核对地点的规则方案。百度搜索密钥不等于模型密钥。
           </p>
         </div>
 

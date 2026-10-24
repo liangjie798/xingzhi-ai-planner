@@ -41,7 +41,7 @@ function TraceVisualizer({ items, running, totalDurationMs }: { items: ToolTrace
       <div><span>已记录工具耗时合计</span><strong className="duration-value">{formatDuration(elapsed)}</strong></div>
       <div><span>规则兜底</span><strong>{fallbackCount}<small>步</small></strong></div>
     </div>
-    <p className="timing-explanation">整轮耗时包含本轮请求、数据查询和等待；工具耗时只统计已记录步骤。快速计算以毫秒显示，耗时短不代表模型没有执行。</p>
+    <p className="timing-explanation">整轮耗时包含本轮请求、数据查询和等待；工具步骤可能并行，累计耗时可大于整轮耗时。快速计算以毫秒显示；模型是否成功以步骤结果和具体说明为准。</p>
     {items.length ? <div className="trace-layout">
       <section><SectionHeading number="01" title="工具执行流程" detail="点击步骤，查看真实调用结果与耗时" />
         <ol className="trace-step-list">{items.map((item, index) => <li key={item.id}>

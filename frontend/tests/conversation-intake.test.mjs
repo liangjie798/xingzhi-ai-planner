@@ -63,3 +63,20 @@ test("invalid and out-of-forecast dates require correction", () => {
 });
 
 test("university students are classified as adults", () => { assert.equal(turn({}, "大学生").intake.known.group, "普通人群"); });
+
+test("seven university students completes the pending participants question", () => {
+  const first = turn({}, "规划杭州未来三天的旅游路线");
+  const second = turn(first.intake.known, "七个大学生");
+  assert.equal(second.command, "analyze");
+  assert.equal(second.patch.participants, 7);
+  assert.equal(second.patch.group, "普通人群");
+  assert.doesNotMatch(second.reply, /大约几个人/);
+  assert.equal(second.patch.cityName, "杭州市");
+});
+test("participant nouns, Chinese tens and hundreds, and contextual bare counts are understood", () => {
+  for (const [message, count] of [["十七名大学生",17],["二十一位研究生",21],["三百六十个学生",360],["8个同学",8],["两位老人",2]]) {
+    assert.equal(turn({}, message).patch.participants, count, message);
+  }
+  assert.equal(turn({ activityType: "旅游规划", group: "普通人群" }, "七个").patch.participants, 7);
+  assert.equal(turn({}, "三天").patch.participants, undefined);
+});

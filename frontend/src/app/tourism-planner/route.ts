@@ -147,13 +147,13 @@ function routeEvidence(stops: TourismStop[]): EvidenceItem[] {
   ];
 }
 
-interface RouteTimings { social?: SocialResearch; forecastMs: number; retrieveMs: number; planMs: number; enrichMs: number; validateMs: number }
+interface RouteTimings { social?: SocialResearch; modelFailure?: string; forecastMs: number; retrieveMs: number; planMs: number; enrichMs: number; validateMs: number }
 function routeTrace(hours: number, candidates: number, days: number, generatedBy: "llm" | "curated", timing: RouteTimings): ToolTraceItem[] {
   return [
     { id: "tour-forecast", name: "读取逐小时环境", detail: `接收 ${hours} 个小时的气温、降水、AQI 与热风险数据，计算推荐出行时段。`, status: "done", durationMs: timing.forecastMs },
     { id: "tour-social", name: "联网搜索攻略与活动资料", detail: timing.social?.sources.map((source) => source.platform + "：" + source.detail).join("；") || "暂无可用搜索内容", status: timing.social?.items.length ? "done" : "fallback", durationMs: timing.social?.durationMs || 0 },
     { id: "tour-retrieve", name: "检索城市候选地点", detail: `从城市候选库筛选 ${candidates} 个景点与美食，并执行类别约束。`, status: candidates ? "done" : "fallback", durationMs: timing.retrieveMs },
-    { id: "tour-plan", name: "编排多日游览顺序", detail: generatedBy === "llm" ? `模型在限定候选集内编排 ${days} 日路线、每日用餐时间和天气适配。` : `使用可解释规则生成 ${days} 日路线；若尝试过模型调用，耗时包含等待失败及切换规则的时间。`, status: generatedBy === "llm" ? "done" : "fallback", durationMs: timing.planMs },
+    { id: "tour-plan", name: "编排多日游览顺序", detail: generatedBy === "llm" ? `模型在限定候选集内编排 ${days} 日路线、每日用餐时间和天气适配。` : `${timing.modelFailure || "可用候选地点不足，暂未调用模型。"} 已使用已核对地点和逐小时天气生成 ${days} 日规则方案，可继续查看或下载。`, status: generatedBy === "llm" ? "done" : "fallback", durationMs: timing.planMs },
     { id: "tour-enrich", name: "校准 POI 与链接", detail: "使用高德 POI 校准地点坐标、地址和图片，并提供内容平台检索入口。", status: "done", durationMs: timing.enrichMs },
     { id: "tour-validate", name: "路线约束校验", detail: "检查站点名称是否重复、日期与时间是否合法，并整理引用依据。", status: "done", durationMs: timing.validateMs },
   ];
@@ -201,10 +201,11 @@ export async function POST(request: Request) {
 
   const dates = tripDates(body.date, body.endDate);
   const retrieveStarted = performance.now();
-  const [candidates, social] = await Promise.all([candidatesFor(body), collectSocialResearch(body.cityName, "旅游景点 美食", body.referenceUrls)]);
+  let candidateDuration = 0;
+  const [candidates, social] = await Promise.all([(async () => { const data = await candidatesFor(body); candidateDuration = performance.now() - retrieveStarted; return data; })(), collectSocialResearch(body.cityName, "旅游景点 美食", body.referenceUrls)]);
   const mentions = (poi: PoiSpot) => social.items.filter((item) => (item.title + item.excerpt).includes(poi.name)).length;
   const pois = [...candidates].sort((a, b) => mentions(b) - mentions(a));
-  const timing: RouteTimings = { social, forecastMs: 0, retrieveMs: performance.now() - retrieveStarted, planMs: 0, enrichMs: 0, validateMs: 0 };
+  const timing: RouteTimings = { social, forecastMs: 0, retrieveMs: candidateDuration, planMs: 0, enrichMs: 0, validateMs: 0 };
   const forecastStarted = performance.now();
   const bestHours = bestHoursText(body.hours ?? []);
   timing.forecastMs = performance.now() - forecastStarted;
@@ -227,8 +228,9 @@ export async function POST(request: Request) {
   const modelStarted = performance.now();
   try {
     const config = await resolveAccountModelConfig(request);
-    const result = await callLlm({ system, prompt, config });
+    const result = await callLlm({ system, prompt, config, maxTokens: 3200, jsonMode: true });
     const plan = extractJson<LlmRoutePlan>(result.text);
+    if (!Array.isArray(plan?.stops) || !plan.stops.length) throw new Error(`模型未返回可解析的路线 JSON（${plan ? "返回字段：" + Object.keys(plan).slice(0, 8).join("、") : "格式无效，响应" + result.text.length + "字符"}），已拒绝将规则补全标记为模型生成。`);
     const chosen: Array<{ poi: PoiSpot; day: number; time: string; tip?: string }> = [];
     for (const [index, stop] of (Array.isArray(plan?.stops) ? plan.stops.slice(0, desiredStops) : []).entries()) {
       const name = stop.name?.trim();
@@ -237,6 +239,7 @@ export async function POST(request: Request) {
       const day = Math.min(dates.length, Math.max(1, Number(stop.day) || Math.floor(index / DAY_TIMES.length) + 1));
       if (poi && !chosen.some((item) => item.poi.name === poi.name)) chosen.push({ poi, day, time: stop.time?.trim() || DAY_TIMES[index % DAY_TIMES.length], tip: stop.tip });
     }
+    if (chosen.length < 3) throw new Error("模型输出中可核对的地点不足 3 个，无法直接采用该路线。");
     for (const poi of curatedPois(pois, desiredStops)) {
       if (chosen.length >= desiredStops || chosen.some((item) => item.poi.name === poi.name)) continue;
       const index = chosen.length;
@@ -265,7 +268,8 @@ export async function POST(request: Request) {
       evidence,
       trace: routeTrace(body.hours?.length ?? 0, pois.length, dates.length, "llm", timing),
     } satisfies TourismRoute);
-  } catch {
+  } catch (error) {
+    timing.modelFailure = error instanceof Error ? (error.message === "fetch failed" ? "模型服务网络连接失败，请检查模型接口地址及服务可用性。" : error.message.slice(0, 300)) : "模型编排未完成。";
     // Keep failed model wait visible rather than replacing it with a zero-duration fallback.
     if (!timing.planMs) timing.planMs = performance.now() - modelStarted;
     return NextResponse.json(await fallbackRoute(body, pois, timing));

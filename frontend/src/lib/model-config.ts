@@ -14,11 +14,11 @@ export interface ModelPreset {
 export const MODEL_PRESETS: ModelPreset[] = [
   {
     id: "pollinations",
-    label: "免费开源 · Pollinations GPT-OSS（无需密钥）",
+    label: "Pollinations · 可选模型服务",
     baseUrl: "https://text.pollinations.ai/openai",
     model: "openai-fast",
     apiKeyRequired: false,
-    note: "默认选项。使用 Pollinations 当前匿名开放的 GPT-OSS 模型，无需注册与密钥即可调用。",
+    note: "请按服务商当前要求填写模型和授权密钥。匿名服务可用性不保证；未绑定模型时，系统使用天气与地点规则规划并显示原因。",
   },
   {
     id: "siliconflow",

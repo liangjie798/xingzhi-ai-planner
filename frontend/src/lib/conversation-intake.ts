@@ -3,8 +3,17 @@ import type { ActivityInput } from "./types";
 export type IntakePatch = Partial<Pick<ActivityInput, "cityName" | "activityType" | "date" | "endDate" | "startHour" | "duration" | "participants" | "intensity" | "group" | "referenceUrls">> & { tripDays?: number };
 export interface IntakeState { known: IntakePatch }
 const activities = ["校园运动会", "体育课", "社区活动", "户外训练", "研学活动", "旅游规划"] as const;
-const numbers: Record<string, number> = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
-function number(text: string) { return Number(text) || numbers[text] || 0; }
+const numbers: Record<string, number> = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+function number(text: string) {
+  if (/^\d+$/.test(text)) return Number(text);
+  let total = 0, digit = 0;
+  for (const character of text) {
+    const unit = ({ 十: 10, 百: 100, 千: 1000 } as Record<string, number>)[character];
+    if (unit) { total += (digit || 1) * unit; digit = 0; }
+    else digit = numbers[character] ?? 0;
+  }
+  return total + digit;
+}
 export function addDays(date: string, days: number) {
   return new Date(Date.parse(`${date}T00:00:00+08:00`) + days * 86400000).toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
 }
@@ -37,7 +46,8 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   if (days) patch.tripDays = number(days[1]);
   const duration = text.match(/([一二两三四五六七八九十\d]+)\s*个?小时/);
   if (duration) patch.duration = number(duration[1]);
-  const people = text.match(/([一二两三四五六七八九十\d]+)\s*(?:个)?(?:人|位|名|成年人)/);
+  const people = text.match(/([零〇一二两三四五六七八九十百千\d]+)\s*(?:个|位|名)?\s*(?:大学生|研究生|成年人|成人|初中生|高中生|小学生|学生|同学|小朋友|孩子|老人|老年人|人|位|名)/)
+    || (known.activityType && !known.participants ? text.match(/^\s*([零〇一二两三四五六七八九十百千\d]+)\s*个?[。！]?\s*$/) : null);
   if (people) patch.participants = number(people[1]);
   if (/大学生|研究生|成年人|成人/.test(text)) patch.group = "普通人群";
   else if (/儿童|学生|初中生|高中生|亲子|孩子|青少年/.test(text)) patch.group = "儿童青少年";
