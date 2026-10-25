@@ -21,6 +21,7 @@ import { WelcomeGreeting } from "./welcome-greeting";
 import { AccountBadge } from "./account-badge";
 import { UserFeedbackPanel } from "./user-feedback";
 import { authenticatedRequest } from "@/lib/auth";
+import { enrichActivityVenues } from "@/lib/activity-venues-client";
 import { DecisionResultPanel } from "./decision-result-panel";
 import { AgentProgress } from "./agent-progress";
 import { answerAgentAction, detectAgentAction, type AgentAction } from "@/lib/agent-actions";
@@ -164,7 +165,11 @@ export function DecisionDashboard() {
         setChatMessages(saved.messages.filter(item => ["user", "assistant"].includes(item.role) && typeof item.content === "string").slice(-60));
         setIntake(saved.intake || { known: {} }); setKnowledgeContext(saved.knowledgeContext || {}); setWeatherContext(saved.weatherContext || {}); setActiveTopic(saved.activeTopic || "");
         if (saved.input) setInput(saved.input);
-        if (saved.result) setResult(saved.result);
+        if (saved.result) {
+          setResult(saved.result);
+          const restored = saved.result;
+          if (!restored.venues && saved.input?.cityName) void enrichActivityVenues(saved.input, restored).then(updated => { if (active) setResult(current => current === restored ? updated : current); });
+        }
         if (saved.route) setRoute(saved.route);
         setCompareDays(Boolean(saved.compareDays));
       }
@@ -590,6 +595,7 @@ export function DecisionDashboard() {
       const completed = nextInput.activityType === "旅游规划" ? await planTourism(nextInput, targetMeta) : await analyze(nextInput, targetMeta);
       if (!completed) throw new Error("本次分析未完成，请查看错误提示后重试。");
       if (nextInput.activityType !== "旅游规划") {
+        const venueTask = "recommendation" in completed ? enrichActivityVenues(nextInput, completed) : null;
         const socialStarted = performance.now();
         try {
           const socialResponse = await fetch("/social-research", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ city: targetMeta.name, activity: nextInput.activityType, urls: nextInput.referenceUrls }), signal: AbortSignal.timeout(13000) });
@@ -600,6 +606,11 @@ export function DecisionDashboard() {
             completed.trace.push({ id: "social-public", name: "联网搜索攻略与活动资料", detail: social.sources.map((source) => source.platform + "：" + source.detail).join("；"), status: social.items.length ? "done" : "fallback", durationMs: social.durationMs });
           }
         } catch { completed.trace.push({ id: "social-public", name: "联网搜索攻略与活动资料", detail: "联网检索未完成，本次仅使用真实环境数据与场景规则", status: "fallback", durationMs: performance.now() - socialStarted }); }
+        if (venueTask && "recommendation" in completed) {
+          const enriched = await venueTask;
+          completed.venues = enriched.venues; completed.venueNotice = enriched.venueNotice;
+          completed.trace.push(...enriched.trace.filter(item => item.id === "activity-venues"));
+        }
       }
       completed.totalDurationMs = performance.now() - conversationStarted;
       if ("recommendation" in completed) { setLiveTrace(completed.trace); setResult({ ...completed }); }

@@ -26,5 +26,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/XingZhi", "/dashboard", "/hourly", "/settings", "/account", "/conversation-planner", "/tourism-planner", "/model-gateway", "/social-research", "/location-gateway", "/national-environment", "/region-data/:path*", "/plan-media"],
+  matcher: ["/XingZhi", "/dashboard", "/hourly", "/settings", "/account", "/conversation-planner", "/tourism-planner", "/activity-venues", "/model-gateway", "/social-research", "/location-gateway", "/national-environment", "/region-data/:path*", "/plan-media"],
 };

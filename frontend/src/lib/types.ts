@@ -105,6 +105,8 @@ export interface ToolTraceItem {
 }
 
 export interface DecisionResult {
+  venues?: ActivityVenue[];
+  venueNotice?: string;
   socialResearch?: SocialResearch;
   totalDurationMs?: number;
   recommendation: string;
@@ -122,6 +124,18 @@ export interface DecisionResult {
   confidence: number;
   ragMode: string;
   agentPlan: string[];
+}
+
+export interface ActivityVenue {
+  id: string;
+  name: string;
+  address: string;
+  longitude: number;
+  latitude: number;
+  indoor: boolean;
+  reason: string;
+  task: string;
+  checks: string;
 }
 
 export interface GridPoint {

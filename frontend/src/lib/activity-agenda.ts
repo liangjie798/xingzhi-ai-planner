@@ -36,8 +36,8 @@ export function activityAgenda(input: ActivityInput, result: DecisionResult, dat
       const end = Math.min(cursor + 35, until);
       const breakLength = end - cursor > 15 && (phase > 0 && phase < 4 || end < until) ? 5 : 0;
       items.push({ time: `${time(date, start + cursor)}–${time(date, start + end - breakLength)}`, title: title[phase], action: `${result.actions[phase % Math.max(1, result.actions.length)] || "按分组任务组织活动，记录参与者状态。"}；${input.intensity}执行，负责人观察疲劳、不适与场地变化，必要时降低负荷或提前退出。`, owner: input.activityType === "体育课" ? "任课教师 / 组长" : input.activityType === "研学活动" ? "带队教师 / 导师" : "项目负责人 / 各组长" });
-      const source = result.socialResearch?.items[0];
-      if (phase === 1 && cursor === from && source) items.at(-1)!.reference = { title: source.title, url: source.url, excerpt: source.excerpt };
+      const venue = result.venues?.[0];
+      if (phase === 1 && cursor === from && venue) items.at(-1)!.action = `场地候选：${venue.name}（先确认接待安排）。${venue.task} ${items.at(-1)!.action}`;
       if (breakLength) items.push({ time: `${time(date, start + end - breakLength)}–${time(date, start + end)}`, title: "补水与状态复查", action: "停止连续活动，安排补水和短暂休息；询问不适，确认各组人数。发现异常由医疗联络岗接手。", owner: "各组负责人 / 医疗联络岗" });
       cursor = end;
     }

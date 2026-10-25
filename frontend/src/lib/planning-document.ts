@@ -2,8 +2,10 @@ import type { ActivityInput, DecisionResult, TourismRoute, TourismStop } from ".
 import { activityAgenda, activityDates, type AgendaItem } from "./activity-agenda";
 import { routeDiagram, documentImage } from "./planning-visuals";
 import { cityById } from "./cities";
+import { planningReferences, type PlanningReference } from "./planning-references";
+import type { ActivityVenue } from "./types";
 
-export interface PlanSection { title: string; paragraphs: string[]; stops?: TourismStop[]; diagram?: string; agenda?: AgendaItem[] }
+export interface PlanSection { title: string; paragraphs: string[]; stops?: TourismStop[]; diagram?: string; agenda?: AgendaItem[]; venues?: ActivityVenue[]; references?: PlanningReference[] }
 export interface PlanningDocument { title: string; subtitle: string; sections: PlanSection[] }
 
 export function buildPlanningDocument(input: ActivityInput, result: DecisionResult | null, route: TourismRoute | null): PlanningDocument | null {
@@ -30,17 +32,17 @@ export function buildPlanningDocument(input: ActivityInput, result: DecisionResu
       { title: "五、候选时段比较", paragraphs: [...result.slots].sort((a, b) => b.score - a.score).slice(0, 3).map((slot, i) => `候选 ${i + 1}：${slot.date || input.date} ${slot.label}，适宜度 ${slot.score} 分（${slot.level}），气温 ${slot.temperature}℃、US AQI ${slot.aqi}、降雨概率 ${slot.rainProbability}%。`) },
       { title: "六、筹备检查清单", paragraphs: ["□ 确认负责人、岗位人员及紧急联系人。", "□ 核实场地、疏散通道、转场区域和无障碍需求。", "□ 准备饮水、急救物资、雨具与通讯设备。", "□ 活动前复查环境数据，确认调整与延期条件。", "□ 结束后清点人员、登记异常并复盘。"] },
     );
+    sections.splice(1,0,{ title:"推荐地点与理由", paragraphs:[result.venueNotice || "以下为活动场地候选，确认预约与接待条件后再确定使用地点。"], venues:result.venues || [] });
     activityDates(input).forEach((date, index) => sections.splice(2 + index, 0, { title: `第 ${index + 1} 天 · ${date} 逐时执行安排`, paragraphs: [`以下为建议执行时间表，覆盖到场准备、${input.duration}小时正式活动与离场交接。负责人为建议岗位，执行前请填入具体姓名与联系方式。`, result.slots.some((slot) => (slot.date || input.date) === date) ? `本日执行时间从已按${input.group}、${input.intensity}及完整${input.duration}小时窗口计算的候选中选择，允许时段为${input.allowedStartHour ?? 6}:00–${input.allowedEndHour ?? 21}:00。图表与执行表使用相同候选评分。气温为窗口均值，US AQI、热风险和降水概率为窗口最大值。` : "该日缺少完整活动窗口的预报数据，以下仅为待确认安排，不能作为已验证时段执行。"], agenda: activityAgenda(input, result, date) }));
   }
   const social = route?.socialResearch ?? result?.socialResearch;
-  if (social) sections.push({ title: "联网搜索与策划参考", paragraphs: [...social.sources.map((source) => source.platform + "：" + source.detail), ...social.items.map((item) => item.title + "\n" + item.excerpt + "\n来源：" + item.platform + (item.provider ? " · " + item.provider : "") + "\n原文：" + item.url + "\n检索时间：" + item.retrievedAt + (item.publishedAt ? "\n网页标注日期：" + item.publishedAt : "")), social.items.length ? "应用方式：旅游编排会优先核对公开内容提到且已通过 POI 校准的候选地点；其他活动可参考其中组织形式，再依据逐小时环境和参与者情况调整。搜索摘要未验证全文，不等于官方通知或实时热榜；检索时间不等于文章发布时间。" : "本轮未获得有效联网资料，方案依据真实环境数据、已核对地点与场景规则生成。可以在对话中补充公开笔记或视频链接后重新规划。"] });
-  sections.push({ title: "数据依据与适用范围", paragraphs: ["天气与空气数据来自 Open-Meteo；空气质量远期缺失小时可能沿用最近可用日相同小时的值，仅供趋势参考。执行前应复核最新预报、当地预警与现场情况。", ...evidence.map((item, i) => `[${i + 1}] ${item.title}｜${item.publisher}\n${item.excerpt}${item.sourceUrl ? `\n原文：${item.sourceUrl}` : ""}`)] });
+  sections.push({ title: "参考资料", paragraphs: ["天气与空气预报来自 Open-Meteo，执行前复核最新预报。以下保留精简来源；完整资料可在“数据与证据”页查看。"], references:planningReferences(evidence,social) });
   return { title: route ? `${city}${route.dayCount}日旅行规划书` : `${city} · ${input.activityType}执行规划书`, subtitle: `${input.date} — ${input.endDate || input.date} · 行知规划`, sections };
 }
 
 function stopText(stop: TourismStop) { return [`${stop.time}｜${stop.name}（${stop.category}）`, `推荐理由：${stop.tip}`, ...(stop.address ? [`地址：${stop.address}`] : []), ...stop.links.filter((link) => link.kind === "source").map((link) => `${link.label}：${link.url}`)]; }
 export function documentMarkdown(document: PlanningDocument) {
-  return `# ${document.title}\n\n${document.subtitle}\n\n` + document.sections.map((section) => `## ${section.title}\n\n${section.paragraphs.join("\n\n")}` + (section.diagram ? `\n\n![行程顺序示意](${section.diagram})` : "") + (section.stops ?? []).map((stop) => `\n\n### ${stop.time} · ${stop.name}\n\n${stop.imageUrl ? `![${stop.name}](${stop.imageUrl})\n\n` : ""}${stopText(stop).slice(1).join("\n\n")}`).join("") + (section.agenda ?? []).map((item) => `\n\n**${item.time} · ${item.title}**\n\n${item.action}\n\n负责岗位：${item.owner}`).join("")).join("\n\n");
+  return `# ${document.title}\n\n${document.subtitle}\n\n` + document.sections.map((section) => `## ${section.title}\n\n${section.paragraphs.join("\n\n")}` + (section.venues || []).map(venue => `\n\n### ${venue.name}\n\n地址：${venue.address}\n\n推荐理由：${venue.reason}\n\n活动任务：${venue.task}\n\n确认事项：${venue.checks}`).join("") + (section.references || []).map(reference => `\n\n[${reference.title}](${reference.url}) · ${reference.note}`).join("") + (section.diagram ? `\n\n![行程顺序示意](${section.diagram})` : "") + (section.stops ?? []).map((stop) => `\n\n### ${stop.time} · ${stop.name}\n\n${stop.imageUrl ? `![${stop.name}](${stop.imageUrl})\n\n` : ""}${stopText(stop).slice(1).join("\n\n")}`).join("") + (section.agenda ?? []).map((item) => `\n\n**${item.time} · ${item.title}**\n\n${item.action}\n\n负责岗位：${item.owner}`).join("")).join("\n\n");
 }
 
 export function downloadBlob(blob: Blob, filename: string) {
@@ -50,7 +52,7 @@ export function downloadBlob(blob: Blob, filename: string) {
 }
 
 export async function downloadWord(document: PlanningDocument) {
-  const { Document, Packer, Paragraph, HeadingLevel, TextRun, ImageRun } = await import("docx");
+  const { Document, Packer, Paragraph, HeadingLevel, TextRun, ImageRun, ExternalHyperlink } = await import("docx");
   const content = [new Paragraph({ text: document.title, heading: HeadingLevel.TITLE }), new Paragraph(document.subtitle)];
   const paragraph = (text: string) => new Paragraph({ children: text.split("\n").map((line, index) => new TextRun({ text: line, break: index ? 1 : 0 })) });
   const appendImage = async (url: string, title: string, diagram = false) => {
@@ -60,6 +62,8 @@ export async function downloadWord(document: PlanningDocument) {
   };
   for (const section of document.sections) {
     content.push(new Paragraph({ text: section.title, heading: HeadingLevel.HEADING_1 }), ...section.paragraphs.map(paragraph));
+    for (const venue of section.venues || []) content.push(new Paragraph({ text:venue.name, heading:HeadingLevel.HEADING_2 }), paragraph(`地址：${venue.address}\n推荐理由：${venue.reason}\n活动任务：${venue.task}\n确认事项：${venue.checks}`));
+    for (const reference of section.references || []) content.push(new Paragraph({ children:[new ExternalHyperlink({ link:reference.url, children:[new TextRun({ text:reference.title, style:"Hyperlink" })] }), new TextRun({ text:` · ${reference.note}` })] }));
     if (section.diagram) await appendImage(section.diagram, section.title, true);
     // Fetch a day's photographs together to avoid one network timeout per stop.
     const photos = await Promise.all((section.stops ?? []).map(async (stop) => ({ stop, data: stop.imageUrl ? await documentImage(stop.imageUrl) : null })));
