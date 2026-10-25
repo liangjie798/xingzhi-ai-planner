@@ -58,7 +58,6 @@ export async function downloadWord(document: PlanningDocument) {
   const appendImage = async (url: string, title: string, diagram = false) => {
     const data = await documentImage(url);
     if (data) { content.push(new Paragraph({ children: [new ImageRun({ type: "png", data, transformation: { width: 530, height: diagram ? 124 : 300 }, altText: { title, description: title, name: title } })] })); content.push(paragraph(diagram ? "行程顺序示意，非道路导航。" : title + " · 地点资料图片，实际环境以现场为准。")); }
-    else if (!diagram) content.push(paragraph("地点照片暂不可用，请通过官方资料核实。"));
   };
   for (const section of document.sections) {
     content.push(new Paragraph({ text: section.title, heading: HeadingLevel.HEADING_1 }), ...section.paragraphs.map(paragraph));
