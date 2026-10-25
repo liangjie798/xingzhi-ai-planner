@@ -15,14 +15,15 @@ export default function LoginPage() {
   const [portal, setPortal] = useState<Portal>("USER"); const [isRegistering, setIsRegistering] = useState(false);
   const [username, setUsername] = useState(""); const [password, setPassword] = useState(""); const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
-  useEffect(() => { void currentUser().then((user) => { if (user && ["ADMIN", "SUPER_ADMIN"].includes(user.role)) router.replace("/admin"); else if (user?.role === "USER") router.replace("/account"); }); }, [router]);
+  useEffect(() => { void currentUser().then((user) => { if (user && ["ADMIN", "SUPER_ADMIN", "USER"].includes(user.role)) router.replace("/XingZhi"); }); }, [router]);
   function choose(next: Portal) { if (busy) return; setPortal(next); setIsRegistering(false); setError(""); }
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError("");
     try {
-      if (portal === "GUEST") { await loginAsGuest(); router.replace("/dashboard"); return; }
-      const user = isRegistering ? await register(username.trim(), password, displayName.trim()) : await login(username.trim(), password, portal);
-      router.replace(["ADMIN", "SUPER_ADMIN"].includes(user.role) ? "/admin" : "/account");
+      if (portal === "GUEST") { await loginAsGuest(); router.replace("/XingZhi"); return; }
+      if (isRegistering) await register(username.trim(), password, displayName.trim());
+      else await login(username.trim(), password, portal);
+      router.replace("/XingZhi");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "登录失败"); setBusy(false); }
   }
   const title = portal === "ADMIN" ? "管理员入口" : portal === "GUEST" ? "访客体验" : isRegistering ? "创建用户账户" : "用户登录";

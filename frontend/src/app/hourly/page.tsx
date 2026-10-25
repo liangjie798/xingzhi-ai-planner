@@ -90,7 +90,7 @@ export default function HourlyPage() {
   return (
     <main className="subpage-shell">
       <header className="subpage-topbar">
-        <Link href="/dashboard" className="subpage-back"><ArrowLeft size={16} /> 返回工作台</Link>
+        <Link href="/XingZhi" className="subpage-back"><ArrowLeft size={16} /> 返回工作台</Link>
         <div className="subpage-brand"><Compass size={20} weight="duotone" /><strong>行知 · 逐小时环境数据</strong></div>
         <div className="subpage-controls">
           <div className="select-wrap compact"><MapPin size={16} />

@@ -155,7 +155,7 @@ export function DecisionDashboard() {
 
   const switchWorkspace = (view: WorkspaceView) => {
     setWorkspaceView(view);
-    const url = view === "studio" ? "/dashboard" : `/dashboard?view=${view}`;
+    const url = view === "studio" ? "/XingZhi" : `/XingZhi?view=${view}`;
     window.history.pushState({ view }, "", url);
   };
 

@@ -80,7 +80,7 @@ export default function SettingsPage() {
   return (
     <main className="subpage-shell">
       <header className="subpage-topbar">
-        <Link href="/dashboard" className="subpage-back"><ArrowLeft size={16} /> 返回工作台</Link>
+        <Link href="/XingZhi" className="subpage-back"><ArrowLeft size={16} /> 返回工作台</Link>
         <div className="subpage-brand"><Compass size={20} weight="duotone" /><strong>行知 · AI 模型配置</strong></div>
         <div />
       </header>
