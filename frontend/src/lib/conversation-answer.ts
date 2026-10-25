@@ -4,14 +4,14 @@ import { searchKnowledge } from "./social-research";
 import { callLlm } from "./llm-server";
 import { resolveAccountModelConfig } from "./account-model-config-server";
 import type { EnvironmentalForecastPoint } from "./types";
-import { summarizeWeather, weatherPlace } from "./conversation-weather";
+import { summarizeWeather, weatherDestination } from "./conversation-weather";
 
 export interface AnswerSource { title: string; url?: string; detail?: string }
 export interface DirectAnswer { reply: string; sources: AnswerSource[]; kind: string }
 
 export async function answerWeather(request: Request, message: string, today: string, known: IntakePatch): Promise<DirectAnswer> {
   const facts = extractIntake(message, today, known);
-  const city = weatherPlace(message) || facts.cityName || known.cityName;
+  const city = weatherDestination(message, facts.cityName, known.cityName);
   const date = facts.date || known.date || today;
   const sources: AnswerSource[] = [];
   if (!city) return { reply: "你想查询哪个城市或区县的天气？也可以说“明天西安的天气”。", sources, kind: "天气查询" };

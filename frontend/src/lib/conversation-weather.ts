@@ -6,6 +6,13 @@ export function weatherPlace(message: string): string | undefined {
   const match = text.match(/^([\u4e00-\u9fa5]{2,10}?)(?:的)?(?:天气|气温|温度|湿度|空气质量|降雨概率|降水概率)/);
   return match && !/^(会不会|会|是否|这里|那里|当地|这个|如何|怎么样|什么)$/.test(match[1]) ? match[1] : undefined;
 }
+
+export function weatherDestination(message: string, extracted?: string, previous?: string): string | undefined {
+  const named = weatherPlace(message);
+  // Preserve explicit districts; otherwise prefer the parser's full city name
+  // (e.g. 西安市 rather than the ambiguous keyword 西安).
+  return named && /(?:市|县|区)$/.test(named) ? named : extracted || named || previous;
+}
 export function summarizeWeather(city: string, date: string, hours: EnvironmentalForecastPoint[]): string {
   const valid = hours.filter((h) => Number.isFinite(h.temperature) && Number.isFinite(h.rainProbability));
   if (!valid.length) throw new Error("no-weather");

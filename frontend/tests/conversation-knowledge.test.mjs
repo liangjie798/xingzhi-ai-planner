@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { classifyConversation, retrieveKnowledge } from "../src/lib/conversation-knowledge.ts";
-import { summarizeWeather, weatherPlace } from "../src/lib/conversation-weather.ts";
+import { summarizeWeather, weatherPlace, weatherDestination } from "../src/lib/conversation-weather.ts";
 import { searchKnowledge } from "../src/lib/social-research.ts";
 
 test("weather queries bypass planning intake even when a plan is pending", () => {
@@ -26,6 +26,9 @@ test("weather summaries use actual observations and never fabricate absent perio
   assert.equal(weatherPlace("告诉我明天太原的天气"), "太原");
   assert.equal(weatherPlace("青岛明天气温多少？"), "青岛");
   assert.equal(weatherPlace("明天下午会下雨吗？"), undefined);
+  assert.equal(weatherDestination("告诉我明天西安的天气", "西安市", "杭州市"), "西安市");
+  assert.equal(weatherDestination("成都武侯区明天天气", "成都市", "杭州市"), "成都武侯区");
+  assert.equal(weatherDestination("明天太原的天气", undefined, "杭州市"), "太原");
   const summary = summarizeWeather("西安市", "2026-10-26", [
     { hour: 9, temperature: 15.2, rainProbability: 20 },
     { hour: 14, temperature: 23.1, rainProbability: 40 },
