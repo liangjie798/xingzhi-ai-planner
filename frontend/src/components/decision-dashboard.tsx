@@ -28,7 +28,7 @@ import type { MapSelection } from "./environment-map";
 import { reverseGeocode, searchChinaDistricts } from "@/lib/amap-lbs";
 import { cityById, saveSelectedCity } from "@/lib/cities";
 import type { CityOption } from "@/lib/cities";
-import type { IntakeState } from "@/lib/conversation-intake";
+import { intakeChoices, type IntakeState } from "@/lib/conversation-intake";
 import type { DestinationContext } from "@/lib/destination-knowledge";
 import { describeDestinationPreferences } from "@/lib/destination-knowledge";
 import { fetchTourismRoute } from "@/lib/tourism";
@@ -521,13 +521,18 @@ export function DecisionDashboard() {
   }
 
   function runAgentAction(action: AgentAction) {
+    if (!result && !route) {
+      const context = [knowledgeContext.city || weatherContext.cityName, weatherContext.date].filter(Boolean).join("，");
+      void submitConversation(action === "compare" ? `${context ? context + "，" : ""}帮我规划活动并比较候选时段` : action === "checklist" ? `${context ? context + "，" : ""}帮我规划活动并生成筹备清单` : "解释刚才回答的数据来源和依据");
+      return;
+    }
     const names = { explain: "解释本次推荐依据", compare: "比较前三个候选时段", checklist: "生成筹备检查清单" };
     setChatMessages((current) => [...current, { role: "user", content: names[action] }, { role: "assistant", content: answerAgentAction(action, input, result, route) }]);
   }
 
-  async function submitConversation() {
+  async function submitConversation(choice?: string) {
     const conversationStarted = performance.now();
-    const message = chatText.trim();
+    const message = (choice || chatText).trim();
     if (!message || chatBusy || !memoryReady) return;
     const userMessage: ChatMessage = { role: "user", content: message };
     const history = [...chatMessages, userMessage];
@@ -713,6 +718,7 @@ export function DecisionDashboard() {
             <div className="memory-toolbar"><small role="status">{memoryStatus}{activeTopic === "weather" && weatherContext.cityName ? ` · 天气：${weatherContext.cityName}` : ""}</small><button type="button" disabled={chatBusy || !memoryReady} onClick={clearConversationMemory}>清除对话记忆</button></div>
             {knowledgeContext.topic && <div className="knowledge-context" aria-label="已确认问答偏好"><span>正在讨论：{knowledgeContext.city || "选择目的地"}{describeDestinationPreferences(knowledgeContext) ? ` · ${describeDestinationPreferences(knowledgeContext)}` : ""}</span><button type="button" disabled={chatBusy} onClick={() => setKnowledgeContext({})}>清除偏好</button></div>}
             <div ref={chatScroll} className="conversation-messages" aria-live="polite">{chatMessages.map((message, index) => <InkMessage message={message} key={`${message.role}-${index}`} />)}{chatBusy && <ThinkingIndicator />}</div>
+            <IntakeChoiceButtons known={intake.known} onAnswer={submitConversation} enabled={!chatBusy && memoryReady && activeTopic === "planning"} />
             <div className="agent-actions" aria-label="Agent 分析工具"><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("explain")}>解释推荐依据</button><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("compare")}>对比候选时段</button><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("checklist")}>生成筹备清单</button></div>
             <form className="analysis-console-form" onSubmit={(event) => { event.preventDefault(); void submitConversation(); }}>
               <textarea id="conversation-input" aria-label="问题或规划需求" value={chatText} onChange={(event) => setChatText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submitConversation(); } }} placeholder="问一个问题，或告诉我你的旅行与活动想法…" rows={2} />
@@ -763,6 +769,12 @@ export function DecisionDashboard() {
 function Metric({ icon: Icon, value, label }: { icon: typeof Gauge; value: string; label: string }) { return <div className="metric-item"><Icon size={18} /><div><strong>{value}</strong><span>{label}</span></div></div>; }
 
 function ClipboardTextIcon() { return <Sparkle size={24} weight="duotone" />; }
+
+function IntakeChoiceButtons({ known, enabled, onAnswer }: { known: IntakeState["known"]; enabled: boolean; onAnswer: (message: string) => Promise<void> }) {
+  const choices = intakeChoices(known);
+  if (!enabled || !choices.length) return null;
+  return <div className="intake-choices" role="group" aria-label="快捷回答当前问题"><span>点击回答，也可以直接输入：</span>{choices.map(choice => <button key={choice.message} type="button" onClick={() => void onAnswer(choice.message)}>{choice.label}</button>)}</div>;
+}
 
 function ThinkingIndicator() {
   const [seconds, setSeconds] = useState(0);

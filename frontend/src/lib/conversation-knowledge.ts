@@ -20,6 +20,7 @@ export const knowledgeBase = [
 export type ConversationIntent = "weather" | "planning" | "knowledge";
 const sourceQuestion = /来源|出处|依据|从哪|哪里来|哪来的|真实吗|可靠吗|可信|准确吗/;
 export function classifyConversation(message: string, hasPendingPlan = false): ConversationIntent {
+  if (/比较.*候选时段|规划活动并比较/.test(message)) return "planning";
   if (/适合.*(?:去|地方|城市)|推荐.*(?:景点|地方|城市)|(?:亲子|老人|学生|轮椅).*(?:去哪|哪里|怎么玩)/.test(message)) return "knowledge";
   if (/介绍|城市简介|城市概况/.test(message) && !/帮我规划|制定|生成.*方案/.test(message)) return "knowledge";
   if (sourceQuestion.test(message)) return "knowledge";

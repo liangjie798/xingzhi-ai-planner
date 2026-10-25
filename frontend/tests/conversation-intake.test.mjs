@@ -1,8 +1,33 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractIntake, completeIntake, relativeDateFromText, isPlanRevision } from "../src/lib/conversation-intake.ts";
+import { extractIntake, completeIntake, relativeDateFromText, isPlanRevision, intakeChoices } from "../src/lib/conversation-intake.ts";
 
 const today = "2026-10-23";
+test("reported study activity conversation accepts inverted intensity and delegation without repeating questions", () => {
+  const day = "2026-10-25";
+  let state = { cityName: "西安市" };
+  for (const message of ["规划研学活动", "西安明天到30号", "100人，6小时", "学生", "强度高"]) {
+    const result = completeIntake(state, extractIntake(message, day, state), day);
+    state = result.intake.known;
+  }
+  assert.equal(state.intensity, "高强度"); assert.equal(state.duration, 6); assert.equal(state.participants, 100);
+  assert.equal(state.date, "2026-10-26"); assert.equal(state.endDate, "2026-10-30");
+  assert.deepEqual(intakeChoices(state).map(item => item.label), ["上午", "下午", "晚上", "不限时段，由系统推荐"]);
+  const result = completeIntake(state, extractIntake("常规推荐", day, state), day);
+  assert.equal(result.command, "analyze"); assert.equal(result.patch.intensity, "高强度"); assert.equal(result.patch.duration, 6);
+  assert.equal(result.patch.endDate, "2026-10-30"); assert.deepEqual(result.choices, []);
+  for (const message of ["高", "强度高", "高强度", "强度是高", "高？"]) assert.equal(extractIntake(message, day, state).intensity, "高强度", message);
+});
+
+test("choice answers advance the intake and preserve existing answers", () => {
+  let state = { cityName: "西安市", date: "2026-10-26", activityType: "研学活动", participants: 100, duration: 6 };
+  for (const answer of ["学生", "高强度", "不限时段，常规推荐"]) {
+    assert.ok(intakeChoices(state).some(item => item.message === answer));
+    state = completeIntake(state, extractIntake(answer, "2026-10-25", state), "2026-10-25").intake.known;
+  }
+  assert.equal(state.group, "儿童青少年"); assert.equal(state.intensity, "高强度"); assert.equal(state.allowedStartHour, 6); assert.equal(state.allowedEndHour, 21);
+  assert.equal(state.duration, 6); assert.equal(state.participants, 100);
+});
 function turn(known, message) { return completeIntake(known, extractIntake(message, today, known), today); }
 
 test("weather date continuations parse weeks and days relative to Beijing today", () => {

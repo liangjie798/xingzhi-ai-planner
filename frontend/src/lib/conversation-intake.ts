@@ -70,6 +70,8 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   else if (/敏感人群/.test(text)) patch.group = "敏感人群";
   else if (/成人|成年|普通人群|年轻人/.test(text)) patch.group = "普通人群";
   patch.intensity = /低强度|轻松|轻量/.test(text) ? "低强度" : /高强度|高负荷/.test(text) ? "高强度" : /中强度|适中/.test(text) ? "中强度" : undefined;
+  const intensityAnswer = text.trim().match(/^(?:活动)?(?:强度\s*(?:为|是|选|选择|：|:)?\s*)?(低|中|高)(?:等)?(?:强度)?[。！!？?]?$/);
+  if (intensityAnswer && (known.activityType || /强度/.test(text))) patch.intensity = `${intensityAnswer[1]}强度` as ActivityInput["intensity"];
   const dates = [...text.matchAll(/(20\d{2})[-/年](\d{1,2})[-/月](\d{1,2})日?/g)].map((m) => `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`);
   if (dates[0]) patch.date = dates[0];
   else {
@@ -79,6 +81,18 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
     if (monthDay) patch.date = `${today.slice(0, 4)}-${monthDay[1].padStart(2, "0")}-${monthDay[2].padStart(2, "0")}`;
   }
   if (dates[1]) patch.endDate = dates[1];
+  else {
+    const rangeEnd = text.match(/(?:到|至|直到|截至)\s*(?:(\d{1,2})月)?(\d{1,2})[日号]/);
+    if (rangeEnd) {
+      const start = patch.date || known.date || today;
+      patch.endDate = `${start.slice(0,4)}-${(rangeEnd[1] || start.slice(5,7)).padStart(2,"0")}-${rangeEnd[2].padStart(2,"0")}`;
+      if (!rangeEnd[1] && patch.endDate < start) {
+        const next = new Date(`${start.slice(0,7)}-15T00:00:00+08:00`);
+        next.setUTCMonth(next.getUTCMonth() + 1);
+        patch.endDate = `${next.toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" }).slice(0,7)}-${rangeEnd[2].padStart(2,"0")}`;
+      }
+    }
+  }
   const hour = text.match(/(?:早上|上午|下午|晚上|中午)?\s*(\d{1,2})(?:点|时|:00)/);
   if (hour) patch.startHour = Number(hour[1]) + (/下午|晚上/.test(text) && Number(hour[1]) < 12 ? 12 : 0);
   else if (/下午/.test(text)) patch.startHour = 14;
@@ -96,7 +110,7 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   else if (embedded && !/今天|明天|后天|未来|[一二两三四五六七\d]+[天日]|路线|活动|运动会/.test(embedded[1])) patch.cityName = embedded[1];
   // A bare place name is a valid answer to the destination question.
   else if (!known.cityName && !Object.keys(cleanIntake(patch)).length && /^[\u4e00-\u9fa5]{2,6}$/.test(text) && !/规划|旅游|路线|随便|安排|明天|后天|今天|出发|默认|推荐/.test(text)) patch.cityName = text;
-  if (/你(?:来)?安排|按(?:常规|默认)|都可以|你(?:来)?推荐|帮我(?:选|定)/.test(text)) {
+  if (/你(?:来)?安排|按(?:常规|默认)|常规推荐|默认推荐|都可以|你(?:来)?推荐|帮我(?:选|定)/.test(text)) {
     const tourism = (patch.activityType || known.activityType) === "旅游规划";
     patch.startHour ??= known.startHour ?? 9;
     patch.duration ??= known.duration ?? 2;
@@ -126,12 +140,31 @@ export function completeIntake(previous: IntakePatch, delta: IntakePatch, today:
   if (!tourism && known.startHour === undefined) missing.push("偏好上午、下午或晚上（也可以让我推荐）");
   let reply: string;
   const invalidRange = known.date && (known.date < today || (known.endDate && (known.endDate < known.date || known.endDate > addDays(today, 6))) || known.date > addDays(today, 6));
+  const invalidWindow = !tourism && known.duration && known.duration > (known.allowedEndHour ?? 21) - (known.allowedStartHour ?? 6);
   if (invalidRange) reply = `当前可结合真实天气规划的日期为 ${today} 至 ${addDays(today, 6)}。请调整出发或结束日期，覆盖整个行程后我再分析。`;
+  else if (invalidWindow) reply = `已记下活动持续${known.duration}小时，但所选${known.allowedStartHour ?? 6}:00–${known.allowedEndHour ?? 21}:00时段无法容纳完整活动。请缩短时长，或选择不限时段后重新分析。`;
   else if (missing.length) reply = `好的，${known.tripDays && tourism ? `${known.tripDays}天旅游已记下。` : "已记下你提供的条件。"}还需要了解：\n${missing.slice(0, 3).map((question, i) => `${i + 1}. ${question}？`).join("\n")}\n可以一条回复一起告诉我；人数、强度和时段也可以说“按常规推荐”。`;
   else reply = `条件齐了：${known.cityName}，${known.date}${known.endDate && known.endDate !== known.date ? ` 至 ${known.endDate}` : ""}，${known.activityType}，${known.participants}人（${known.group}）${tourism ? "，结合天气安排景点与美食" : `，每次${known.duration}小时，${known.intensity}`}。现在查询对应地区的真实数据并生成详细规划。`;
   const { tripDays: _days, ...patch } = known;
   void _days;
-  return { command: missing.length || invalidRange ? "clarify" as const : "analyze" as const, reply, patch: { ...patch, ...(tourism ? { duration: known.duration ?? 2, startHour: known.startHour ?? 9, intensity: known.intensity ?? "低强度" as const } : {}), ...(known.date && !known.endDate ? { endDate: known.date } : {}) }, intake: { known }, missing };
+  const choices = invalidRange ? [] : intakeChoices(known);
+  return { command: missing.length || invalidRange || invalidWindow ? "clarify" as const : "analyze" as const, reply, choices, patch: { ...patch, ...(tourism ? { duration: known.duration ?? 2, startHour: known.startHour ?? 9, intensity: known.intensity ?? "低强度" as const } : {}), ...(known.date && !known.endDate ? { endDate: known.date } : {}) }, intake: { known }, missing };
+}
+
+export interface IntakeChoice { label: string; message: string }
+/** Show only choices for the next unanswered field. All choices use the normal conversation parser. */
+export function intakeChoices(known: IntakePatch): IntakeChoice[] {
+  const choose = (values: string[]) => values.map(value => ({ label: value, message: value }));
+  if (known.duration && known.activityType !== "旅游规划" && known.duration > (known.allowedEndHour ?? 21) - (known.allowedStartHour ?? 6)) return [{ label: "不限时段，由系统推荐", message: "不限时段，常规推荐" }, ...choose(["1小时", "2小时"])];
+  if (!known.activityType) return choose([...activities]);
+  if (!known.cityName || !known.date) return [];
+  if (known.activityType === "旅游规划" && !known.tripDays) return choose(["一天旅游", "两天旅游", "三天旅游"]);
+  if (known.activityType !== "旅游规划" && !known.duration) return choose(["1小时", "2小时", "4小时", "6小时"]);
+  if (!known.participants) return choose(["2人", "10人", "30人", "100人"]);
+  if (!known.group) return choose(["成年人", "学生", "大学生", "老年人"]);
+  if (known.activityType !== "旅游规划" && !known.intensity) return choose(["低强度", "中强度", "高强度"]);
+  if (known.activityType !== "旅游规划" && known.startHour === undefined) return [...choose(["上午", "下午", "晚上"]), { label: "不限时段，由系统推荐", message: "不限时段，常规推荐" }];
+  return [];
 }
 
 /** Modification commands update a confirmed plan before generic Q&A routing. */

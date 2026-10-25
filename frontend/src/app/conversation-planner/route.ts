@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   catch { return NextResponse.json({ detail: "请求体不是合法 JSON" }, { status: 400 }); }
   if (typeof body.message !== "string" || !body.message.trim()) return NextResponse.json({ detail: "请输入规划要求" }, { status: 400 });
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
-  const known = cleanIntake(body.intake?.known);
+  let known = cleanIntake(body.intake?.known);
   const message = body.message.trim().slice(0, 4000);
   const history = Array.isArray(body.history) ? body.history.filter((item) => item && ["user", "assistant"].includes(item.role) && typeof item.content === "string").slice(-12).map((item) => ({ role: item.role, content: item.content.slice(0, 4000) })) : [];
   const pending = Object.keys(known).length > 0 || /还需要了解|哪天|哪个城市|几个人/.test(history.filter((h) => h.role === "assistant").at(-1)?.content || "");
@@ -37,12 +37,17 @@ export async function POST(request: Request) {
     if (previousCity) { knowledgeContext.city = previousCity; knowledgeContext.topic = "introduction"; }
   }
   const savedWeather = cleanIntake(body.weatherContext && typeof body.weatherContext === "object" ? body.weatherContext : {});
+  const fieldAnswer = Boolean(known.activityType) && /^(?:强度\s*(?:是|为|：|:)?\s*)?(?:高|中|低)(?:强度)?[？?。！!]*$|^(?:按)?(?:常规|默认)推荐[？?。！!]*$/.test(message);
   const weatherFollowup = isWeatherFollowup(message, body.activeTopic === "weather" ? "天气预报（北京时间）" : lastAssistant);
   const revision = isPlanRevision(message, known) || body.activeTopic === "planning" && Boolean(relativeDateFromText(message, today)) && !/天气|气温|下雨|是什么|为什么|来源/.test(message);
   const comparison = Boolean(known.activityType) && /对比|比较/.test(message) && /图|两天|两日/.test(message);
   const destinationFollowup = isDestinationFollowup(message, knowledgeContext);
   const recommendation = destinationRecommendationRequest(message);
-  const intent = revision || comparison ? "planning" : weatherFollowup ? "weather" : destinationFollowup || recommendation ? "knowledge" : classifyConversation(message, pending);
+  const intent = revision || comparison || fieldAnswer ? "planning" : weatherFollowup ? "weather" : destinationFollowup || recommendation ? "knowledge" : classifyConversation(message, pending);
+  if (intent === "planning" && !known.cityName) {
+    const city = body.activeTopic === "weather" ? savedWeather.cityName : knowledgeContext.city || savedWeather.cityName;
+    if (city) known = { ...known, cityName: city };
+  }
   if (intent === "knowledge" && relativeDateFromText(message, today) && message.length < 20 && !/天气|气温|规划|旅行|旅游/.test(message)) {
     return NextResponse.json({ reply: "这次是想继续查询天气，还是调整活动日期？请补充一下查询内容，我会沿用已确认的城市与条件。", kind: "需要确认话题", command: "answer", patch: {}, intake: { known }, missing: [], knowledgeContext, weatherContext: savedWeather, activeTopic: body.activeTopic || "knowledge", sources: [] });
   }
