@@ -3,6 +3,8 @@ package com.shihou.config;
 import com.shihou.dao.UserRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -42,8 +44,15 @@ public class SecurityConfig {
                 .csrf(value -> value.csrfTokenRepository(csrf)
                         .ignoringRequestMatchers("/api/v1/decisions/**", "/api/v2/agent/**", "/api/v1/analytics/**"))
                 .authorizeHttpRequests(value -> value
-                        .requestMatchers("/api/v1/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
-                        .requestMatchers("/api/v1/account/**").hasAnyRole("USER", "ADMIN", "SUPER_ADMIN")
+                        .requestMatchers("/api/v1/auth/me", "/api/v1/auth/csrf", "/api/v1/auth/login", "/api/v1/auth/logout").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
+                        .requestMatchers("/api/v1/admin/**").denyAll()
+                        .requestMatchers("/api/v1/account/**").hasRole("USER")
+                        // Administrator sessions are reserved for read-only platform statistics.
+                        // User/guest/anonymous business access keeps its existing behavior.
+                        .requestMatchers("/api/**").access((authentication, context) -> new AuthorizationDecision(
+                                authentication.get().getAuthorities().stream().noneMatch(role ->
+                                        role.getAuthority().equals("ROLE_ADMIN") || role.getAuthority().equals("ROLE_SUPER_ADMIN"))))
                         .requestMatchers("/**").permitAll())
                 .requestCache(value -> value.disable())
                 .formLogin(value -> value.disable())

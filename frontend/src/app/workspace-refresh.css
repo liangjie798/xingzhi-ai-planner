@@ -64,6 +64,7 @@
 .portal-tabs-public { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .admin-login-badge { display: flex; align-items: center; gap: 9px; min-height: 44px; margin-bottom: 28px; color: #315d40; font-size: 12px; }
 .admin-auth-page .auth-guest { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.admin-console-brand { display: flex; align-items: center; gap: 9px; color: #294b36; font-size: 14px; font-weight: 700; }
 .national-map-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 0 12px; color: #577565; font-size: 12px; }
 .national-map-status button { border: 1px solid #cddbcc; border-radius: 7px; padding: 5px 12px; background: white; color: #315d40; cursor: pointer; }
 .national-map-note { margin: 14px 0 24px; color: #6b7b71; font-size: 12px; line-height: 1.9; }

@@ -13,5 +13,6 @@ export function WelcomeGreeting({ user }: { user?: AccountUser | null }) {
   }, [user]);
   const account = user === undefined ? sessionUser : user;
   if (!account) return null;
-  return <div className="welcome-greeting"><strong className="welcome-brush">{account.role === "GUEST" ? "初次相见，幸会行知" : "山海有约，欢迎归来"}</strong><p>{account.role === "GUEST" ? "把出行想法告诉我，我们一起开始规划。" : `${account.displayName || account.username}，一起把今天的想法，写成下一份计划。`}</p><span className="welcome-seal" aria-hidden="true">行知</span></div>;
+  const admin = ["ADMIN", "SUPER_ADMIN"].includes(account.role);
+  return <div className="welcome-greeting"><strong className="welcome-brush">{admin ? "观数知行，欢迎归来" : account.role === "GUEST" ? "初次相见，幸会行知" : "山海有约，欢迎归来"}</strong><p>{admin ? `${account.displayName || account.username}，在这里查看平台的注册、搜索与使用情况。` : account.role === "GUEST" ? "把出行想法告诉我，我们一起开始规划。" : `${account.displayName || account.username}，一起把今天的想法，写成下一份计划。`}</p><span className="welcome-seal" aria-hidden="true">行知</span></div>;
 }
