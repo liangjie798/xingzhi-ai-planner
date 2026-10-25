@@ -11,3 +11,15 @@
 *.log
 
 /deploy-artifacts/
+/tmp/
+/backend/output/
+**/.runtime/
+**/.env.*
+!**/.env.example
+*.key
+*.p12
+*.pfx
+*.jks
+*.h2.db
+*.mv.db
+*.trace.db

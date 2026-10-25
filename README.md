@@ -1,107 +1,226 @@
-# 适候 · AI 户外活动环境决策平台
+# 行知 · AI 活动与旅行规划
 
-面向学校、社区和活动组织者的 Web 决策工具。用户选择城市、时间、活动强度与人群后，系统计算候选时段风险，展示空间图层、执行建议、依据和工具轨迹。
+通过自然语言完成活动需求确认、真实环境数据查询、地图展示与规划书生成的 Web 应用。
 
-当前版本可搜索中国大陆城市及区县，也可通过浏览器定位当前位置。系统实时读取 Open-Meteo 天气、降雨、体感温度与空气质量预报；候选时段直接使用逐小时数据，US AQI 会在界面明确标注。地图使用城市网格预报生成连续热力色带，并明确标注为插值展示。热风险由体感温度和湿度计算。
+- **公开仓库**：<https://github.com/liangjie798/xingzhi-ai-planner>
+- **在线演示**：<https://lht574.cn>（可在登录页选择访客体验）
+- **团队**：刘瀚艇（队长）、石晗喆、郑少卓
 
-决策链采用“受控 Agent＋混合 RAG＋确定性安全引擎”：DeepSeek 通过 Function Calling 规划环境读取、依据检索、时段评分、方案比较和应急预案工具；数值由工具产生，模型无权改写。RAG 从带政府原文链接的知识语料中执行 BM25 与本地中文字符向量检索，再使用 RRF 融合排序。模型未配置、超时或输出校验失败时自动切换确定性安全方案。
+## 项目介绍
 
-工作台区分校园运动会、体育课、社区活动、户外训练、研学活动与旅游规划六种场景。每种场景具有不同的风险权重、执行建议和界面说明；日期范围支持今天至未来四天，多日活动会实际比较范围内每天的逐小时预报。独立逐小时页面展示24小时温度、湿度、降水、US AQI、PM2.5、热风险与活动适宜度。
+用户可以直接说“规划杭州未来三天的旅游路线”，系统追问尚未确认的人数、人群等条件。继续回答“七个大学生”后，会结合真实天气、空气质量、候选地点和联网资料生成三日行程。用户还可以修改日期、时长和人群，系统据此重新计算。
+
+支持旅游规划、校园运动会、体育课、社区活动、户外训练、研学活动六种场景。条件通过对话逐步确认；分析台、环境地图、执行方案分为独立视图。
+
+### 主要功能
+
+| 模块 | 已实现内容 |
+| --- | --- |
+| 对话规划 | 多轮条件记忆、中文人数识别、日期范围确认、缺失条件追问 |
+| 环境地图 | 默认全国视图，34 个省级代表地点真实采样；连续色带按行政边界裁切，指定城市后切换到当地地图 |
+| 环境分析 | 气温、湿度、降雨、US AQI、热风险与候选时段比较；独立逐小时页面 |
+| 联网搜索 | 百度千帆搜索 API 检索全网攻略及收录的小红书、抖音内容，保留链接与检索状态；可选 Tavily |
+| 旅游路线 | 景点与美食编排、地点图片、按日行程、推荐理由、地图站点与连线 |
+| 活动方案 | 按日、按时间组织准备、正式活动、休息和离场，包含岗位建议与备用预案 |
+| 规划书 | 页面阅读、图文旅行方案、Word / Markdown 下载及浏览器打印为 PDF |
+| Agent 轨迹 | 展示实际工具步骤、耗时、模型结果或兜底原因；不模拟不存在的工具调用 |
+| 账户管理 | 用户、访客、管理员入口，个人记录、账户绑定模型配置、注册和搜索统计 |
+
+## 技术架构
+
+```mermaid
+flowchart LR
+    U[用户 / 访客 / 管理员] --> F[Next.js 16 · React 19 · TypeScript]
+    F --> C[对话条件提取与校验]
+    C --> B[Spring Boot 4 · Java 21 API]
+    B --> E[Open-Meteo 天气与空气质量]
+    B --> R[混合 RAG · 确定性时段评分]
+    B --> D[(本地 H2 / 生产 MySQL)]
+    F --> S[百度千帆联网搜索]
+    F --> M[账户绑定模型 / 服务端模型]
+    F --> A[高德地图与 POI · DataV 行政边界]
+    R --> P[可解释的活动方案]
+    S --> P
+    M --> P
+    A --> P
+    P --> V[地图 · 数据依据 · 轨迹 · 规划书]
+```
+
+依赖版本以 [frontend/package-lock.json](frontend/package-lock.json) 和 [backend/pom.xml](backend/pom.xml) 为准。主要技术为 Next.js 16.4、React 19、GSAP、Spring Boot 4.1、Java 21、Spring Security、Spring Data JPA。
+
+模型负责需求理解、路线编排和文字解释；环境数值、风险评分及引用校验由程序产生。模型未配置、超时或结果校验失败时，会说明具体原因并提供可解释的规则方案。百度搜索密钥与大模型密钥是两种独立配置。
 
 ## 目录结构
 
 ```text
-amap-jsapi/
-├─ frontend/                         Next.js 16 + React 19 + TypeScript
-│  ├─ src/app/                       页面、布局、样式
-│  ├─ src/components/                地图和决策工作台组件
-│  └─ src/lib/                       城市数据、类型与本地风险计算
-├─ backend/                          Spring Boot 4.1 + Java 21 + Maven
-│  ├─ db/db.sql                       数据库结构参考
-│  └─ src/main/
-│     ├─ java/com/shihou/
-│     │  ├─ annotation/              自定义注解
-│     │  ├─ config/                  跨域和模型配置
-│     │  ├─ controller/              HTTP 接口与异常处理
-│     │  ├─ dao/                     数据访问层
-│     │  ├─ dto/                     请求与响应数据结构
-│     │  ├─ entity/                  数据库实体
-│     │  ├─ interceptor/             请求追踪拦截器
-│     │  ├─ service/                 环境、决策、依据与模型服务
-│     │  ├─ utils/                   确定性风险计算
-│     │  └─ ShihouBackendApplication.java
-│     └─ resources/
-│        ├─ mapper/                  SQL 映射预留目录
-│        ├─ static/upload/           上传文件预留目录
-│        ├─ application.yml          本地配置
-│        └─ application-prod.yml     生产配置
-├─ deploy/nginx.conf                 统一入口反向代理
-├─ docker-compose.yml                MySQL、后端、前端、Nginx
-└─ .env.example                      部署环境变量模板
+.
+├── frontend/                 Next.js 页面、服务端路由、组件、规划逻辑
+│   ├── src/app/              分析台、地图、方案、登录、管理及 API 路由
+│   ├── src/components/       地图、对话、规划书与工具轨迹组件
+│   ├── src/lib/              条件校验、搜索、模型、地点、文档生成
+│   └── tests/                Node.js 测试
+├── backend/                  Spring Boot 后端
+│   ├── src/main/java/        controller / service / dao / dto / entity 等分层
+│   ├── src/main/resources/   应用配置、权威资料语料
+│   └── src/test/             服务与检索测试
+├── deploy/                   Nginx、systemd、原生部署参考
+├── docs/                     环境、功能边界和参赛材料说明
+├── scripts/                  发布前历史检查
+├── .github/workflows/        自动化质量检查
+├── .env.example              Docker 部署变量模板
+└── docker-compose.yml        MySQL、后端、前端、Nginx
 ```
 
-这沿用了参考图片的 Spring Boot 分层目录。前端单独放在 `frontend/`，便于 TypeScript 构建、静态资源优化和独立部署。
+## 安装与本地运行
 
-## 本地运行
+### 1. 准备环境
 
-要求：Node.js 22、npm、JDK 21。Windows 当前安装的两个版本位于 `G:\JavaVersions\jdk8u152` 与 `G:\JavaVersions\jdk21.0.12`。本项目使用 Java 21。
+- Git、Node.js **22** 与 npm。
+- JDK **21**，正确设置 `JAVA_HOME`。仓库包含 Maven Wrapper，无需单独安装 Maven。
+- 本地开发默认使用内存 H2，不要求安装 MySQL。重启后本地 H2 数据会清空。
+- 环境数据、地图、联网搜索和模型接口需要网络访问。
+
+```bash
+git clone https://github.com/liangjie798/xingzhi-ai-planner.git
+cd xingzhi-ai-planner
+```
+
+### 2. 启动后端
+
+Linux / macOS：
+
+```bash
+cd backend
+cp .env.example .env
+# 按需编辑 .env；可选管理员密码应自行设置。
+set -a
+. ./.env
+set +a
+bash ./mvnw spring-boot:run
+```
+
+Windows PowerShell：
 
 ```powershell
-# 终端 1：启动后端，本地默认使用 H2 数据库
-cd 'G:\Ai Web\amap-jsapi\backend'
-./run-dev.ps1
+cd backend
+# 确保 JAVA_HOME 指向本机的 JDK 21。可选管理员配置：
+$env:ADMIN_USERNAME = 'admin'
+$env:ADMIN_PASSWORD = Read-Host '设置本地管理员密码'
+# 与前端 .env.local 中的 MODEL_CONFIG_SECRET 保持一致。
+$env:MODEL_CONFIG_SECRET = '替换为自行生成的随机字符串'
+./mvnw.cmd spring-boot:run
+```
 
-# 终端 2：启动前端
-cd 'G:\Ai Web\amap-jsapi\frontend'
-Copy-Item .env.example .env.local
+后端默认端口 `8080`，健康检查：`http://localhost:8080/actuator/health`。Spring Boot 不会自动加载 `.env`；Windows 请用环境变量传入，Linux 示例已显式导入。
+
+### 3. 启动前端
+
+在另一个终端中：
+
+```bash
+cd frontend
+cp .env.example .env.local
+# Windows 可用 Copy-Item .env.example .env.local
 npm ci
 npm run dev
 ```
 
-访问 `http://localhost:3000`。前端开发服务器把 `/api/*` 转发至 `localhost:8080`。未提供高德密钥时，地图区域仅显示真实城市坐标和城市级实时指标，不生成虚构的空间差异。
+访问 **http://localhost:3000**。开发服务器会将 `/api/*` 转发至本地后端。请将 `.env.local` 中的 `MODEL_CONFIG_SECRET` 设置为与后端相同的值。
 
-切换当前 PowerShell 会话的 Java 版本：
+高德地图需要有效的 Web JSAPI Key 和安全配置；未配置时地图会提示不可用，不能用于完整地图演示。联网搜索和模型均为可选项，未配置时界面会说明功能限制。`npm run build` 会检查高德 Key，空值会阻止生产构建。
 
-```powershell
-$env:JAVA_HOME = 'G:\JavaVersions\jdk21.0.12' # 或 G:\JavaVersions\jdk8u152
-$env:Path = "$env:JAVA_HOME\bin;$env:Path"
-java -version
-javac -version
-```
+### 4. 评审体验路径
 
-## 配置与部署
+1. 登录页选择“访客”，进入分析台；也可注册用户。
+2. 输入“规划杭州未来三天的旅游路线”。
+3. 根据追问回复“七个大学生”，确认条件后生成规划。
+4. 打开环境地图、行程方案、数据与证据、Agent 轨迹。
+5. 下载 Word 或 Markdown 规划书，或使用打印功能保存 PDF。
 
-复制根目录 `.env.example` 为 `.env`，填写 MySQL 密码和管理员初始密码。`DEEPSEEK_API_KEY` 可留空，此时使用确定性规则生成解释。浏览器端高德地图需要 Web 端 JSAPI Key 以及安全密钥或代理地址，对应 `NEXT_PUBLIC_AMAP_SECURITY_CODE` 或 `NEXT_PUBLIC_AMAP_SERVICE_HOST`。前端公开变量会在镜像构建时写入客户端包，请按高德控制台的域名白名单限制 Key。不要提交 `.env`。
+管理员和超级管理员通过环境变量初始化，仓库不提供生产管理员密码。具体变量及权限见 [环境配置说明](docs/ENVIRONMENT.md)。
+
+## 环境配置与依赖
+
+| 用途 | 模板或清单 |
+| --- | --- |
+| 前端本地配置 | [frontend/.env.example](frontend/.env.example) |
+| 后端本地配置 | [backend/.env.example](backend/.env.example) |
+| Docker 部署配置 | [.env.example](.env.example) |
+| 变量说明及故障排查 | [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) |
+| 前端依赖与锁定版本 | [package.json](frontend/package.json)、[package-lock.json](frontend/package-lock.json) |
+| 后端依赖与 Java 版本 | [pom.xml](backend/pom.xml)、[Maven Wrapper](backend/.mvn/wrapper/maven-wrapper.properties) |
+
+模型设置页可将配置绑定到用户账户，重新登录不需要重复录入。密钥不进入下载的规划书或 Git 仓库。
+
+## 构建与测试
 
 ```bash
+cd frontend
+npm run lint
+node --experimental-strip-types --test tests/*.test.mjs
+npm run build
+
+cd ../backend
+bash ./mvnw test
+# Windows 使用 ./mvnw.cmd test
+
+cd ..
+node scripts/check-publish.mjs
+```
+
+`.github/workflows/ci.yml` 在推送及 Pull Request 时运行前端检查、测试和构建，以及后端测试。CI 的地图构建占位值仅用于编译，不用于真实地图请求。
+
+## 部署
+
+```bash
+cp .env.example .env
+# 必须替换数据库密码、管理员密码、MODEL_CONFIG_SECRET，并配置高德 Key。
+docker compose --env-file .env config --quiet
 docker compose up -d --build
 docker compose ps
 ```
 
-默认开放 80 端口。生产服务使用 MySQL 8.4；Spring JPA 首次运行创建表。部署到公网前应配置域名、HTTPS 和数据源授权。阿里云服务器需要放行 80/443 端口。
+默认通过 Nginx 的 `80` 端口访问。公网部署应配置 HTTPS，并相应设置 `SESSION_COOKIE_SECURE=true` 与允许的前端来源。不要直接在运行生产服务的小内存服务器上执行整套依赖安装和构建；优先在开发机或 CI 构建镜像后部署。
 
-### Ubuntu 服务器原生部署
+`deploy/` 中保留 Ubuntu 原生部署脚本和当前站点的配置参考，其中域名、目录、资源参数应按自己的环境修改。不要在已有数据库上未经检查直接运行初始化脚本。服务器私有环境文件、用户数据及登录态均不随仓库发布。
 
-`deploy/native-setup.sh` 用于无 Docker 的 Ubuntu ECS：安装 Node.js 22、Java 21、MySQL 与 Nginx 后，将仓库文件放在 `/opt/shihou`，把后端 JAR 放在 `/opt/shihou/backend/app.jar`，以 root 执行脚本。脚本会创建独立服务用户、数据库账号、systemd 服务和 Nginx 配置，DeepSeek 密钥可在 `/etc/shihou/backend.env` 中设置。当前阿里云部署使用 `lht574.cn`。
+## 关键接口
 
-## API
+| 接口 | 说明 |
+| --- | --- |
+| `POST /conversation-planner` | 多轮需求提取与确认 |
+| `GET /national-environment` | 全国代表地点环境采样 |
+| `GET /region-data/{adcode}` | 行政区边界 |
+| `POST /social-research` | 百度搜索与引用资料 |
+| `POST /tourism-planner` | 旅游路线编排及校验 |
+| `POST /model-gateway` | 账户绑定模型调用 |
+| `GET /api/v1/cities/environment` | 按坐标读取环境数据 |
+| `GET /api/v1/cities/hourly` | 逐小时环境预报 |
+| `POST /api/v1/decisions/analyze` | 活动风险评分与方案 |
+| `POST /api/v2/agent/stream` | 后端 Agent 工具 SSE 轨迹 |
 
-- `GET /api/v1/cities`：九个城市的实时环境快照。
-- `GET /api/v1/cities/{cityId}`：单个城市的实时环境快照。
-- `GET /api/v1/cities/search?q=`：检索中国大陆城市及区县。
-- `GET /api/v1/cities/environment`：按城市坐标读取实时环境。
-- `GET /api/v1/cities/hourly`：按城市坐标与日期读取24小时环境预报。
-- `POST /api/v1/decisions/analyze`：候选时段计算、依据检索与建议生成。
-- `POST /api/v2/agent/stream`：SSE 返回真实 Agent 工具轨迹，最后返回经过校验的结构化决策。
-- `GET /actuator/health`：后端健康检查。
+## 数据与使用边界
 
-配置 `DEEPSEEK_API_KEY` 后，Agent 使用 DeepSeek Function Calling 规划工具并执行证据化生成。未配置密钥时仍会完整执行确定性安全工具链、混合 RAG 与引用校验，并尝试使用限流的开放模型完成文字生成；开放模型超时或限流时自动返回可解释的安全方案，不影响环境评分与证据结果。
+- 天气和空气质量来自 Open-Meteo 模型网格数据，不是逐点地面实测。对话默认规划窗口为今天起七天，出行前需复核预警、预约及营业情况。
+- 全国颜色来自 34 个省级代表地点的采样插值，不能视为省域平均值或每个地点的真实数值；缺测区域不着色。详见 [全国地图说明](docs/national-environment.md)。
+- 空气质量明确使用 **US AQI**。风险评分是应用规则指标，不是行政预警或医疗结论。
+- 百度搜索结果受搜索引擎收录范围影响，不等于抖音或小红书全站数据、实时热榜；原文摘要未逐篇验证。详见 [联网搜索说明](docs/social-research.md)。
+- 地图路线连线表示行程顺序，不是道路导航；图片及 POI 信息需按来源与平台规则使用。
+- MediaCrawler 曾做过学习研究验证，已回退；当前代码不包含该采集服务，也不依赖本机扫码浏览器。
+- 第三方包遵循各自许可证；项目架构参考及原创性说明见 [GitHub 调研记录](docs/GITHUB_RESEARCH.md)。公开托管不代表另行授予第三方素材或服务的数据使用权。
 
-## 数据边界
+## 团队信息
 
-天气与空气质量是城市坐标附近的网格预报，并非单一地面监测站实测值；系统支持今天至未来四天。空气质量接口返回 US AQI，不冒充中国 HJ 633—2026 AQI。首批 RAG 语料为人工核验的政府公开资料必要摘录及原始链接，适合比赛原型，后续仍需建立定期更新和失效文件检查流程。Agent 轨迹由后端实际工具事件生成。
+| 姓名 | 团队身份 |
+| --- | --- |
+| 刘瀚艇 | 队长 |
+| 石晗喆 | 队员 |
+| 郑少卓 | 队员 |
 
-开源项目调研和原创性边界见 [`docs/GITHUB_RESEARCH.md`](docs/GITHUB_RESEARCH.md)。本项目只参考公开架构模式，没有复制或重新包装调研项目代码。
+具体分工以团队提交的参赛材料为准；本仓库不虚构贡献比例或成员提交记录。
 
-团队信息：待参赛团队填写。
+## Git 历史与参赛要求
 
+保留从原型、地图、Agent、登录、规划书到当前版本的完整提交历史，不通过重新初始化仓库或合并成单次提交替代开发记录。项目早期名称为“适候”，因此历史目录、包名和提交中仍保留 `shihou`。
+
+[参赛交付清单](docs/SUBMISSION.md) 对照公开访问、代码结构、README、Git 历史及环境配置逐项列出入口。可通过 GitHub Issues 提交问题。

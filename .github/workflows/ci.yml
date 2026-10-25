@@ -1,0 +1,49 @@
+name: Quality checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: node --experimental-strip-types --test tests/*.test.mjs
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_AMAP_KEY: ci-build-placeholder
+      - name: Check publishable history
+        run: node ../scripts/check-publish.mjs
+      - name: Validate Docker Compose
+        working-directory: .
+        run: docker compose --env-file .env.example config --quiet
+
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: bash ./mvnw --batch-mode test
