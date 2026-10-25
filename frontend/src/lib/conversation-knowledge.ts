@@ -13,13 +13,14 @@ export const knowledgeBase = [
   { id: "study", title: "研学与校园安排", match: /研学|体育课|校园.*(?:组织|安排|注意)/, text: "研学可按学习目标、行前导入、现场任务、休息与成果分享组织。校园活动应明确带队人员、分组、签到清点、场地边界和家校沟通方式；具体人数与保障要求由学校核定。" },
   { id: "community", title: "社区与户外活动", match: /社区|团建|训练.*(?:组织|准备)/, text: "活动应明确服务对象、场地、负责人、参与方式、时间表和退出机制。户外活动应与参与者能力相匹配，保留休息与调整空间，并事先确认场地使用与相关管理要求。" },
   { id: "boundaries", title: "回答范围与不确定性", match: /不能回答|无法回答|准确吗|可信|局限|能力范围/, text: "可以询问天气、旅行、活动组织、环境指标和平台使用，也可以尝试其他知识问题。超出知识库时会尝试联网检索；没有可靠资料时会说明无法确认。实时价格、预警、预约状态和个体专业判断不能凭模型记忆保证准确。" },
-  { id: "sources", title: "资料与推荐依据", match: /数据来源|来源|出处|数据.*哪|从哪.*数据|知识库|推荐依据|小红书|抖音|热榜/, text: "天气预报来自 Open-Meteo，高德用于解析城市和行政区域位置，再按对应坐标查询逐小时预报。空气质量展示 US AQI 预报；这些是预报数据，不是你所在位置的现场实测。每次天气回答下方附来源链接、查询日期和获取时间。其他联网资料保留原文链接；搜索摘要不等于平台热榜，也不保证已核验全文。查询失败或资料缺失时会明确说明。", source: "https://open-meteo.com/en/docs" },
+  { id: "sources", title: "资料与推荐依据", match: /数据来源|来源|出处|数据.*哪|从哪.*数据|推荐.*哪|哪里来|哪来的|知识库|推荐依据|小红书|抖音|热榜/, text: "天气预报来自 Open-Meteo，高德用于解析城市和行政区域位置，再按对应坐标查询逐小时预报。地点推荐结合高德按城市限定的地点检索与人群筛选规则；实时地点不可用时会标明使用内置候选，不能当作场馆适宜性认证。空气质量展示 US AQI 预报；这些是预报数据，不是你所在位置的现场实测。每次天气回答下方附来源链接、查询日期和获取时间。其他联网资料保留原文链接；搜索摘要不等于平台热榜，也不保证已核验全文。查询失败或资料缺失时会明确说明。", source: "https://open-meteo.com/en/docs" },
   { id: "product", title: "行知使用说明", match: /你能做什么|怎么使用|如何使用|下载|导出|行知是什么|你是谁/, text: "行知支持城市天气查询、旅行与活动规划、推荐依据解释、候选时段比较和筹备清单。规划条件可以在对话中逐步补齐，结果在环境地图与执行方案页查看，规划文档可下载。管理员账户只查看平台统计。" },
 ] as const;
 
 export type ConversationIntent = "weather" | "planning" | "knowledge";
 const sourceQuestion = /来源|出处|依据|从哪|哪里来|哪来的|真实吗|可靠吗|可信|准确吗/;
 export function classifyConversation(message: string, hasPendingPlan = false): ConversationIntent {
+  if (/适合.*(?:去|地方|城市)|推荐.*(?:景点|地方|城市)|(?:亲子|老人|学生|轮椅).*(?:去哪|哪里|怎么玩)/.test(message)) return "knowledge";
   if (/介绍|城市简介|城市概况/.test(message) && !/帮我规划|制定|生成.*方案/.test(message)) return "knowledge";
   if (sourceQuestion.test(message)) return "knowledge";
   if (/^(你好|您好|嗨|谢谢|感谢|hello|hi)[！!。\s]*$/i.test(message)) return "knowledge";

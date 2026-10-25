@@ -26,6 +26,8 @@ import { reverseGeocode, searchChinaDistricts } from "@/lib/amap-lbs";
 import { cityById, saveSelectedCity } from "@/lib/cities";
 import type { CityOption } from "@/lib/cities";
 import type { IntakeState } from "@/lib/conversation-intake";
+import type { DestinationContext } from "@/lib/destination-knowledge";
+import { describeDestinationPreferences } from "@/lib/destination-knowledge";
 import { fetchTourismRoute } from "@/lib/tourism";
 import type {
   ActivityInput, CityEnvironment, CitySearchResult, DecisionResult,
@@ -96,6 +98,7 @@ interface RegionBounds {
 interface ChatMessage { role: "user" | "assistant"; content: string; kind?: string; sources?: Array<{ title: string; url?: string; detail?: string }> }
 type WorkspaceView = "studio" | "map" | "plan";
 interface ConversationResponse {
+  knowledgeContext?: DestinationContext;
   reply: string;
   command: "analyze" | "clarify" | "answer";
   kind?: string;
@@ -134,6 +137,7 @@ export function DecisionDashboard() {
   const [agentPhase, setAgentPhase] = useState("");
   const [chatText, setChatText] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
+  const [knowledgeContext, setKnowledgeContext] = useState<DestinationContext>({});
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     { role: "assistant", content: "你好，我是行知。可以直接问“明天西安的天气”，也可以让我规划旅行或活动。\n查询问题我会直接回答；规划需求会与你逐步确认。资料不足或无法核实时，我会如实说明。", kind: "从这里开始" },
   ]);
@@ -485,7 +489,7 @@ export function DecisionDashboard() {
     setChatMessages(history);
     setChatText("");
     const action = detectAgentAction(message);
-    if (action) {
+    if (action && (result || route) && !knowledgeContext.topic && /本次|本轮|方案|候选时段|推荐依据|筹备清单/.test(message)) {
       setChatMessages([...history, { role: "assistant", content: answerAgentAction(action, input, result, route) }]);
       return;
     }
@@ -496,12 +500,13 @@ export function DecisionDashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message, today: dateString(), intake, history: history.slice(-6),
+          message, today: dateString(), intake, history: history.slice(-6), knowledgeContext,
         }),
       });
       if (!response.ok) throw new Error(await apiError(response));
       const plan = await response.json() as ConversationResponse;
       setIntake(plan.intake);
+      if (plan.knowledgeContext) setKnowledgeContext(plan.knowledgeContext);
       setChatMessages((current) => [...current, { role: "assistant", content: plan.reply, kind: plan.kind || (plan.command === "clarify" ? "补充规划条件" : "开始规划"), sources: plan.sources }]);
       if (plan.command !== "analyze") return;
       let targetMeta = meta;
@@ -588,7 +593,7 @@ export function DecisionDashboard() {
         <aside className="control-rail">
           <div className="rail-heading">
             <div><span className="section-kicker">目的地与需求</span><h1>一起完善这份规划</h1></div>
-            <button type="button" className="icon-button compact" onClick={() => { const today = dateString(); setError(null); setResult(null); setRoute(null); setCity(null); setGrid([]); setIsLoadingCity(false); setSelectedDistrict(""); setIntake({ known: {} }); setChatMessages([{ role: "assistant", content: "开始一份新规划。你想去哪里，准备开展什么活动？" }]); setInput({ ...initialInput, date: today, endDate: today }); }} aria-label="重置活动条件"><ArrowClockwise size={17} /></button>
+            <button type="button" className="icon-button compact" onClick={() => { const today = dateString(); setError(null); setResult(null); setRoute(null); setCity(null); setGrid([]); setIsLoadingCity(false); setSelectedDistrict(""); setIntake({ known: {} }); setKnowledgeContext({}); setChatMessages([{ role: "assistant", content: "开始一份新规划。你想去哪里，准备开展什么活动？" }]); setInput({ ...initialInput, date: today, endDate: today }); }} aria-label="重置活动条件"><ArrowClockwise size={17} /></button>
           </div>
 
           <section className="control-section" aria-labelledby="place-section-title">
@@ -656,6 +661,7 @@ export function DecisionDashboard() {
               <div><span className="conversation-icon"><ChatCircleDots size={19} weight="duotone" /></span><div><strong>与行知对话</strong><small>查天气 · 问知识 · 做规划，回答附资料依据</small></div></div>
               <span className="conversation-count">{chatMessages.length} 条消息 · 自动显示</span>
             </div>
+            {knowledgeContext.topic && <div className="knowledge-context" aria-label="已确认问答偏好"><span>正在讨论：{knowledgeContext.city || "选择目的地"}{describeDestinationPreferences(knowledgeContext) ? ` · ${describeDestinationPreferences(knowledgeContext)}` : ""}</span><button type="button" disabled={chatBusy} onClick={() => setKnowledgeContext({})}>清除偏好</button></div>}
             <div ref={chatScroll} className="conversation-messages" aria-live="polite">{chatMessages.map((message, index) => <InkMessage message={message} key={`${message.role}-${index}`} />)}{chatBusy && <ThinkingIndicator />}</div>
             <div className="agent-actions" aria-label="Agent 分析工具"><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("explain")}>解释推荐依据</button><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("compare")}>对比候选时段</button><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("checklist")}>生成筹备清单</button></div>
             <form className="analysis-console-form" onSubmit={(event) => { event.preventDefault(); void submitConversation(); }}>

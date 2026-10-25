@@ -1,6 +1,6 @@
 import type { SocialItem } from "./social-research";
 
-const cityNames = "北京 上海 天津 重庆 广州 深圳 杭州 成都 武汉 南京 西安 太原 青岛 天水 苏州 厦门 长沙 郑州 洛阳 昆明 贵阳 南宁 海口 三亚 福州 泉州 济南 合肥 南昌 沈阳 大连 长春 哈尔滨 石家庄 呼和浩特 银川 西宁 兰州 乌鲁木齐 拉萨 香港 澳门".split(" ");
+export const cityNames = "北京 上海 天津 重庆 广州 深圳 杭州 成都 武汉 南京 西安 太原 青岛 天水 苏州 厦门 长沙 郑州 洛阳 昆明 贵阳 南宁 海口 三亚 福州 泉州 济南 合肥 南昌 沈阳 大连 长春 哈尔滨 石家庄 呼和浩特 银川 西宁 兰州 乌鲁木齐 拉萨 香港 澳门".split(" ");
 
 /** Recognize a city topic, not every short Chinese noun as a place. */
 export function cityIntroductionSubject(message: string): string | undefined {
@@ -11,6 +11,36 @@ export function cityIntroductionSubject(message: string): string | undefined {
   const known = cityNames.find((name) => subject === name || subject === `${name}市` || subject === `${name}特别行政区`);
   if (known) return known;
   return /^[\u4e00-\u9fa5]{2,10}(?:市|县|区)$/.test(subject) && !/社区|景区|地区$/.test(subject) ? subject : undefined;
+}
+
+/** Unknown short topics are only candidates: the server must validate them as administrative places. */
+export function candidateCityTopic(message: string): string | undefined {
+  const known = cityIntroductionSubject(message);
+  if (known) return known;
+  const text = message.trim().replace(/[。！!？?]+$/, "").replace(/^(?:请|帮我|给我)?(?:简单|详细)?介绍(?:一下)?/, "").replace(/(?:的)?(?:城市简介|城市概况|简介|概况)$/, "");
+  return /^[\u4e00-\u9fa5]{2,6}$/.test(text) && !/天气|推荐|规划|路线|什么|怎么|数据|来源|谢谢|你好|预算|人群|学生|老人|亲子|孩子|轮椅|室内|室外|雨天|下雨|晴天|准备|历史|美食|景点|具体|还有|解释|原因|为什么|年龄|适合|知识|假期|五一|春节|国庆|换|改成|岁|少走|轻松|便宜|省钱|普通|独自|一个人|情侣|爸妈|父母|长辈|好的|可以/.test(text) ? text : undefined;
+}
+
+export function cityInDestinationQuestion(message: string): string | undefined {
+  const known = cityNames.flatMap((name) => { const index = message.indexOf(name); return index < 0 ? [] : [{ name, index }]; }).sort((a, b) => b.index - a.index)[0];
+  if (known) return known.name;
+  const named = message.match(/(?:^|在|去|到|介绍)([\u4e00-\u9fa5]{2,8}?(?:市|县|区))(?=的|适合|有|带|亲子|老人|学生|推荐|[，。\s]|$)/);
+  const text = message.replace(/有哪些|有什么/g, "");
+  const embedded = text.match(/(?:在|去|到)([\u4e00-\u9fa5]{2,6}?)(?=玩|旅游|旅行|适合|带|亲子|推荐)/)
+    || text.match(/^([\u4e00-\u9fa5]{2,6}?)(?=推荐|适合|亲子|老人|带老人|带孩子|带娃)/);
+  const candidate = named?.[1] || embedded?.[1];
+  return candidate && !/带|换成|改成|岁|孩子|老人|父母|亲子|推荐|适合|哪些|什么|雨天/.test(candidate) ? candidate : undefined;
+}
+
+export function regionalCitySources(items: SocialItem[], city: string, province: string): SocialItem[] {
+  const name = city.replace(/(?:特别行政区|市|县|区)$/, "");
+  return items.filter((item) => {
+    const text = `${item.title} ${item.excerpt}`;
+    if (!text.includes(name)) return false;
+    const foreign = /(?:位于|地处|隶属|属于)[^。]{0,35}(?:马来西亚|印度尼西亚|美国|加拿大|澳大利亚|英国|法国|日本|韩国|泰国|新加坡)|Teluk Intan|Perak|Malaysia/i;
+    if (foreign.test(text)) return false;
+    return !/马来西亚|Malaysia/i.test(text) || text.includes(province.replace(/省$/, ""));
+  });
 }
 
 /** Stable editorial profiles; omit prices, rankings and opening hours. */

@@ -133,3 +133,6 @@
 .workspace-studio .analysis-console-form textarea { min-height: 82px; max-height: 190px; resize: vertical; font-size: 14px; line-height: 1.7; padding: 15px 18px; }
 .workspace-studio .analysis-console-form button { align-self: stretch; }
 @media(max-width:760px) { .workspace-studio .analysis-console { padding: 14px; }.workspace-studio .analysis-console .conversation-messages { padding: 18px 0; height: 52dvh; min-height: 340px; }.workspace-studio .conversation-message.is-assistant { max-width: 96%; padding: 14px; }.workspace-studio .conversation-message.is-user { max-width: 88%; }.conversation-count { font-size: 10px; }.workspace-studio .analysis-console-form textarea { padding: 12px; } }
+.knowledge-context { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin:12px 0; padding:10px 12px; border:1px solid #dce5d6; border-radius:8px; background:#f0f5ec; color:#48674e; font-size:12px; line-height:1.7; }
+.knowledge-context button { flex-shrink:0; background:transparent; border:0; color:#45604b; font-size:11px; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }
+.knowledge-context button:disabled { opacity:.5; cursor:default; }
