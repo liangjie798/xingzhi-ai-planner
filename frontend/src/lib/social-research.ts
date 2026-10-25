@@ -9,12 +9,12 @@ export function socialPlatform(raw: string): SocialItem["platform"] | null {
 function isPost(url: string) { return /\/(?:video|note|explore|discovery\/item)\/[\da-z]+/i.test(url); }
 
 type SearchSite = "xiaohongshu.com" | "douyin.com";
-export function normalizeSearchResults(payload: unknown, city: string, provider: "百度搜索" | "Tavily", site?: SearchSite): SocialItem[] {
+export function normalizeSearchResults(payload: unknown, city: string, provider: "百度搜索" | "Tavily", site?: SearchSite, generalQuestion = false): SocialItem[] {
   const data = payload as { references?: unknown[]; results?: unknown[] } | null;
   const rows = provider === "百度搜索" ? data?.references : data?.results;
   if (!Array.isArray(rows)) return [];
   const cityTerm = city.split(/[·（(]/)[0].trim().replace(/(?:特别行政区|自治区|自治州|地区|市|县|区)$/, "");
-  if (!cityTerm) return [];
+  if (!cityTerm && !generalQuestion) return [];
   const items: SocialItem[] = [];
   for (const raw of rows.slice(0, 30)) {
     if (!raw || typeof raw !== "object") continue;
@@ -22,7 +22,7 @@ export function normalizeSearchResults(payload: unknown, city: string, provider:
     if (row.type && row.type !== "web") continue;
     const title = typeof row.title === "string" ? decode(row.title).slice(0, 160) : "";
     const excerpt = typeof row.content === "string" ? decode(row.content).slice(0, 650) : "";
-    if (!title || !`${title} ${excerpt}`.includes(cityTerm) || /登录后|安全验证|验证码|页面不存在/.test(title)) continue;
+    if (!title || (!generalQuestion && !`${title} ${excerpt}`.includes(cityTerm)) || /登录后|安全验证|验证码|页面不存在/.test(title)) continue;
     try {
       const url = new URL(String(row.url || ""));
       if (url.protocol !== "https:" || url.username || url.password || url.port || !/\.[a-z]{2,}$/i.test(url.hostname) || /(?:^|\.)(?:localhost|local|internal|test)$/.test(url.hostname)) continue;
@@ -37,11 +37,11 @@ export function normalizeSearchResults(payload: unknown, city: string, provider:
 }
 
 const searchCache = new Map<string, { expires: number; task: Promise<SocialItem[]> }>();
-async function searchWeb(city: string, activity: string, site?: SearchSite): Promise<SocialItem[]> {
+async function searchWeb(city: string, activity: string, site?: SearchSite, question?: string): Promise<SocialItem[]> {
   const tavily = process.env.WEB_SEARCH_PROVIDER === "tavily";
   const token = tavily ? process.env.TAVILY_API_KEY : process.env.BAIDU_SEARCH_API_KEY;
   if (!token) throw new Error("missing-key");
-  const query = `${city.slice(0, 40)} ${activity.slice(0, 30)} ${/旅游|美食/.test(activity) ? "旅行攻略 景点 餐饮" : "活动组织 方案 实施安排"}`;
+  const query = question || `${city.slice(0, 40)} ${activity.slice(0, 30)} ${/旅游|美食/.test(activity) ? "旅行攻略 景点 餐饮" : "活动组织 方案 实施安排"}`;
   const cacheKey = `${tavily}:${query}:${site || "web"}`;
   const cached = searchCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) return cached.task;
@@ -57,11 +57,16 @@ async function searchWeb(city: string, activity: string, site?: SearchSite): Pro
     const payload = await response.json();
     if (payload.code && String(payload.code) !== "0") throw new Error("upstream");
     if (!Array.isArray(tavily ? payload.results : payload.references)) throw new Error("schema");
-    return normalizeSearchResults(payload, city, tavily ? "Tavily" : "百度搜索", site);
+    return normalizeSearchResults(payload, city, tavily ? "Tavily" : "百度搜索", site, Boolean(question));
   })();
   if (searchCache.size >= 150) searchCache.delete(searchCache.keys().next().value!);
   searchCache.set(cacheKey, { expires: Date.now() + 600000, task });
   try { return await task; } catch (error) { searchCache.delete(cacheKey); throw error; }
+}
+
+/** General questions retain the same link validation and provider limits as trip research. */
+export function searchKnowledge(question: string) {
+  return searchWeb("", "", undefined, question.slice(0, 500));
 }
 
 export async function collectWebResearch(city: string, activity: string): Promise<SocialResearch> {

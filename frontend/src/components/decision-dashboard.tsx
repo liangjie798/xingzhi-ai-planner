@@ -93,11 +93,13 @@ interface RegionBounds {
   maxLat: number;
 }
 
-interface ChatMessage { role: "user" | "assistant"; content: string }
+interface ChatMessage { role: "user" | "assistant"; content: string; kind?: string; sources?: Array<{ title: string; url?: string; detail?: string }> }
 type WorkspaceView = "studio" | "map" | "plan";
 interface ConversationResponse {
   reply: string;
-  command: "analyze" | "clarify";
+  command: "analyze" | "clarify" | "answer";
+  kind?: string;
+  sources?: ChatMessage["sources"];
   patch: Partial<ActivityInput> & { cityName?: string };
   provider?: string;
   intake: IntakeState;
@@ -133,7 +135,7 @@ export function DecisionDashboard() {
   const [chatText, setChatText] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    { role: "assistant", content: "告诉我你想做什么就好，例如“帮我规划三天旅游路线”。我会先问清目的地、日期和同行情况，确认后再查询天气并生成方案。" },
+    { role: "assistant", content: "你好，我是行知。可以直接问“明天西安的天气”，也可以让我规划旅行或活动。\n查询问题我会直接回答；规划需求会与你逐步确认。资料不足或无法核实时，我会如实说明。", kind: "从这里开始" },
   ]);
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
   const isTourism = input.activityType === "旅游规划";
@@ -500,8 +502,8 @@ export function DecisionDashboard() {
       if (!response.ok) throw new Error(await apiError(response));
       const plan = await response.json() as ConversationResponse;
       setIntake(plan.intake);
-      setChatMessages((current) => [...current, { role: "assistant", content: plan.reply }]);
-      if (plan.command === "clarify") return;
+      setChatMessages((current) => [...current, { role: "assistant", content: plan.reply, kind: plan.kind || (plan.command === "clarify" ? "补充规划条件" : "开始规划"), sources: plan.sources }]);
+      if (plan.command !== "analyze") return;
       let targetMeta = meta;
       let nextInput: ActivityInput = { ...input, ...plan.patch };
       if (plan.patch.cityName && plan.patch.cityName !== meta.name) {
@@ -651,16 +653,17 @@ export function DecisionDashboard() {
           <header className="studio-page-heading"><WelcomeGreeting /><span>行知 / 智能规划工作室</span><h1>从一个想法，到一份可执行的计划。</h1><p>告诉我想去哪、何时出发、准备做什么。</p></header>
           <section className="analysis-console is-expanded" aria-label="对话驱动数据分析">
             <div className="analysis-console-head">
-              <div><span className="conversation-icon"><ChatCircleDots size={19} weight="duotone" /></span><div><strong>对话分析</strong><small>先聊需求，再补充条件；确认后生成地图与详细方案</small></div></div>
+              <div><span className="conversation-icon"><ChatCircleDots size={19} weight="duotone" /></span><div><strong>与行知对话</strong><small>查天气 · 问知识 · 做规划，回答附资料依据</small></div></div>
               <span className="conversation-count">{chatMessages.length} 条消息 · 自动显示</span>
             </div>
             <div ref={chatScroll} className="conversation-messages" aria-live="polite">{chatMessages.map((message, index) => <InkMessage message={message} key={`${message.role}-${index}`} />)}{chatBusy && <ThinkingIndicator />}</div>
             <div className="agent-actions" aria-label="Agent 分析工具"><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("explain")}>解释推荐依据</button><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("compare")}>对比候选时段</button><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("checklist")}>生成筹备清单</button></div>
             <form className="analysis-console-form" onSubmit={(event) => { event.preventDefault(); void submitConversation(); }}>
-              <textarea id="conversation-input" aria-label="对话规划需求" value={chatText} onChange={(event) => setChatText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitConversation(); } }} placeholder="例如：分析西安明天下午哪个时段适合举办两小时运动会" rows={1} />
+              <textarea id="conversation-input" aria-label="问题或规划需求" value={chatText} onChange={(event) => setChatText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submitConversation(); } }} placeholder="问一个问题，或告诉我你的旅行与活动想法…" rows={2} />
               <button type="submit" disabled={!chatText.trim() || chatBusy} aria-label="发送分析要求">{chatBusy ? <span className="button-loader" /> : <PaperPlaneTilt size={18} weight="fill" />}<span>发送</span></button>
             </form>
-            {chatMessages.length === 1 && <div className="conversation-suggestions"><button type="button" onClick={() => setChatText("分析西安明天下午哪个时段适合举办两小时运动会")}>西安明天下午运动会</button><button type="button" onClick={() => setChatText("规划杭州未来三天的旅游路线")}>杭州三日旅游路线</button></div>}
+            {chatMessages.length === 1 && <div className="conversation-suggestions"><button type="button" onClick={() => setChatText("明天西安的天气怎么样？")}>查明天天气</button><button type="button" onClick={() => setChatText("US AQI 和 PM2.5 有什么区别？")}>了解空气指标</button><button type="button" onClick={() => setChatText("帮我规划三天旅游路线")}>规划三天旅行</button></div>}
+            <p className="conversation-disclosure">实时信息以查询结果为准，搜索摘要附原文链接；无法确认的内容会明确说明。Enter 发送 · Shift+Enter 换行</p>
           </section>
           <div className="studio-agent-progress"><AgentProgress items={liveTrace.length ? liveTrace : route?.trace ?? result?.trace ?? []} running={isAnalyzing || isPlanning || chatBusy} phase={chatBusy && !isAnalyzing && !isPlanning ? "正在理解活动条件" : agentPhase} /></div>
           <section className="studio-overview" aria-label="分析工作流概览">
@@ -710,7 +713,7 @@ function ThinkingIndicator() {
     const timer = window.setInterval(() => setSeconds((performance.now() - started) / 1000), 100);
     return () => window.clearInterval(timer);
   }, []);
-  return <div className="conversation-message is-assistant is-thinking"><span className="ink-thinking-mark" aria-hidden="true" /><span>正在理解条件并调用分析工具</span><time aria-label="已用时">{seconds.toFixed(1)}s</time></div>;
+  return <div className="conversation-message is-assistant is-thinking"><span className="ink-thinking-mark" aria-hidden="true" /><span>正在理解问题、核对资料</span><time aria-label="已用时">{seconds.toFixed(1)}s</time></div>;
 }
 
 function InkMessage({ message }: { message: ChatMessage }) {
@@ -722,5 +725,5 @@ function InkMessage({ message }: { message: ChatMessage }) {
       .fromTo(".ink-copy", { autoAlpha: 0, y: 7 }, { autoAlpha: 1, y: 0, duration: 0.42, ease: "power2.out" }, "-=0.42")
       .to(".ink-bloom", { autoAlpha: 0.28, duration: 0.55, ease: "sine.out" });
   }, { scope: root });
-  return <div ref={root} className={`conversation-message is-${message.role}`}><span className="ink-bloom" aria-hidden="true" /><span className="ink-copy">{message.content}</span></div>;
+  return <div ref={root} className={`conversation-message is-${message.role}`}><span className="ink-bloom" aria-hidden="true" /><div className="ink-copy">{message.role === "assistant" && <small className="message-byline">行知{message.kind ? ` / ${message.kind}` : ""}</small>}<span>{message.content}</span>{Boolean(message.sources?.length) && <div className="message-sources" aria-label="回答依据"><small>资料依据</small>{message.sources?.map((source, i) => <div key={`${source.title}-${i}`}>{source.url && /^https:\/\//i.test(source.url) ? <a href={source.url} target="_blank" rel="noopener noreferrer">[{i + 1}] {source.title} ↗</a> : <span>[{i + 1}] {source.title}</span>}{source.detail && <small>{source.detail}</small>}</div>)}</div>}</div></div>;
 }

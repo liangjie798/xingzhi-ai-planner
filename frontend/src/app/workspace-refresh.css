@@ -118,3 +118,18 @@
   .sliding-selection, .portal-tabs button, .app-shell .nav-item, .report-tabs button { transition: none !important; }
   .welcome-greeting { animation: none !important; }
 }
+/* Conversation surface: stable reading area, distinct authors, visible evidence. */
+.workspace-studio .analysis-console { padding: 24px; border-radius: 18px; }
+.workspace-studio .analysis-console .conversation-messages { height: clamp(360px, 53dvh, 680px); max-height: 680px; gap: 22px; padding: 24px 12px; background: linear-gradient(180deg,#fdfdf9,#f8faf4); }
+.workspace-studio .conversation-message.is-assistant { max-width: min(90%,74ch); padding: 18px 20px; background: #edf2e7; line-height: 1.85; }
+.workspace-studio .conversation-message.is-user { max-width: min(78%,58ch); padding: 14px 18px; line-height: 1.8; }
+.message-byline { display: block; margin-bottom: 9px; font-size: 11px; font-weight: 650; color: #52705a; letter-spacing: .04em; }
+.message-sources { margin-top: 16px; padding-top: 12px; border-top: 1px solid #d5dfcf; white-space: normal; }
+.message-sources > small { display: block; color: #5a705d; margin-bottom: 6px; }
+.message-sources > div { margin-top: 8px; font-size: 12px; }
+.message-sources a { color: #215a43; text-decoration: underline; text-underline-offset: 3px; }
+.message-sources div small { display: block; font-size: 10px; line-height: 1.6; color: #647963; overflow-wrap: anywhere; }
+.conversation-disclosure { margin: 12px 0 0; color: #6d7c6a; font-size: 11px; line-height: 1.7; }
+.workspace-studio .analysis-console-form textarea { min-height: 82px; max-height: 190px; resize: vertical; font-size: 14px; line-height: 1.7; padding: 15px 18px; }
+.workspace-studio .analysis-console-form button { align-self: stretch; }
+@media(max-width:760px) { .workspace-studio .analysis-console { padding: 14px; }.workspace-studio .analysis-console .conversation-messages { padding: 18px 0; height: 52dvh; min-height: 340px; }.workspace-studio .conversation-message.is-assistant { max-width: 96%; padding: 14px; }.workspace-studio .conversation-message.is-user { max-width: 88%; }.conversation-count { font-size: 10px; }.workspace-studio .analysis-console-form textarea { padding: 12px; } }

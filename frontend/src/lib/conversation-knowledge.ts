@@ -1,0 +1,34 @@
+/** Reviewed product knowledge. Keep volatile prices, opening hours and forecasts out. */
+export const knowledgeBase = [
+  { id: "forecast", title: "天气与预报", match: /天气预报|预报.*准确|降水概率|降雨概率/, text: "预报会随观测和模型更新而变化，出发前应再次核对。降水概率是预报概率，不等于下雨持续时间或降水量。查询具体天气只需城市和日期，不需要活动人数。", source: "https://open-meteo.com/en/docs" },
+  { id: "air", title: "空气质量指标", match: /AQI|PM2[.．]?5|空气质量.*(?:是什么|区别)|美标|国标/i, text: "本站展示 US AQI。不同空气质量指数体系的阈值不同，比较数据时要先核对标准、时间和地点。PM2.5 是颗粒物浓度，不能直接当作 AQI 分数。", source: "https://open-meteo.com/en/docs/air-quality-api" },
+  { id: "trip", title: "旅行安排与预约", match: /预约|门票|闭馆|营业时间|开放时间/, text: "景点门票、预约与开放时间可能变化，应以场馆或景区官方公布的信息为准。规划中的站点时间是建议安排，不代表已预约或已购票。无法核验实时信息时会明确提示。" },
+  { id: "food", title: "餐饮与预算", match: /美食|餐饮|过敏|预算|费用|花费/, text: "可在规划中说明人均预算、饮食禁忌、过敏原和偏好。餐饮安排应与游览区域衔接，并留出排队和休息时间。未核实的菜单价格、消费评价和热度不能作为事实。" },
+  { id: "event", title: "活动组织", match: /运动会.*(?:准备|物资)|筹备|人员分工|应急预案|活动组织/, text: "活动执行方案应列出准备、签到、开展、补水休息、结束清场等环节，同时明确负责人、物资、人员规模和天气变化时的调整办法。校园和社区活动还需按主办方要求确认场地与保障条件。" },
+  { id: "access", title: "同行需求与无障碍", match: /无障碍|老人|老年|亲子|轮椅|儿童/, text: "请说明同行者的年龄、行动能力、步行时长和休息需求。规划可降低强度、增加休息、减少跨区域移动；无障碍设施和通行条件仍需向场馆核实。" },
+  { id: "transport", title: "交通与路线衔接", match: /交通|地铁|公交|打车|自驾|停车|换乘/, text: "优先按地理片区安排相邻站点，交通时间需计入行程，并预留换乘、步行和排队余量。地图连线仅表示游览顺序，不是实际道路导航；班次、末班车、停车和道路管制需以官方实时信息为准。" },
+  { id: "lodging", title: "住宿选择", match: /住宿|酒店|民宿|住哪里|住哪儿/, text: "选择住宿时可比较预算、通勤距离、公共交通、退改政策和入住条件。先确认真实地址，再检查与每日路线的衔接；本平台不会替你预订，也不能保证实时房价、余房或入住资格。" },
+  { id: "packing", title: "出行装备", match: /带什么|装备|穿什么|穿衣|行李|防晒|雨具/, text: "装备应结合目的地预报、活动时长和个人需求选择，通常包括合脚鞋、饮用水、必要证件、充电设备及适合天气的衣物与雨具。特殊活动的装备要求应由主办方或专业人员确认。" },
+  { id: "rain", title: "雨天与天气变化", match: /雨天|下雨.*(?:怎么办|安排)|天气变化|备选|替代方案/, text: "雨天可减少室外步行，改为相近区域的室内场馆，并提前核查预约和开放情况。遇官方预警或主办方停办通知，应按通知调整；行程建议不能替代气象预警和现场指挥。" },
+  { id: "study", title: "研学与校园安排", match: /研学|体育课|校园.*(?:组织|安排|注意)/, text: "研学可按学习目标、行前导入、现场任务、休息与成果分享组织。校园活动应明确带队人员、分组、签到清点、场地边界和家校沟通方式；具体人数与保障要求由学校核定。" },
+  { id: "community", title: "社区与户外活动", match: /社区|团建|训练.*(?:组织|准备)/, text: "活动应明确服务对象、场地、负责人、参与方式、时间表和退出机制。户外活动应与参与者能力相匹配，保留休息与调整空间，并事先确认场地使用与相关管理要求。" },
+  { id: "boundaries", title: "回答范围与不确定性", match: /不能回答|无法回答|准确吗|可信|局限|能力范围/, text: "可以询问天气、旅行、活动组织、环境指标和平台使用，也可以尝试其他知识问题。超出知识库时会尝试联网检索；没有可靠资料时会说明无法确认。实时价格、预警、预约状态和个体专业判断不能凭模型记忆保证准确。" },
+  { id: "sources", title: "资料与推荐依据", match: /数据来源|知识库|推荐依据|小红书|抖音|热榜/, text: "环境信息来自真实预报服务；联网资料保留原始链接和获取时间。搜索收录摘要不等于平台热榜，也不保证已核验全文。搜索失败、资料缺失或模型不可用时，应明确说明。" },
+  { id: "product", title: "行知使用说明", match: /你能做什么|怎么使用|如何使用|下载|导出|行知是什么|你是谁/, text: "行知支持城市天气查询、旅行与活动规划、推荐依据解释、候选时段比较和筹备清单。规划条件可以在对话中逐步补齐，结果在环境地图与执行方案页查看，规划文档可下载。管理员账户只查看平台统计。" },
+] as const;
+
+export type ConversationIntent = "weather" | "planning" | "knowledge";
+export function classifyConversation(message: string, hasPendingPlan = false): ConversationIntent {
+  if (/^(你好|您好|嗨|谢谢|感谢|hello|hi)[！!。\s]*$/i.test(message)) return "knowledge";
+  const planning = /规划|策划|安排.*(?:路线|行程|活动)|举办|组织.*活动|运动会|体育课|研学|户外训练|社区活动|旅游|旅行|去.+玩|玩[一二两三四五六七\d]+天/;
+  const question = /[?？]|什么|怎么|如何|为什么|是否|能不能|多少|告诉我|介绍|解释|区别|推荐.*(?:美食|景点)/;
+  if (/天气|气温|温度|降雨|下雨|湿度|空气质量|AQI|PM2[.．]?5/i.test(message) && !planning.test(message)
+    && !/是什么|为什么|区别|预报.*准确|概率.*意思|美标|国标/.test(message)) return "weather";
+  if ((planning.test(message) || /(?:旅游|旅行).*(?:路线|行程)|[一二两三四五六七\d]+天.*游/.test(message)) && !/怎么|如何|为什么|准备什么|需要什么|注意什么|是什么|有什么|区别/.test(message)) return "planning";
+  if (question.test(message) || knowledgeBase.some((item) => item.match.test(message))) return "knowledge";
+  return hasPendingPlan ? "planning" : "knowledge";
+}
+
+export function retrieveKnowledge(message: string) {
+  return knowledgeBase.filter((item) => item.match.test(message)).slice(0, 3);
+}
