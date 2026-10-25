@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyConversation, retrieveKnowledge } from "../src/lib/conversation-knowledge.ts";
+import { classifyConversation, retrieveKnowledge, isWeatherFollowup } from "../src/lib/conversation-knowledge.ts";
 import { summarizeWeather, weatherPlace, weatherDestination } from "../src/lib/conversation-weather.ts";
 import { searchKnowledge } from "../src/lib/social-research.ts";
 
@@ -20,6 +20,19 @@ test("knowledge questions do not become activity constraints", () => {
   }
   assert.equal(retrieveKnowledge("量子力学是什么").length, 0);
   assert.ok(retrieveKnowledge("门票预约怎么查").some((e) => e.id === "trip"));
+});
+
+test("source questions after a forecast never become location queries", () => {
+  const forecast = "西安市 · 2026-10-26 天气预报（北京时间）\n全天温度12–16℃";
+  for (const message of ["数据来源", "天气数据来源", "这些数据从哪来", "出处呢", "依据是什么", "可靠吗", "预算", "你好"]) {
+    assert.equal(isWeatherFollowup(message, forecast), false, message);
+    if (!/预算/.test(message)) assert.equal(classifyConversation(message, true), "knowledge", message);
+  }
+  assert.ok(retrieveKnowledge("天气数据来源").some((item) => item.id === "sources"));
+  for (const message of ["后天呢", "那明天呢", "北京市呢", "杭州呢"]) assert.equal(isWeatherFollowup(message, forecast), true, message);
+  assert.equal(isWeatherFollowup("天水", "你想查询哪个城市或区县的天气？"), true);
+  assert.equal(isWeatherFollowup("数据来源", "你想查询哪个城市或区县的天气？"), false);
+  assert.equal(isWeatherFollowup("人工智能", forecast), false);
 });
 
 test("weather summaries use actual observations and never fabricate absent periods", () => {

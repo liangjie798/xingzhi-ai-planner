@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { callLlm, extractJson } from "@/lib/llm-server";
 import { resolveAccountModelConfig } from "@/lib/account-model-config-server";
 import { cleanIntake, completeIntake, extractIntake, type IntakePatch, type IntakeState } from "@/lib/conversation-intake";
-import { classifyConversation } from "@/lib/conversation-knowledge";
+import { classifyConversation, isWeatherFollowup } from "@/lib/conversation-knowledge";
 import { answerKnowledge, answerWeather } from "@/lib/conversation-answer";
 
 export const maxDuration = 45;
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   const history = Array.isArray(body.history) ? body.history.filter((item) => item && ["user", "assistant"].includes(item.role) && typeof item.content === "string").slice(-6).map((item) => ({ role: item.role, content: item.content.slice(0, 4000) })) : [];
   const pending = Object.keys(known).length > 0 || /还需要了解|哪天|哪个城市|几个人/.test(history.filter((h) => h.role === "assistant").at(-1)?.content || "");
   const lastAssistant = history.filter((h) => h.role === "assistant").at(-1)?.content || "";
-  const weatherFollowup = /天气预报（北京时间）|你想查询哪个城市|可靠天气数据|可靠天气。/.test(lastAssistant) && /^(?:那|那么)?(?:大后天|后天|明天|今天|[\u4e00-\u9fa5]{2,8}[市县区]?)(?:呢|的呢|[?？。])?$/.test(message) && !/规划|行程|旅游|活动|学生|老人|强度/.test(message);
+  const weatherFollowup = isWeatherFollowup(message, lastAssistant);
   const intent = weatherFollowup ? "weather" : classifyConversation(message, pending);
   if (intent !== "planning") {
     const previousWeather = weatherFollowup ? extractIntake(history.filter((h) => h.role === "user" && h.content !== message).at(-1)?.content || "", today, {}) : {};

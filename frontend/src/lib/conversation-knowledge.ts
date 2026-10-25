@@ -13,12 +13,14 @@ export const knowledgeBase = [
   { id: "study", title: "研学与校园安排", match: /研学|体育课|校园.*(?:组织|安排|注意)/, text: "研学可按学习目标、行前导入、现场任务、休息与成果分享组织。校园活动应明确带队人员、分组、签到清点、场地边界和家校沟通方式；具体人数与保障要求由学校核定。" },
   { id: "community", title: "社区与户外活动", match: /社区|团建|训练.*(?:组织|准备)/, text: "活动应明确服务对象、场地、负责人、参与方式、时间表和退出机制。户外活动应与参与者能力相匹配，保留休息与调整空间，并事先确认场地使用与相关管理要求。" },
   { id: "boundaries", title: "回答范围与不确定性", match: /不能回答|无法回答|准确吗|可信|局限|能力范围/, text: "可以询问天气、旅行、活动组织、环境指标和平台使用，也可以尝试其他知识问题。超出知识库时会尝试联网检索；没有可靠资料时会说明无法确认。实时价格、预警、预约状态和个体专业判断不能凭模型记忆保证准确。" },
-  { id: "sources", title: "资料与推荐依据", match: /数据来源|知识库|推荐依据|小红书|抖音|热榜/, text: "环境信息来自真实预报服务；联网资料保留原始链接和获取时间。搜索收录摘要不等于平台热榜，也不保证已核验全文。搜索失败、资料缺失或模型不可用时，应明确说明。" },
+  { id: "sources", title: "资料与推荐依据", match: /数据来源|来源|出处|数据.*哪|从哪.*数据|知识库|推荐依据|小红书|抖音|热榜/, text: "天气预报来自 Open-Meteo，高德用于解析城市和行政区域位置，再按对应坐标查询逐小时预报。空气质量展示 US AQI 预报；这些是预报数据，不是你所在位置的现场实测。每次天气回答下方附来源链接、查询日期和获取时间。其他联网资料保留原文链接；搜索摘要不等于平台热榜，也不保证已核验全文。查询失败或资料缺失时会明确说明。", source: "https://open-meteo.com/en/docs" },
   { id: "product", title: "行知使用说明", match: /你能做什么|怎么使用|如何使用|下载|导出|行知是什么|你是谁/, text: "行知支持城市天气查询、旅行与活动规划、推荐依据解释、候选时段比较和筹备清单。规划条件可以在对话中逐步补齐，结果在环境地图与执行方案页查看，规划文档可下载。管理员账户只查看平台统计。" },
 ] as const;
 
 export type ConversationIntent = "weather" | "planning" | "knowledge";
+const sourceQuestion = /来源|出处|依据|从哪|哪里来|哪来的|真实吗|可靠吗|可信|准确吗/;
 export function classifyConversation(message: string, hasPendingPlan = false): ConversationIntent {
+  if (sourceQuestion.test(message)) return "knowledge";
   if (/^(你好|您好|嗨|谢谢|感谢|hello|hi)[！!。\s]*$/i.test(message)) return "knowledge";
   const planning = /规划|策划|安排.*(?:路线|行程|活动)|举办|组织.*活动|运动会|体育课|研学|户外训练|社区活动|旅游|旅行|去.+玩|玩[一二两三四五六七\d]+天/;
   const question = /[?？]|什么|怎么|如何|为什么|是否|能不能|多少|告诉我|介绍|解释|区别|推荐.*(?:美食|景点)/;
@@ -27,6 +29,18 @@ export function classifyConversation(message: string, hasPendingPlan = false): C
   if ((planning.test(message) || /(?:旅游|旅行).*(?:路线|行程)|[一二两三四五六七\d]+天.*游/.test(message)) && !/怎么|如何|为什么|准备什么|需要什么|注意什么|是什么|有什么|区别/.test(message)) return "planning";
   if (question.test(message) || knowledgeBase.some((item) => item.match.test(message))) return "knowledge";
   return hasPendingPlan ? "planning" : "knowledge";
+}
+
+/** Only accept explicit date/place continuations, never arbitrary short nouns. */
+export function isWeatherFollowup(message: string, lastAssistant: string): boolean {
+  if (!/天气预报（北京时间）|你想查询哪个城市|可靠天气数据|可靠天气。/.test(lastAssistant)) return false;
+  if (sourceQuestion.test(message) || retrieveKnowledge(message).length || /什么|怎么|如何|为什么|学生|强度|预算|人数|规划|旅游/.test(message)) return false;
+  const text = message.trim().replace(/^(?:那么|那|改成|换成)/, "").replace(/(?:的呢|呢)?[?？。！!]?$/, "");
+  if (/^(?:今天|明天|后天|大后天)(?:上午|下午|晚上)?$/.test(text)) return true;
+  if (/^[\u4e00-\u9fa5]{2,12}(?:市|区|县|特别行政区)$/.test(text)) return true;
+  if (/^(?:北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|香港|澳门|重庆|天津|太原|青岛|天水)$/.test(text)) return true;
+  // A bare city can answer an explicit location question, but not follow a forecast.
+  return /你想查询哪个城市/.test(lastAssistant) && /^[\u4e00-\u9fa5]{2,6}$/.test(text) && !/数据|来源|解释|谢谢|你好/.test(text);
 }
 
 export function retrieveKnowledge(message: string) {
