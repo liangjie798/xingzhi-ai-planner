@@ -20,6 +20,7 @@ export const knowledgeBase = [
 export type ConversationIntent = "weather" | "planning" | "knowledge";
 const sourceQuestion = /来源|出处|依据|从哪|哪里来|哪来的|真实吗|可靠吗|可信|准确吗/;
 export function classifyConversation(message: string, hasPendingPlan = false): ConversationIntent {
+  if (/介绍|城市简介|城市概况/.test(message) && !/帮我规划|制定|生成.*方案/.test(message)) return "knowledge";
   if (sourceQuestion.test(message)) return "knowledge";
   if (/^(你好|您好|嗨|谢谢|感谢|hello|hi)[！!。\s]*$/i.test(message)) return "knowledge";
   const planning = /规划|策划|安排.*(?:路线|行程|活动)|举办|组织.*活动|运动会|体育课|研学|户外训练|社区活动|旅游|旅行|去.+玩|玩[一二两三四五六七\d]+天/;
@@ -37,6 +38,7 @@ export function isWeatherFollowup(message: string, lastAssistant: string): boole
   if (sourceQuestion.test(message) || retrieveKnowledge(message).length || /什么|怎么|如何|为什么|学生|强度|预算|人数|规划|旅游/.test(message)) return false;
   const text = message.trim().replace(/^(?:那么|那|改成|换成)/, "").replace(/(?:的呢|呢)?[?？。！!]?$/, "");
   if (/^(?:今天|明天|后天|大后天)(?:上午|下午|晚上)?$/.test(text)) return true;
+  if (!/你想查询哪个城市/.test(lastAssistant) && !/^(?:那么|那|改成|换成)|呢[?？。！!]*$/.test(message.trim())) return false;
   if (/^[\u4e00-\u9fa5]{2,12}(?:市|区|县|特别行政区)$/.test(text)) return true;
   if (/^(?:北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|香港|澳门|重庆|天津|太原|青岛|天水)$/.test(text)) return true;
   // A bare city can answer an explicit location question, but not follow a forecast.
