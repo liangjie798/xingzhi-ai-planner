@@ -34,6 +34,19 @@ test("weather date continuations parse weeks and days relative to Beijing today"
   for (const [phrase, date] of [["大后天呢?", "2026-10-26"], ["一周后呢？", "2026-10-30"], ["那两周后呢", "2026-11-06"], ["再过十天后呢", "2026-11-02"]]) assert.equal(relativeDateFromText(phrase, today), date, phrase);
 });
 
+test("numeric offsets followed by weather do not collide with 后天 or become trip lengths",()=>{
+  for(const phrase of ["10天后天气","十天后天气","十天后的天气","十天以后天气","十天之后天气","再过十天天气"]){
+    assert.equal(relativeDateFromText(phrase,"2026-10-26"),"2026-11-05",phrase);
+  }
+  for(const phrase of ["10天后天气","十天后的天气","十天以后天气"]) assert.equal(extractIntake(phrase,"2026-10-26",{}).tripDays,undefined,phrase);
+  assert.equal(relativeDateFromText("两周后天气","2026-10-26"),"2026-11-09");
+  assert.equal(relativeDateFromText("10天后天气","2026-12-26"),"2027-01-05");
+  assert.equal(relativeDateFromText("十天后天气","2028-02-20"),"2028-03-01");
+  assert.equal(relativeDateFromText("后天天气","2026-10-26"),"2026-10-28");
+  const changed=extractIntake("改为十天后的三天旅游","2026-10-26",{cityName:"西安市"});
+  assert.equal(changed.date,"2026-11-05");assert.equal(changed.tripDays,3);
+});
+
 test("multi-turn revisions update real plan conditions and preserve every other fact", () => {
   const initial = { cityName: "西安市", activityType: "校园运动会", date: "2026-10-24", participants: 30, group: "普通人群", intensity: "中强度", duration: 2, startHour: 14 };
   let known = initial;

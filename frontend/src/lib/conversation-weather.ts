@@ -2,6 +2,7 @@ import type { EnvironmentalForecastPoint } from "./types";
 
 export function weatherPlace(message: string): string | undefined {
   const text = message.replace(/^(?:请|帮我|查一下|查询|告诉我|看看|我想知道|查查|查)+/, "")
+    .replace(/(?:再过|过|往后)?[一二两三四五六七八九十\d]+(?:天|个?(?:星期|周))(?:以|之)?后|(?:再过|过)[一二两三四五六七八九十\d]+天/g, "")
     .replace(/大后天|后天|明天|今天|今日|现在|目前/g, "").trim();
   const match = text.match(/^([\u4e00-\u9fa5]{2,10}?)(?:的)?(?:天气|气温|温度|湿度|空气质量|降雨概率|降水概率)/);
   return match && !/^(会不会|会|是否|这里|那里|当地|这个|如何|怎么样|什么)$/.test(match[1]) ? match[1] : undefined;

@@ -16,7 +16,7 @@ export async function answerWeather(request: Request, message: string, today: st
   const date = facts.date || known.date || today;
   const sources: AnswerSource[] = [];
   if (!city) return { reply: "你想查询哪个城市或区县的天气？也可以说“明天西安的天气”。", sources, kind: "天气查询" };
-  if (date < today || date > addDays(today, 6)) return { reply: `继续查询${city}的天气。当前可查询 ${today} 至 ${addDays(today, 6)} 的预报，无法提供 ${date} 的可靠天气。请换一个日期。`, sources, kind: "超出预报范围", weatherContext: { cityName: city, date } };
+  if (date < today || date > addDays(today, 6)) return { reply: `按北京时间今天 ${today} 计算，本次查询的是${city} ${date} 的天气。当前可查询 ${today} 至 ${addDays(today, 6)} 的预报，无法提供 ${date} 的可靠天气；不会用其他日期的预报替代。请换一个日期。`, sources, kind: "超出预报范围", weatherContext: { cityName: city, date } };
   try {
     const key = process.env.AMAP_WEB_SERVICE_KEY || process.env.NEXT_PUBLIC_AMAP_KEY;
     if (!key) throw new Error("missing-location-key");

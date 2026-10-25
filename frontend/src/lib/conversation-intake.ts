@@ -21,15 +21,18 @@ export function addDays(date: string, days: number) {
 /** Parse a date phrase relative to Beijing today. This is shared by planning and weather follow-ups. */
 export function relativeDateFromText(text: string, today: string): string | undefined {
   const compact = text.replace(/\s+/g, "");
+  // Parse numeric offsets before day words: "10天后天气" contains "后天"
+  // across the offset/weather boundary, but means ten days rather than two.
+  const weeks = compact.match(/(?:再过|过|往后)?([一二两三四五六七八九十\d]+)个?(?:星期|周)(?:以|之)?后/);
+  if (weeks) return addDays(today, number(weeks[1]) * 7);
+  const days = compact.match(/(?:再过|过|往后)?([一二两三四五六七八九十\d]+)天(?:以|之)?后/)
+    || compact.match(/(?:再过|过)([一二两三四五六七八九十\d]+)天/);
+  if (days) return addDays(today, number(days[1]));
   if (/大后天/.test(compact)) return addDays(today, 3);
   if (/后天/.test(compact)) return addDays(today, 2);
   if (/明天/.test(compact)) return addDays(today, 1);
   if (/今天|今日/.test(compact)) return today;
-  const weeks = compact.match(/(?:再过|过|往后)?([一二两三四五六七八九十\d]+)个?(?:星期|周)后/);
-  if (weeks) return addDays(today, number(weeks[1]) * 7);
   if (/下周/.test(compact)) return addDays(today, 7);
-  const days = compact.match(/(?:再过|过|往后)?([一二两三四五六七八九十\d]+)天后/);
-  if (days) return addDays(today, number(days[1]));
   return undefined;
 }
 function validDate(value: unknown): value is string {
@@ -57,7 +60,7 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   const links = text.match(/https:\/\/(?:[a-z0-9-]+\.)*(?:douyin|xiaohongshu)\.com\/[^\s，。；<>]+/gi);
   if (links) patch.referenceUrls = [...new Set([...(known.referenceUrls || []), ...links])].slice(0, 4);
   patch.activityType = activities.find((item) => text.includes(item)) || (/运动会/.test(text) ? "校园运动会" : /旅游|旅行|行程|游玩|游览/.test(text) ? "旅游规划" : undefined);
-  const days = text.match(/([一二两三四五六七八九十\d]+)\s*(?:天|日)(?!期)/);
+  const days = text.match(/([一二两三四五六七八九十\d]+)\s*(?:天|日)(?!期|后|以后|之后)/);
   if (days) patch.tripDays = number(days[1]);
   const duration = text.match(/([一二两三四五六七八九十\d]+)\s*个?小时/);
   if (duration) patch.duration = number(duration[1]);
