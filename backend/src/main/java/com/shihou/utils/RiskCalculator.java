@@ -34,22 +34,36 @@ public final class RiskCalculator {
 
     public static List<TimeSlotScore> calculateSlots(List<EnvironmentalForecastPoint> forecast, ActivityDecisionRequest input) {
         List<TimeSlotScore> slots = new ArrayList<>();
+        int earliest = input.allowedStartHour() == null ? 6 : input.allowedStartHour();
+        int latestEnd = input.allowedEndHour() == null ? 21 : input.allowedEndHour();
+        if (latestEnd <= earliest) throw new IllegalArgumentException("允许结束时间必须晚于开始时间");
         for (EnvironmentalForecastPoint point : forecast) {
-            if (point.hour() < 6 || point.hour() > 20) continue;
-            int heatRisk = (int) Math.round(clamp(point.heatRisk()
+            if (point.hour() < earliest || point.hour() + input.duration() > latestEnd) continue;
+            // A slot is valid only if every hour of the activity is present on the same day.
+            List<EnvironmentalForecastPoint> window = new ArrayList<>();
+            for (int offset = 0; offset < input.duration(); offset++) {
+                final int hour = point.hour() + offset;
+                forecast.stream().filter(p -> java.util.Objects.equals(p.date(), point.date()) && p.hour() == hour).findFirst().ifPresent(window::add);
+            }
+            if (window.size() != input.duration()) continue;
+            int maximumHeat = window.stream().mapToInt(EnvironmentalForecastPoint::heatRisk).max().orElseThrow();
+            int maximumAqi = window.stream().mapToInt(EnvironmentalForecastPoint::aqi).max().orElseThrow();
+            int maximumRain = window.stream().mapToInt(EnvironmentalForecastPoint::rainProbability).max().orElseThrow();
+            double averageTemperature = Math.round(window.stream().mapToDouble(EnvironmentalForecastPoint::temperature).average().orElseThrow() * 10) / 10.0;
+            int heatRisk = (int) Math.round(clamp(maximumHeat
                     + INTENSITY_FACTOR.getOrDefault(input.intensity(), 6)));
             double risk = heatRisk * 0.42
-                    + clamp((point.aqi() - 35) * 0.75) * 0.28
-                    + point.rainProbability() * 0.18
+                    + clamp((maximumAqi - 35) * 0.75) * 0.28
+                    + maximumRain * 0.18
                     + GROUP_FACTOR.getOrDefault(input.group(), 7)
                     + ACTIVITY_FACTOR.getOrDefault(input.activityType(), 3)
-                    + Math.max(0, input.duration() - 2) * 4;
+                    + Math.max(0, input.duration() - 1) * 4;
             int score = (int) Math.round(clamp(100 - risk));
             String label = point.date() == null || point.date().equals(input.date())
                     ? "%02d:00".formatted(point.hour())
                     : point.date().substring(5) + " %02d:00".formatted(point.hour());
-            slots.add(new TimeSlotScore(point.date(), point.hour(), label, point.temperature(), point.aqi(),
-                    heatRisk, point.rainProbability(), score, levelOf(score)));
+            slots.add(new TimeSlotScore(point.date(), point.hour(), label, averageTemperature, maximumAqi,
+                    heatRisk, maximumRain, score, levelOf(score)));
         }
         return slots;
     }

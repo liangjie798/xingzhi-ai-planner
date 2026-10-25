@@ -6,5 +6,6 @@ import java.util.List;
 
 public interface DecisionRecordRepository extends JpaRepository<DecisionRecordEntity, Long> {
     List<DecisionRecordEntity> findTop50ByCreatedByOrderByCreatedAtDesc(String createdBy);
+    void deleteByCreatedBy(String createdBy);
 }
 

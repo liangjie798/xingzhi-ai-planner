@@ -17,8 +17,8 @@ function time(date: string, minute: number) {
 export function activityAgenda(input: ActivityInput, result: DecisionResult, date: string): AgendaItem[] {
   const daily = result.slots.filter((slot) => (slot.date || input.date) === date).sort((a, b) => b.score - a.score);
   const requested = input.startHour ?? result.bestSlot.hour;
-  const periodStart = requested < 12 ? 6 : requested < 18 ? 12 : 18;
-  const periodEnd = requested < 12 ? 12 : requested < 18 ? 18 : 24;
+  const periodStart = input.allowedStartHour ?? 6;
+  const periodEnd = input.allowedEndHour ?? 21;
   const feasible = daily.filter((slot) => slot.hour >= periodStart && slot.hour + input.duration <= periodEnd);
   const start = (feasible[0]?.hour ?? Math.max(periodStart, Math.min(requested, periodEnd - input.duration))) * 60;
   const duration = Math.max(1, Math.min(12, input.duration)) * 60;

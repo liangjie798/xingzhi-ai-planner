@@ -17,7 +17,7 @@ test("each date uses its own best hourly score", () => {
 });
 test("an afternoon session does not move into the evening for a higher score", () => {
   const data = { ...result, slots: [{ date: input.date, hour: 19, score: 99 }, { date: input.date, hour: 14, score: 80 }] };
-  assert.equal(activityAgenda({ ...input, startHour: 14 }, data, input.date)[2].time.split("–")[0], "14:00");
+  assert.equal(activityAgenda({ ...input, startHour: 14, allowedStartHour: 12, allowedEndHour: 18 }, data, input.date)[2].time.split("–")[0], "14:00");
 });
 test("five activity scenes have different core tasks", () => {
   const titles = ["校园运动会", "体育课", "社区活动", "户外训练", "研学活动"].map((activityType) => activityAgenda({ ...input, activityType }, result, input.date).map((item) => item.title).join(" "));

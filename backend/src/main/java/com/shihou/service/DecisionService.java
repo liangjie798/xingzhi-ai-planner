@@ -73,8 +73,8 @@ public class DecisionService {
         LocalDate startDate = LocalDate.parse(request.date());
         LocalDate endDate = request.endDate() == null || request.endDate().isBlank()
                 ? startDate : LocalDate.parse(request.endDate());
-        if (endDate.isBefore(startDate) || endDate.isAfter(startDate.plusDays(4)))
-            throw new IllegalArgumentException("结束日期应在开始日期至其后4天内");
+        if (endDate.isBefore(startDate) || endDate.isAfter(startDate.plusDays(6)))
+            throw new IllegalArgumentException("结束日期应在开始日期至其后6天内");
         List<EnvironmentalForecastPoint> forecast = new ArrayList<>();
         for (LocalDate day = startDate; !day.isAfter(endDate); day = day.plusDays(1)) {
             forecast.addAll(customCity
@@ -86,9 +86,10 @@ public class DecisionService {
 
         started = System.nanoTime();
         List<TimeSlotScore> slots = RiskCalculator.calculateSlots(forecast, request);
+        if (slots.isEmpty()) throw new IllegalArgumentException("当前时段限制内没有覆盖完整活动时长的连续预报，请缩短时长或扩大时段范围");
         TimeSlotScore best = RiskCalculator.bestSlot(slots);
         emit(trace, eventListener, new ToolTraceItem("score", "score_activity_slots",
-                "确定性安全引擎计算" + slots.size() + "个候选时段；模型无权修改分数", "done", elapsedMillis(started)));
+                "按" + request.duration() + "小时完整窗口计算" + slots.size() + "个候选时段；气温取均值，热风险、AQI和降水取窗口最大值；已执行人群、强度及时段约束", "done", elapsedMillis(started)));
 
         started = System.nanoTime();
         List<String> riskKeywords = new ArrayList<>(riskKeywords(forecast, best));

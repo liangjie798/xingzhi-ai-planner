@@ -29,6 +29,8 @@ public class UserEntity {
     private String modelName;
     @Column(length = 2000)
     private String modelApiKeyCiphertext;
+    @jakarta.persistence.Lob @Column(columnDefinition = "MEDIUMTEXT")
+    private String conversationMemory;
 
     protected UserEntity() { }
 
@@ -53,6 +55,8 @@ public class UserEntity {
     public String getModelBaseUrl() { return modelBaseUrl; }
     public String getModelName() { return modelName; }
     public String getModelApiKeyCiphertext() { return modelApiKeyCiphertext; }
+    public String getConversationMemory() { return conversationMemory; }
+    public void setConversationMemory(String value) { conversationMemory = value; }
 
     public void updateModelConfig(String providerId, String providerLabel, String baseUrl, String modelName, String apiKeyCiphertext) {
         this.modelProviderId = providerId;
@@ -67,5 +71,11 @@ public class UserEntity {
         this.displayName = nextDisplayName;
         this.role = nextRole;
         this.enabled = true;
+    }
+
+    public void updateByAdministrator(String nextDisplayName, Boolean nextEnabled, String nextPasswordHash) {
+        if (nextDisplayName != null && !nextDisplayName.isBlank()) this.displayName = nextDisplayName.trim();
+        if (nextEnabled != null) this.enabled = nextEnabled;
+        if (nextPasswordHash != null && !nextPasswordHash.isBlank()) this.passwordHash = nextPasswordHash;
     }
 }

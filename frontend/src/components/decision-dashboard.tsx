@@ -12,12 +12,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { EnvironmentCharts } from "./environment-charts";
+import { ActivityComparison } from "./activity-comparison";
 import type { SocialResearch } from "@/lib/social-research";
 import { EnvironmentMap } from "./environment-map";
 import { NationalEnvironmentMap } from "./national-environment-map";
 import { SlidingSelection, useSwitchEntrance } from "./switch-motion";
 import { WelcomeGreeting } from "./welcome-greeting";
 import { AccountBadge } from "./account-badge";
+import { UserFeedbackPanel } from "./user-feedback";
+import { authenticatedRequest } from "@/lib/auth";
 import { DecisionResultPanel } from "./decision-result-panel";
 import { AgentProgress } from "./agent-progress";
 import { answerAgentAction, detectAgentAction, type AgentAction } from "@/lib/agent-actions";
@@ -98,6 +101,9 @@ interface RegionBounds {
 interface ChatMessage { role: "user" | "assistant"; content: string; kind?: string; sources?: Array<{ title: string; url?: string; detail?: string }> }
 type WorkspaceView = "studio" | "map" | "plan";
 interface ConversationResponse {
+  weatherContext?: { cityName?: string; date?: string };
+  activeTopic?: string;
+  visualization?: "compare-days";
   knowledgeContext?: DestinationContext;
   reply: string;
   command: "analyze" | "clarify" | "answer";
@@ -138,11 +144,50 @@ export function DecisionDashboard() {
   const [chatText, setChatText] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [knowledgeContext, setKnowledgeContext] = useState<DestinationContext>({});
+  const [weatherContext, setWeatherContext] = useState<{ cityName?: string; date?: string }>({});
+  const [activeTopic, setActiveTopic] = useState("");
+  const [compareDays, setCompareDays] = useState(false);
+  const [memoryReady, setMemoryReady] = useState(false);
+  const [memoryStatus, setMemoryStatus] = useState("正在恢复对话记忆…");
+  const memoryQueue = useRef<Promise<unknown>>(Promise.resolve());
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     { role: "assistant", content: "你好，我是行知。可以直接问“明天西安的天气”，也可以让我规划旅行或活动。\n查询问题我会直接回答；规划需求会与你逐步确认。资料不足或无法核实时，我会如实说明。", kind: "从这里开始" },
   ]);
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
   const isTourism = input.activityType === "旅游规划";
+
+  useEffect(() => {
+    let active = true;
+    void authenticatedRequest<{ version?: number; messages?: ChatMessage[]; intake?: IntakeState; knowledgeContext?: DestinationContext; weatherContext?: { cityName?: string; date?: string }; activeTopic?: string; input?: ActivityInput; result?: DecisionResult; route?: TourismRoute; compareDays?: boolean }>("/api/v1/conversation-memory").then(saved => {
+      if (!active) return;
+      if (saved.version === 1 && Array.isArray(saved.messages) && saved.messages.length) {
+        setChatMessages(saved.messages.filter(item => ["user", "assistant"].includes(item.role) && typeof item.content === "string").slice(-60));
+        setIntake(saved.intake || { known: {} }); setKnowledgeContext(saved.knowledgeContext || {}); setWeatherContext(saved.weatherContext || {}); setActiveTopic(saved.activeTopic || "");
+        if (saved.input) setInput(saved.input);
+        if (saved.result) setResult(saved.result);
+        if (saved.route) setRoute(saved.route);
+        setCompareDays(Boolean(saved.compareDays));
+      }
+      setMemoryStatus("上下文已保存 · 用户跨登录保留，访客在当前会话保留"); setMemoryReady(true);
+    }).catch(() => { if (active) { setMemoryStatus("记忆暂不可用，本次对话仍可继续"); setMemoryReady(true); } });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!memoryReady || chatBusy || isAnalyzing || isPlanning) return;
+    const timer = window.setTimeout(() => {
+      const snapshot = { version: 1, messages: chatMessages.slice(-60), intake, knowledgeContext, weatherContext, activeTopic, input, result, route, compareDays };
+      memoryQueue.current = memoryQueue.current.catch(() => undefined).then(() => authenticatedRequest("/api/v1/conversation-memory", "PUT", snapshot)).catch(() => setMemoryStatus("记忆保存失败，刷新前请稍后重试"));
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [memoryReady, chatBusy, isAnalyzing, isPlanning, chatMessages, intake, knowledgeContext, weatherContext, activeTopic, input, result, route, compareDays]);
+
+  function clearConversationMemory() {
+    if (!window.confirm("清除已保存的对话、偏好和本轮分析结果？")) return;
+    setChatMessages([{ role: "assistant", content: "记忆已清除。你想了解哪个城市，或者准备开展什么活动？" }]);
+    setIntake({ known: {} }); setKnowledgeContext({}); setWeatherContext({}); setActiveTopic(""); setResult(null); setRoute(null); setCompareDays(false); setInput(initialInput);
+    memoryQueue.current = memoryQueue.current.catch(() => undefined).then(() => authenticatedRequest("/api/v1/conversation-memory", "DELETE")).catch(() => setMemoryStatus("清除失败，请重试"));
+  }
 
   useEffect(() => {
     chatScroll.current?.scrollTo({ top: chatScroll.current.scrollHeight, behavior: "smooth" });
@@ -457,7 +502,7 @@ export function DecisionDashboard() {
         date: activity.date || dateString(),
         endDate: activity.endDate || activity.date || dateString(),
         hours: hourlyDays.flat(),
-        participants: activity.participants, group: activity.group, intensity: activity.intensity, referenceUrls: activity.referenceUrls,
+        participants: activity.participants, group: activity.group, intensity: activity.intensity, referenceUrls: activity.referenceUrls, allowedStartHour: activity.allowedStartHour, allowedEndHour: activity.allowedEndHour,
       });
       data.totalDurationMs = performance.now() - startedAt;
       data.trace = data.trace.map((item) => item.id === "tour-forecast" ? { ...item, durationMs: item.durationMs + environmentMs, detail: `已读取 ${hourlyDays.length}/${dates.length} 天的逐小时环境数据，并计算推荐出行时段。` } : item);
@@ -483,13 +528,13 @@ export function DecisionDashboard() {
   async function submitConversation() {
     const conversationStarted = performance.now();
     const message = chatText.trim();
-    if (!message || chatBusy) return;
+    if (!message || chatBusy || !memoryReady) return;
     const userMessage: ChatMessage = { role: "user", content: message };
     const history = [...chatMessages, userMessage];
     setChatMessages(history);
     setChatText("");
     const action = detectAgentAction(message);
-    if (action && (result || route) && !knowledgeContext.topic && /本次|本轮|方案|候选时段|推荐依据|筹备清单/.test(message)) {
+    if (action && (result || route) && !knowledgeContext.topic && !/画|图|只看|改|调整|参与者/.test(message) && /本次|本轮|方案|候选时段|推荐依据|筹备清单/.test(message)) {
       setChatMessages([...history, { role: "assistant", content: answerAgentAction(action, input, result, route) }]);
       return;
     }
@@ -500,13 +545,16 @@ export function DecisionDashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message, today: dateString(), intake, history: history.slice(-6), knowledgeContext,
+          message, today: dateString(), intake, history: history.slice(-12), knowledgeContext, weatherContext, activeTopic,
         }),
       });
       if (!response.ok) throw new Error(await apiError(response));
       const plan = await response.json() as ConversationResponse;
       setIntake(plan.intake);
       if (plan.knowledgeContext) setKnowledgeContext(plan.knowledgeContext);
+      if (plan.weatherContext) setWeatherContext(plan.weatherContext);
+      setActiveTopic(plan.activeTopic || (plan.command === "answer" ? "knowledge" : "planning"));
+      if (plan.visualization) setCompareDays(true);
       setChatMessages((current) => [...current, { role: "assistant", content: plan.reply, kind: plan.kind || (plan.command === "clarify" ? "补充规划条件" : "开始规划"), sources: plan.sources }]);
       if (plan.command !== "analyze") return;
       let targetMeta = meta;
@@ -565,7 +613,7 @@ export function DecisionDashboard() {
     month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
   }).format(new Date(city.updatedAt)) : "";
   const visibleSlots = result
-    ? result.slots.filter((slot) => !result.bestSlot.date || slot.date === result.bestSlot.date)
+    ? result.slots.filter((slot) => compareDays || !result.bestSlot.date || slot.date === result.bestSlot.date)
     : [];
 
   return (
@@ -647,6 +695,7 @@ export function DecisionDashboard() {
               {intake.known.duration && <div><dt>单次时长</dt><dd>{intake.known.duration}小时</dd></div>}
               {intake.known.intensity && <div><dt>强度</dt><dd>{intake.known.intensity}</dd></div>}
               {intake.known.startHour !== undefined && <div><dt>偏好时段</dt><dd>{String(intake.known.startHour).padStart(2, '0')}:00 起</dd></div>}
+              {intake.known.allowedStartHour !== undefined && <div><dt>时段限制</dt><dd>{intake.known.allowedStartHour}:00–{intake.known.allowedEndHour}:00（覆盖全程）</dd></div>}
             </dl>}
             <button type="button" onClick={() => document.getElementById('conversation-input')?.focus()}>在对话中补充或修改 <ChatCircleDots size={15} /></button>
           </section>
@@ -661,17 +710,20 @@ export function DecisionDashboard() {
               <div><span className="conversation-icon"><ChatCircleDots size={19} weight="duotone" /></span><div><strong>与行知对话</strong><small>查天气 · 问知识 · 做规划，回答附资料依据</small></div></div>
               <span className="conversation-count">{chatMessages.length} 条消息 · 自动显示</span>
             </div>
+            <div className="memory-toolbar"><small role="status">{memoryStatus}{activeTopic === "weather" && weatherContext.cityName ? ` · 天气：${weatherContext.cityName}` : ""}</small><button type="button" disabled={chatBusy || !memoryReady} onClick={clearConversationMemory}>清除对话记忆</button></div>
             {knowledgeContext.topic && <div className="knowledge-context" aria-label="已确认问答偏好"><span>正在讨论：{knowledgeContext.city || "选择目的地"}{describeDestinationPreferences(knowledgeContext) ? ` · ${describeDestinationPreferences(knowledgeContext)}` : ""}</span><button type="button" disabled={chatBusy} onClick={() => setKnowledgeContext({})}>清除偏好</button></div>}
             <div ref={chatScroll} className="conversation-messages" aria-live="polite">{chatMessages.map((message, index) => <InkMessage message={message} key={`${message.role}-${index}`} />)}{chatBusy && <ThinkingIndicator />}</div>
             <div className="agent-actions" aria-label="Agent 分析工具"><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("explain")}>解释推荐依据</button><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("compare")}>对比候选时段</button><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("checklist")}>生成筹备清单</button></div>
             <form className="analysis-console-form" onSubmit={(event) => { event.preventDefault(); void submitConversation(); }}>
               <textarea id="conversation-input" aria-label="问题或规划需求" value={chatText} onChange={(event) => setChatText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submitConversation(); } }} placeholder="问一个问题，或告诉我你的旅行与活动想法…" rows={2} />
-              <button type="submit" disabled={!chatText.trim() || chatBusy} aria-label="发送分析要求">{chatBusy ? <span className="button-loader" /> : <PaperPlaneTilt size={18} weight="fill" />}<span>发送</span></button>
+              <button type="submit" disabled={!chatText.trim() || chatBusy || !memoryReady} aria-label="发送分析要求">{chatBusy ? <span className="button-loader" /> : <PaperPlaneTilt size={18} weight="fill" />}<span>发送</span></button>
             </form>
             {chatMessages.length === 1 && <div className="conversation-suggestions"><button type="button" onClick={() => setChatText("明天西安的天气怎么样？")}>查明天天气</button><button type="button" onClick={() => setChatText("US AQI 和 PM2.5 有什么区别？")}>了解空气指标</button><button type="button" onClick={() => setChatText("帮我规划三天旅游路线")}>规划三天旅行</button></div>}
             <p className="conversation-disclosure">实时信息以查询结果为准，搜索摘要附原文链接；无法确认的内容会明确说明。Enter 发送 · Shift+Enter 换行</p>
           </section>
           <div className="studio-agent-progress"><AgentProgress items={liveTrace.length ? liveTrace : route?.trace ?? result?.trace ?? []} running={isAnalyzing || isPlanning || chatBusy} phase={chatBusy && !isAnalyzing && !isPlanning ? "正在理解活动条件" : agentPhase} /></div>
+          <UserFeedbackPanel />
+          {result && <ActivityComparison input={input} result={result} />}
           <section className="studio-overview" aria-label="分析工作流概览">
             <div className="studio-intro"><span className="section-kicker">本轮工作成果</span><h2>{route ? `${route.cityName}${route.dayCount}日旅行规划` : result ? result.recommendation : "地图、方案与执行记录，随分析一起生成。"}</h2><p>{route?.summary || result?.summary || "你可以随时补充人数、调整时长，或让我比较不同的活动时段。"}</p></div>
             <button type="button" className="workspace-card" onClick={() => switchWorkspace("map")}><span><MapTrifold size={24} weight="duotone" /></span><div><strong>查看环境地图</strong><small>{hasDestination ? meta.name : "全国"} · {layer === "comfort" ? "活动适宜度" : layers.find((item) => item.key === layer)?.label}</small></div><b>进入</b></button>

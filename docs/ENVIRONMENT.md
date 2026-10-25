@@ -36,7 +36,7 @@
 
 前后端通过 HttpOnly 会话 Cookie 关联账户。普通用户和访客入口为 `/login`，管理员独立入口为 `/admin/login`，登录成功进入 `/admin`。后端同时校验账户角色与登录入口，页面分开不替代服务端授权。登录不自动创建管理员；请设置环境变量后启动后端。不要在公开 README 中写入生产账户密码。
 
-管理员和超级管理员均为只读运营角色：允许读取 `/api/v1/admin/**` 的 GET 统计接口及会话检查、登录退出；不允许调用用户侧环境查询、分析、模型、搜索记录写入和个人模型配置接口。Next.js Proxy 将管理会话从 `/XingZhi`、`/hourly`、`/settings`、`/account` 返回 `/admin`，并拒绝规划、搜索等 Next.js 业务接口；Java SecurityFilterChain 独立限制 `/api/**`。如需开展业务，请退出管理员并使用独立普通账户或访客会话，管理员绑定的旧模型配置不会自动转移给其他账户。
+管理员和超级管理员可读写 `/api/v1/admin/**`：管理普通用户、处理反馈及查看统计。写操作验证 CSRF，管理员账户不能通过普通用户管理修改或删除，停用/删除立即终止该普通用户后续请求。删除用户会连同其规划、搜索、反馈及账户记忆一并删除。Next.js Proxy 将管理会话从 `/XingZhi`、`/hourly`、`/settings`、`/account` 返回 `/admin`，Java SecurityFilterChain 继续阻止管理身份调用用户业务工具。用户对话记忆保存在 `app_user.conversation_memory`，访客与未登录会话保存在服务端 HttpSession；退出后访客记忆失效。新增 `user_feedback` 表由生产 `ddl-auto:update` 创建，部署前应备份数据库。
 
 ## 模型服务
 

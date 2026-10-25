@@ -29,7 +29,7 @@ test("source questions after a forecast never become location queries", () => {
     if (!/预算/.test(message)) assert.equal(classifyConversation(message, true), "knowledge", message);
   }
   assert.ok(retrieveKnowledge("天气数据来源").some((item) => item.id === "sources"));
-  for (const message of ["后天呢", "那明天呢", "北京市呢", "杭州呢"]) assert.equal(isWeatherFollowup(message, forecast), true, message);
+  for (const message of ["后天呢", "那明天呢", "北京市呢", "杭州呢", "一周后呢?", "两周后呢", "七天后呢？", "大后天呢?"]) assert.equal(isWeatherFollowup(message, forecast), true, message);
   assert.equal(isWeatherFollowup("天水", "你想查询哪个城市或区县的天气？"), true);
   assert.equal(isWeatherFollowup("数据来源", "你想查询哪个城市或区县的天气？"), false);
   assert.equal(isWeatherFollowup("人工智能", forecast), false);

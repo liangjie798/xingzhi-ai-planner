@@ -79,7 +79,7 @@ export function destinationRecommendationRequest(message: string): boolean {
   return /不同人群|各类人群|按人群|人群.*推荐|(?:适合|推荐|建议).*(?:去|地方|景点|城市|玩)|(?:亲子|孩子|小朋友|带娃|老人|老年|学生|爸妈|父母|长辈|情侣|独自|一个人|轮椅|无障碍).*(?:去哪|哪里|玩什么|怎么玩|推荐)|(?:去哪|哪里|哪些地方|哪些景点|什么地方).*(?:亲子|老人|孩子|学生|爸妈|情侣|轮椅)|适合.*(?:亲子|学生|老人|老年|孩子|轮椅)/.test(message);
 }
 
-export function rankDestinationPlaces(places: DestinationPlace[], context: DestinationContext): Array<DestinationPlace & { reason: string }> {
+export function rankDestinationPlaces(places: DestinationPlace[], context: DestinationContext, limit = 4): Array<DestinationPlace & { reason: string }> {
   const groups = (context.audiences?.length ? context.audiences : ["adult"]) as AudienceKey[];
   const ranked = places.map((place) => {
     const text = `${place.name} ${place.tag}`;
@@ -94,7 +94,7 @@ export function rankDestinationPlaces(places: DestinationPlace[], context: Desti
     const reason = groups.map((group) => audienceGuides[group].reason).join(" ");
     return { ...place, score, reason };
   }).filter((place) => place !== null);
-  return ranked.sort((a, b) => b.score - a.score).slice(0, 4).map(({ score: _score, ...place }) => { void _score; return place; });
+  return ranked.sort((a, b) => b.score - a.score).slice(0, limit).map(({ score: _score, ...place }) => { void _score; return place; });
 }
 
 export function describeDestinationPreferences(context: DestinationContext): string {

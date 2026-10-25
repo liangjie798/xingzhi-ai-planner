@@ -6,4 +6,5 @@ import java.util.List;
 
 public interface SearchLogRepository extends JpaRepository<SearchLogEntity, Long> {
     List<SearchLogEntity> findTop100ByOrderByCreatedAtDesc();
+    void deleteByUsername(String username);
 }

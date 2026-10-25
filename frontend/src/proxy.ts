@@ -17,7 +17,7 @@ export async function proxy(request: NextRequest) {
     if (!user || !["ADMIN", "SUPER_ADMIN"].includes(user.role || "")) return NextResponse.next();
     const denied = isPage
       ? NextResponse.redirect(new URL("/admin", request.url))
-      : NextResponse.json({ detail: "管理员账户仅可查看平台统计数据。如需使用规划功能，请退出后以用户或访客身份登录。" }, { status: 403 });
+      : NextResponse.json({ detail: "请在独立管理平台管理用户、处理反馈和查看统计。如需使用规划功能，请以用户或访客身份登录。" }, { status: 403 });
     denied.headers.set("Cache-Control", "private, no-store");
     return denied;
   } catch {

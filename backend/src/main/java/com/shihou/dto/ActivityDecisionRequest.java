@@ -21,7 +21,9 @@ public record ActivityDecisionRequest(
         String adcode,
         Double longitude,
         Double latitude,
-        @Size(max = 1000) String siteObservation
+        @Size(max = 1000) String siteObservation,
+        @Min(6) @Max(20) Integer allowedStartHour,
+        @Min(7) @Max(21) Integer allowedEndHour
 ) {
 }
 

@@ -41,6 +41,8 @@ export interface ActivityInput {
   latitude?: number;
   siteObservation?: string;
   referenceUrls?: string[];
+  allowedStartHour?: number;
+  allowedEndHour?: number;
 }
 
 export interface CitySearchResult {

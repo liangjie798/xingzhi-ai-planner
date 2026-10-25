@@ -8,7 +8,7 @@ import { summarizeWeather, weatherDestination } from "./conversation-weather";
 import { cityIntroductionSubject, cityProfiles, cityIntroductionQuery, selectCityIntroductionSources } from "./city-introduction";
 
 export interface AnswerSource { title: string; url?: string; detail?: string }
-export interface DirectAnswer { reply: string; sources: AnswerSource[]; kind: string }
+export interface DirectAnswer { reply: string; sources: AnswerSource[]; kind: string; weatherContext?: { cityName?: string; date?: string } }
 
 export async function answerWeather(request: Request, message: string, today: string, known: IntakePatch): Promise<DirectAnswer> {
   const facts = extractIntake(message, today, known);
@@ -16,7 +16,7 @@ export async function answerWeather(request: Request, message: string, today: st
   const date = facts.date || known.date || today;
   const sources: AnswerSource[] = [];
   if (!city) return { reply: "你想查询哪个城市或区县的天气？也可以说“明天西安的天气”。", sources, kind: "天气查询" };
-  if (date < today || date > addDays(today, 6)) return { reply: `当前可查询 ${today} 至 ${addDays(today, 6)} 的预报，无法提供 ${date} 的可靠天气。请换一个日期。`, sources, kind: "超出预报范围" };
+  if (date < today || date > addDays(today, 6)) return { reply: `继续查询${city}的天气。当前可查询 ${today} 至 ${addDays(today, 6)} 的预报，无法提供 ${date} 的可靠天气。请换一个日期。`, sources, kind: "超出预报范围", weatherContext: { cityName: city, date } };
   try {
     const key = process.env.AMAP_WEB_SERVICE_KEY || process.env.NEXT_PUBLIC_AMAP_KEY;
     if (!key) throw new Error("missing-location-key");
@@ -34,7 +34,7 @@ export async function answerWeather(request: Request, message: string, today: st
     if (!response.ok) throw new Error("weather-unavailable");
     const data = await response.json() as { hours?: EnvironmentalForecastPoint[]; city?: { sourceMode?: string; updatedAt?: string } };
     if (data.city?.sourceMode !== "live") throw new Error("not-live");
-    return { reply: summarizeWeather(district.name, date, data.hours || []), kind: "真实天气查询", sources: [{ title: "Open-Meteo 逐小时预报", url: "https://open-meteo.com/en/docs", detail: `${district.name} · ${date}；获取时间 ${new Date().toISOString()}` }] };
+    return { reply: summarizeWeather(district.name, date, data.hours || []), kind: "真实天气查询", weatherContext: { cityName: district.name, date }, sources: [{ title: "Open-Meteo 逐小时预报", url: "https://open-meteo.com/en/docs", detail: `${district.name} · ${date}；获取时间 ${new Date().toISOString()}` }] };
   } catch {
     return { reply: `暂时无法获取${city} ${date} 的可靠天气数据，本次未生成预报。请稍后重试，或查看当地气象部门的预报。无需补充活动人数或类型。`, sources, kind: "数据暂不可用" };
   }

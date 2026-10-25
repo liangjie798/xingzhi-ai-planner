@@ -1,9 +1,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractIntake, completeIntake } from "../src/lib/conversation-intake.ts";
+import { extractIntake, completeIntake, relativeDateFromText, isPlanRevision } from "../src/lib/conversation-intake.ts";
 
 const today = "2026-10-23";
 function turn(known, message) { return completeIntake(known, extractIntake(message, today, known), today); }
+
+test("weather date continuations parse weeks and days relative to Beijing today", () => {
+  for (const [phrase, date] of [["大后天呢?", "2026-10-26"], ["一周后呢？", "2026-10-30"], ["那两周后呢", "2026-11-06"], ["再过十天后呢", "2026-11-02"]]) assert.equal(relativeDateFromText(phrase, today), date, phrase);
+});
+
+test("multi-turn revisions update real plan conditions and preserve every other fact", () => {
+  const initial = { cityName: "西安市", activityType: "校园运动会", date: "2026-10-24", participants: 30, group: "普通人群", intensity: "中强度", duration: 2, startHour: 14 };
+  let known = initial;
+  for (const message of ["如果改成一小时呢？", "参与者改成老人", "只看下午"]) {
+    assert.equal(isPlanRevision(message, known), true, message);
+    const response = turn(known, message);
+    assert.equal(response.command, "analyze", message);
+    known = response.intake.known;
+  }
+  assert.equal(known.cityName, "西安市"); assert.equal(known.duration, 1); assert.equal(known.group, "老年人");
+  assert.equal(known.allowedStartHour, 12); assert.equal(known.allowedEndHour, 18); assert.equal(known.participants, 30);
+  assert.equal(isPlanRevision("帮我画两天的对比图", known), true);
+  assert.equal(isPlanRevision("为什么推荐这个时段", known), false);
+});
 
 test("three-day request asks for destination and departure instead of using dashboard defaults", () => {
   const result = turn({}, "帮我规划三天旅游路线");

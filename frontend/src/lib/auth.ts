@@ -55,6 +55,18 @@ export async function loginAsGuest(): Promise<AccountUser> {
 export interface AdminOverview { registeredUsers: number; searches: number; decisions: number }
 export interface AdminUser { id: number; username: string; displayName: string; role: string; enabled: boolean; createdAt: string }
 export interface AdminSearch { id: number; query: string; resultCount: number; username?: string; actorType: string; createdAt: string }
+export interface UserFeedback { id: number; username: string; actorType: string; title: string; content: string; status: "OPEN" | "IN_PROGRESS" | "RESOLVED"; adminReply?: string; createdAt: string; updatedAt: string }
+
+export async function authenticatedRequest<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+  const token = method === "GET" ? null : await csrf();
+  const response = await fetch(path, { method, credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json", ...(token ? { [token.headerName]: token.token } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  if (!response.ok) {
+    const error = await response.json().catch(() => null) as { detail?: string } | null;
+    throw new Error(error?.detail || `请求失败（${response.status}）`);
+  }
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
 export async function adminData(): Promise<[AdminOverview, AdminUser[], AdminSearch[]]> {
   const responses = await Promise.all(["overview", "users", "searches"].map((path) => fetch(`/api/v1/admin/${path}`, { credentials: "same-origin", cache: "no-store" })));
   if (responses.some((response) => !response.ok)) throw new Error("无管理员权限或数据加载失败");

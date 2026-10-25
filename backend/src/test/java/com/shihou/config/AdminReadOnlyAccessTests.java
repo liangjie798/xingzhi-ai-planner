@@ -24,10 +24,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AdminReadOnlyAccessTests {
     @Autowired private WebApplicationContext application;
     @Autowired private FilterChainProxy securityFilters;
+    @Autowired private com.shihou.dao.UserRepository users;
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
+        if (users.findByUsername("permission-test-USER").isEmpty()) users.save(new com.shihou.entity.UserEntity("permission-test-USER", "unused", "权限测试", "USER"));
         mvc = MockMvcBuilders.webAppContextSetup(application).addFilters(securityFilters).build();
     }
 

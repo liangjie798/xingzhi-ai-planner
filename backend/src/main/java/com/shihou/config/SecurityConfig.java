@@ -14,6 +14,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 @Configuration
 public class SecurityConfig {
@@ -37,18 +40,31 @@ public class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, UserRepository users) throws Exception {
         CookieCsrfTokenRepository csrf = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrf.setCookiePath("/");
-        http
+        http.addFilterBefore(new OncePerRequestFilter() {
+            @Override
+            protected void doFilterInternal(jakarta.servlet.http.HttpServletRequest request, jakarta.servlet.http.HttpServletResponse response,
+                                            jakarta.servlet.FilterChain chain) throws java.io.IOException, jakarta.servlet.ServletException {
+                var auth = SecurityContextHolder.getContext().getAuthentication();
+                if (auth != null && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_USER"))
+                        && users.findByUsername(auth.getName()).filter(u -> u.isEnabled()).isEmpty()) {
+                    if (request.getSession(false) != null) request.getSession(false).invalidate();
+                    SecurityContextHolder.clearContext();
+                    response.setStatus(401); response.setContentType("application/json;charset=UTF-8");
+                    response.getWriter().write("{\"detail\":\"账户已停用或删除，请重新登录\"}"); return;
+                }
+                chain.doFilter(request, response);
+            }
+        }, AuthorizationFilter.class)
                 .csrf(value -> value.csrfTokenRepository(csrf)
                         .ignoringRequestMatchers("/api/v1/decisions/**", "/api/v2/agent/**", "/api/v1/analytics/**"))
                 .authorizeHttpRequests(value -> value
                         .requestMatchers("/api/v1/auth/me", "/api/v1/auth/csrf", "/api/v1/auth/login", "/api/v1/auth/logout").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
-                        .requestMatchers("/api/v1/admin/**").denyAll()
+                        .requestMatchers("/api/v1/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                         .requestMatchers("/api/v1/account/**").hasRole("USER")
-                        // Administrator sessions are reserved for read-only platform statistics.
+                        // Administrator sessions are reserved for the separate management console.
                         // User/guest/anonymous business access keeps its existing behavior.
                         .requestMatchers("/api/**").access((authentication, context) -> new AuthorizationDecision(
                                 authentication.get().getAuthorities().stream().noneMatch(role ->

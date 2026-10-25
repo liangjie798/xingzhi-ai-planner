@@ -22,6 +22,8 @@ export interface TourismRequestPayload {
   group?: GroupType;
   intensity?: Intensity;
   referenceUrls?: string[];
+  allowedStartHour?: number;
+  allowedEndHour?: number;
 }
 
 export async function fetchTourismRoute(apiBase: string, payload: TourismRequestPayload): Promise<TourismRoute> {

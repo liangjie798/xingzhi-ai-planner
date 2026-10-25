@@ -1,6 +1,6 @@
 import type { ActivityInput } from "./types";
 
-export type IntakePatch = Partial<Pick<ActivityInput, "cityName" | "activityType" | "date" | "endDate" | "startHour" | "duration" | "participants" | "intensity" | "group" | "referenceUrls">> & { tripDays?: number };
+export type IntakePatch = Partial<Pick<ActivityInput, "cityName" | "activityType" | "date" | "endDate" | "startHour" | "duration" | "participants" | "intensity" | "group" | "referenceUrls" | "allowedStartHour" | "allowedEndHour">> & { tripDays?: number };
 export interface IntakeState { known: IntakePatch }
 const activities = ["校园运动会", "体育课", "社区活动", "户外训练", "研学活动", "旅游规划"] as const;
 const numbers: Record<string, number> = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
@@ -17,6 +17,21 @@ function number(text: string) {
 export function addDays(date: string, days: number) {
   return new Date(Date.parse(`${date}T00:00:00+08:00`) + days * 86400000).toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
 }
+
+/** Parse a date phrase relative to Beijing today. This is shared by planning and weather follow-ups. */
+export function relativeDateFromText(text: string, today: string): string | undefined {
+  const compact = text.replace(/\s+/g, "");
+  if (/大后天/.test(compact)) return addDays(today, 3);
+  if (/后天/.test(compact)) return addDays(today, 2);
+  if (/明天/.test(compact)) return addDays(today, 1);
+  if (/今天|今日/.test(compact)) return today;
+  const weeks = compact.match(/(?:再过|过|往后)?([一二两三四五六七八九十\d]+)个?(?:星期|周)后/);
+  if (weeks) return addDays(today, number(weeks[1]) * 7);
+  if (/下周/.test(compact)) return addDays(today, 7);
+  const days = compact.match(/(?:再过|过|往后)?([一二两三四五六七八九十\d]+)天后/);
+  if (days) return addDays(today, number(days[1]));
+  return undefined;
+}
 function validDate(value: unknown): value is string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 }
@@ -29,7 +44,7 @@ export function cleanIntake(raw: IntakePatch = {}): IntakePatch {
   if (validDate(raw.endDate)) out.endDate = raw.endDate;
   if (["低强度", "中强度", "高强度"].includes(raw.intensity!)) out.intensity = raw.intensity;
   if (["普通人群", "儿童青少年", "老年人", "敏感人群", "外来旅游人群"].includes(raw.group!)) out.group = raw.group;
-  for (const [key, min, max] of [["startHour", 0, 23], ["duration", 1, 12], ["participants", 1, 9999], ["tripDays", 1, 7]] as const) {
+  for (const [key, min, max] of [["startHour", 6, 20], ["allowedStartHour", 6, 20], ["allowedEndHour", 7, 21], ["duration", 1, 8], ["participants", 1, 9999], ["tripDays", 1, 7]] as const) {
     const value = raw[key];
     if (typeof value === "number" && Number.isFinite(value) && value >= min && value <= max) out[key] = Math.round(value);
   }
@@ -58,8 +73,8 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   const dates = [...text.matchAll(/(20\d{2})[-/年](\d{1,2})[-/月](\d{1,2})日?/g)].map((m) => `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`);
   if (dates[0]) patch.date = dates[0];
   else {
-    const relative = /大后天/.test(text) ? 3 : /后天/.test(text) ? 2 : /明天/.test(text) ? 1 : /今天|今日|未来/.test(text) ? 0 : null;
-    if (relative !== null) patch.date = addDays(today, relative);
+    const relative = relativeDateFromText(text, today) || (/未来/.test(text) ? today : undefined);
+    if (relative) patch.date = relative;
     const monthDay = text.match(/(\d{1,2})月(\d{1,2})[日号]?/);
     if (monthDay) patch.date = `${today.slice(0, 4)}-${monthDay[1].padStart(2, "0")}-${monthDay[2].padStart(2, "0")}`;
   }
@@ -69,6 +84,10 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   else if (/下午/.test(text)) patch.startHour = 14;
   else if (/早上|上午/.test(text)) patch.startHour = 9;
   else if (/晚上/.test(text)) patch.startHour = 19;
+  if (/下午/.test(text)) { patch.allowedStartHour = 12; patch.allowedEndHour = 18; }
+  else if (/早上|上午/.test(text)) { patch.allowedStartHour = 6; patch.allowedEndHour = 12; }
+  else if (/晚上/.test(text)) { patch.allowedStartHour = 18; patch.allowedEndHour = 21; }
+  if (/不限时段|全天|取消.*(?:时段|下午|上午).*限制/.test(text)) { patch.allowedStartHour = 6; patch.allowedEndHour = 21; }
   const common = text.match(/北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|香港|澳门|重庆|天津/);
   const named = text.match(/(?:去|在|到|目的地[是为：:]?|城市[是为：:]?)\s*([\u4e00-\u9fa5]{2,8}?[市县区])/) || text.match(/^([\u4e00-\u9fa5]{2,8}[市县区])(?:[，。\s]|$)/);
   const embedded = text.match(/(?:规划|分析|查询|去|到|在)\s*([\u4e00-\u9fa5]{2,8}?)(?=明天|后天|今天|未来|[一二两三四五六七\d]+[天日]|旅游|旅行|的|[，。]|$)/);
@@ -113,4 +132,12 @@ export function completeIntake(previous: IntakePatch, delta: IntakePatch, today:
   const { tripDays: _days, ...patch } = known;
   void _days;
   return { command: missing.length || invalidRange ? "clarify" as const : "analyze" as const, reply, patch: { ...patch, ...(tourism ? { duration: known.duration ?? 2, startHour: known.startHour ?? 9, intensity: known.intensity ?? "低强度" as const } : {}), ...(known.date && !known.endDate ? { endDate: known.date } : {}) }, intake: { known }, missing };
+}
+
+/** Modification commands update a confirmed plan before generic Q&A routing. */
+export function isPlanRevision(message: string, known: IntakePatch): boolean {
+  if (!known.activityType) return false;
+  if (/来源|出处|是什么意思|有什么区别|为什么|如何使用/.test(message)) return false;
+  return /改成|改为|换成|调整|改到|只看|仅看|只考虑|只在|参与者|参加者|人数|取消.*限制|不限时段|重新分析|重新计算|(?:画|绘制|生成).*(?:对比图|比较图)|两天.*对比/.test(message)
+    || /^(?:那|如果|那么)?[一二两三四五六七八九十\d]+个?小时呢[？?]?$/.test(message.trim());
 }
