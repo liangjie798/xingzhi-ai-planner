@@ -84,20 +84,25 @@ function PlanDocumentReader({ document }: { document: PlanningDocument }) {
   </div>;
 }
 
-function EvidenceReport({ items, isTourism }: { items: EvidenceItem[]; isTourism: boolean }) {
+function EvidenceReport({ items, isTourism, places }: { items: EvidenceItem[]; isTourism: boolean; places: string[] }) {
   const [filter, setFilter] = useState("全部");
   const tags = [...new Set(items.map((item) => item.tag))];
   const activeFilter = tags.includes(filter) ? filter : "全部";
   const visible = activeFilter === "全部" ? items : items.filter((item) => item.tag === activeFilter);
+  const uncovered = places.filter(place=>!items.some(item=>item.relatedPlaces?.includes(place)));
   return <div className="evidence-layout">
     <aside className="evidence-index"><span className="section-kicker">来源索引</span><strong>{items.length}<small>条参考依据</small></strong>
       <div className="evidence-filters" role="group" aria-label="筛选证据类型">{["全部", ...tags].map((tag) => <button type="button" key={tag} className={activeFilter === tag ? "is-selected" : ""} aria-pressed={activeFilter === tag} onClick={() => setFilter(tag)}><span>{tag}</span><b>{tag === "全部" ? items.length : items.filter((item) => item.tag === tag).length}</b></button>)}</div>
       <div className="report-note"><ShieldCheck size={19} /><p>{isTourism ? "平台链接提供关键词检索入口，景点与餐饮信息请以原始来源为准。" : "环境数据与政策依据共同支持建议，点击来源可核对原文。"}</p></div>
     </aside>
     <section className="evidence-documents" aria-live="polite"><SectionHeading number="01" title={activeFilter === "全部" ? "本次分析的参考依据" : activeFilter} detail={`显示 ${visible.length} 条 · 摘要、发布机构与原文入口`} />
+      {places.length > 0 && <div className="report-note"><Info size={18} /><p>地点资料覆盖 {places.length-uncovered.length}/{places.length}。{uncovered.length ? `暂缺关联资料：${uncovered.join("、")}。` : "所有推荐地点均有关联资料。"}资料仅支持所标明的推荐主题；开放、预约和团体接待需另行确认。</p></div>}
       {visible.map((item, index) => <article className="evidence-document" key={item.id ?? `${item.title}-${index}`}>
         <div className="evidence-document-top"><span className="report-badge">{item.tag}</span><span className="evidence-number">{String(index + 1).padStart(2, "0")}</span></div>
         <h3>{item.title}</h3><div className="evidence-meta"><span>{item.publisher || "公开资料"}</span>{item.publishedAt && <time>{item.publishedAt}</time>}</div>
+        {item.relatedPlaces?.length ? <p><strong>关联推荐：</strong>{item.relatedPlaces.join("、")}</p> : null}
+        {(item.verification || item.tag === "联网检索资料") && <p className="evidence-meta">{item.verification || "搜索摘要 · 尚未核验全文"}</p>}
+        {item.retrievedAt && <p className="evidence-meta">检索时间：{new Date(item.retrievedAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai"})}（北京时间）</p>}
         {item.section && <div className="evidence-section">{item.section}</div>}<p>{item.excerpt.length > 160 ? item.excerpt.slice(0,160) + "…" : item.excerpt}</p>{item.excerpt.length > 160 && <details><summary>展开原始摘要</summary><p>{item.excerpt}</p></details>}
         {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer">查看原始来源 <ArrowUpRight size={15} /></a>}
       </article>)}
@@ -176,7 +181,7 @@ export function DecisionResultPanel({ input, isTourism, route, result, liveTrace
     <div ref={panelMotion} className={`report-body report-body-${activePanel}`} role="tabpanel" id={`report-content-${activePanel}`} aria-labelledby={`report-tab-${activePanel}`} tabIndex={0}>
       {!ready && !(activePanel === "trace" && trace.length > 0) ? <div className="report-empty">{running ? <Pulse size={36} /> : isTourism ? <Binoculars size={36} /> : <Sparkle size={36} />}<h2>{running ? "正在准备这份报告" : "先完成一次对话分析"}</h2><p>{running ? "工具返回后，方案、证据与执行轨迹会自动更新。" : "在分析台描述城市、日期与活动需求，完成后即可在这里查看详细内容。"}</p><a href="/XingZhi">返回分析台 <ArrowUpRight size={16} /></a></div>
         : activePanel === "plan" ? <>{document && <PlanDocumentReader document={document} />}<details className="structured-plan"><summary>{isTourism ? "查看按天行程与地点图片" : "查看时间线与执行卡片"}</summary>{isTourism && route ? <TourismPlan key={`${route.cityName}-${route.date}-${route.endDate}`} route={route} /> : result && <ActivityPlan input={input} result={result} />}</details></>
-        : activePanel === "evidence" ? <EvidenceReport items={evidence} isTourism={isTourism} />
+        : activePanel === "evidence" ? <EvidenceReport items={evidence} isTourism={isTourism} places={isTourism ? route?.stops.map(stop=>stop.name) || [] : result?.venues?.map(venue=>venue.name) || []} />
         : <TraceVisualizer items={trace} running={running} totalDurationMs={isTourism ? route?.totalDurationMs : result?.totalDurationMs} />}
     </div>
   </section>;

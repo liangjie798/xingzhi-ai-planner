@@ -1,4 +1,5 @@
 import type { TourismRoute, GroupType, Intensity } from "./types";
+import { enrichRouteEvidence } from "./place-evidence-client";
 
 export interface TourismHourSnapshot {
   date: string;
@@ -40,5 +41,5 @@ export async function fetchTourismRoute(apiBase: string, payload: TourismRequest
     } catch { /* keep default */ }
     throw new Error(detail);
   }
-  return await response.json() as TourismRoute;
+  return enrichRouteEvidence(await response.json() as TourismRoute);
 }

@@ -22,6 +22,8 @@ import { AccountBadge } from "./account-badge";
 import { UserFeedbackPanel } from "./user-feedback";
 import { authenticatedRequest } from "@/lib/auth";
 import { enrichActivityVenues } from "@/lib/activity-venues-client";
+import { enrichRouteEvidence } from "@/lib/place-evidence-client";
+import { mergePlaceEvidence } from "@/lib/place-evidence";
 import { DecisionResultPanel } from "./decision-result-panel";
 import { AgentProgress } from "./agent-progress";
 import { answerAgentAction, detectAgentAction, type AgentAction } from "@/lib/agent-actions";
@@ -170,7 +172,11 @@ export function DecisionDashboard() {
           const restored = saved.result;
           if (!restored.venues && saved.input?.cityName) void enrichActivityVenues(saved.input, restored).then(updated => { if (active) setResult(current => current === restored ? updated : current); });
         }
-        if (saved.route) setRoute(saved.route);
+        if (saved.route) {
+          const restored = saved.route;
+          setRoute(restored);
+          if (!restored.trace.some(item=>item.id === "place-evidence")) void enrichRouteEvidence(restored).then(updated=>{ if(active) setRoute(current=>current === restored ? updated : current); });
+        }
         setCompareDays(Boolean(saved.compareDays));
       }
       setMemoryStatus("上下文已保存 · 用户跨登录保留，访客在当前会话保留"); setMemoryReady(true);
@@ -609,7 +615,8 @@ export function DecisionDashboard() {
         if (venueTask && "recommendation" in completed) {
           const enriched = await venueTask;
           completed.venues = enriched.venues; completed.venueNotice = enriched.venueNotice;
-          completed.trace.push(...enriched.trace.filter(item => item.id === "activity-venues"));
+          completed.evidence = mergePlaceEvidence([...enriched.evidence,...completed.evidence]);
+          completed.trace.push(...enriched.trace.filter(item => ["activity-venues","place-evidence"].includes(item.id)));
         }
       }
       completed.totalDurationMs = performance.now() - conversationStarted;

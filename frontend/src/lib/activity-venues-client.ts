@@ -1,4 +1,6 @@
 import type { ActivityInput, ActivityVenue, DecisionResult } from "./types";
+import { fetchPlaceEvidence } from "./place-evidence-client";
+import { mergePlaceEvidence } from "./place-evidence";
 
 export async function enrichActivityVenues(input: ActivityInput, result: DecisionResult): Promise<DecisionResult> {
   const start = performance.now();
@@ -11,5 +13,7 @@ export async function enrichActivityVenues(input: ActivityInput, result: Decisio
       venues = data.venues || []; notice = data.notice;
     }
   } catch { /* Keep the verified environment result when venue lookup is unavailable. */ }
-  return { ...result, venues, venueNotice:notice, trace:[...result.trace.filter(item => item.id !== "activity-venues"), { id:"activity-venues", name:"检索活动场地与推荐理由", detail:venues.length ? `按${input.activityType}、${input.group}、${input.participants}人及${input.duration}小时时长筛选${venues.length}个城市内场地候选；团体接待需确认。` : notice, status:venues.length ? "done" : "fallback", durationMs:performance.now()-start }] };
+  const venueMs = performance.now()-start;
+  const extra = await fetchPlaceEvidence(input.cityName || "",venues.map(venue=>venue.name));
+  return { ...result, venues, venueNotice:notice, evidence:mergePlaceEvidence([...(extra?.evidence || []),...result.evidence]), trace:[...result.trace.filter(item => !["activity-venues","place-evidence"].includes(item.id)), { id:"activity-venues", name:"检索活动场地与推荐理由", detail:venues.length ? `按${input.activityType}、${input.group}、${input.participants}人及${input.duration}小时时长筛选${venues.length}个城市内场地候选；团体接待需确认。` : notice, status:venues.length ? "done" : "fallback", durationMs:venueMs }, ...(extra ? [extra.trace] : [])] };
 }

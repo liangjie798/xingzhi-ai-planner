@@ -85,6 +85,9 @@ export interface TimeSlotScore {
 }
 
 export interface EvidenceItem {
+  relatedPlaces?: string[];
+  verification?: string;
+  retrievedAt?: string;
   id?: string;
   title: string;
   publisher: string;
