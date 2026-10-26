@@ -1,4 +1,6 @@
 export interface PoiSpot {
+  openingHours?: string;
+  openingDate?: string;
   name: string;
   longitude: number;
   latitude: number;

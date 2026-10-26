@@ -131,7 +131,11 @@ test("invalid and out-of-forecast dates require correction", () => {
   assert.match(result.reply, /调整出发或结束日期/);
 });
 
-test("university students are classified as adults", () => { assert.equal(turn({}, "大学生").intake.known.group, "普通人群"); });
+test("university identity is preserved separately from adult risk category", () => {
+  const patch=extractIntake("七个大学生，人均200元，10个篮球",today,{});
+  assert.equal(patch.group,"普通人群");assert.equal(patch.audienceDescription,"大学生");assert.equal(patch.budgetPerPerson,200);assert.equal(patch.equipmentCount,10);
+  const groups=extractIntake("每组5人",today,{participants:40,activityType:"体育课"});assert.equal(groups.teamSize,5);assert.equal(groups.participants,undefined);
+});
 
 test("seven university students completes the pending participants question", () => {
   const first = turn({}, "规划杭州未来三天的旅游路线");

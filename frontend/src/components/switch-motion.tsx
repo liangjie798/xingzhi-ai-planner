@@ -33,7 +33,7 @@ export function useSwitchEntrance(value: string) {
   useGSAP(() => {
     if (!root.current || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     gsap.fromTo(root.current, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: .3, ease: "power2.out", clearProps: "opacity,transform" });
-  }, { dependencies: [value], scope: root, revertOnUpdate: true });
+  }, { dependencies: [value], revertOnUpdate: true });
   return root;
 }
 

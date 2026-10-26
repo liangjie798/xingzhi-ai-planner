@@ -78,7 +78,7 @@ export async function POST(request: Request) {
           "用户之前已确认：" + JSON.stringify(known),
           "最近对话（只用于理解省略，不把系统默认值当用户选择）：" + JSON.stringify((body.history ?? []).slice(-6)),
           "本条消息：" + message,
-          '输出 {"patch":{}}，可用字段 cityName,activityType,date,endDate,tripDays,startHour,duration,participants,intensity,group。未提及字段不要输出。',
+          '输出 {"patch":{}}，可用字段 cityName,activityType,date,endDate,tripDays,startHour,duration,participants,intensity,group,audienceDescription,budgetPerPerson,equipmentCount,teamSize。未提及字段不要输出。大学生等具体身份用audienceDescription保留，预算为人均元，器材为件/套，teamSize为每组人数。',
           "activityType只能为校园运动会、体育课、社区活动、户外训练、研学活动、旅游规划；intensity为低强度、中强度、高强度；group为普通人群、儿童青少年、老年人、敏感人群、外来旅游人群。",
           "三天旅游只输出tripDays:3和activityType，不输出任何日期城市。只说杭州就只输出cityName。日期使用YYYY-MM-DD。",
         ].join("\n"), config,

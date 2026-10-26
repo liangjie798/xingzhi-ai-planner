@@ -14,6 +14,7 @@ const sources = [
   { city:"杭州", names:["西湖","断桥","西溪","雷峰塔","灵隐"], title:"杭州官方文化旅游线路", publisher:"杭州市文化广电旅游局", url:"https://wgly.hangzhou.gov.cn/module/download/downfile.jsp?classid=0&filename=c3ccb4250d3143a09047ee20fbe1170c.pdf", text:"支持文化游览主题与线路参考；行程时点需结合当日天气与预约确认。" },
 ];
 const normalized = (value:string) => value.replace(/[\s·—\-（）()]/g, "");
+export const promotionalContent=(text:string)=>/旅行社|TOP\s*\d|排名前|十大|十佳|口碑排名|家庭游|跟团|包车|旅游团|主营|招商|加盟|咨询热线|联系我们|招标|名额抢购|省心游|纯玩团/i.test(text);
 export function officialPlaceEvidence(city:string, places:string[]):EvidenceItem[] {
   return sources.filter(source=>city.includes(source.city)).flatMap(source=>{
     const relatedPlaces = places.filter(place=>source.names.some(name=>normalized(place).includes(normalized(name))));
@@ -27,7 +28,7 @@ export function matchedSearchEvidence(city:string, places:string[], rows:Array<{
     const relatedPlaces = places.filter(place=>text.includes(normalized(place)));
     let url:URL;
     try { url = new URL(row.url); } catch { return []; }
-    if (url.protocol !== "https:" || url.username || url.password || !text.includes(normalized(cityTerm)) || !relatedPlaces.length || /旅行社|招商|招标|加盟|TOP\s*\d|主营|名额抢购/i.test(row.title)) return [];
+    if (url.protocol !== "https:" || url.username || url.password || !text.includes(normalized(cityTerm)) || !relatedPlaces.length || promotionalContent(row.title+" "+row.excerpt)) return [];
     return [{ id:`place-${row.url}`, title:row.title, publisher:row.provider || "联网检索", excerpt:row.excerpt, tag:"地点检索摘要", sourceUrl:row.url, relatedPlaces, retrievedAt:row.retrievedAt, verification:"搜索摘要 · 尚未核验全文，不证明营业或预约状态" }];
   });
 }

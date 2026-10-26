@@ -24,6 +24,10 @@ import { authenticatedRequest } from "@/lib/auth";
 import { enrichActivityVenues } from "@/lib/activity-venues-client";
 import { enrichRouteEvidence } from "@/lib/place-evidence-client";
 import { mergePlaceEvidence } from "@/lib/place-evidence";
+import { OperationsWorkspace } from "./operations-workspace";
+import { emptyWorkspace,type WorkspaceData,type SavedPlan } from "@/lib/workspace-data";
+import { removeTourismStop } from "@/lib/tourism-replan";
+import { TourismScheduleChart } from "./tourism-schedule-chart";
 import { DecisionResultPanel } from "./decision-result-panel";
 import { AgentProgress } from "./agent-progress";
 import { answerAgentAction, detectAgentAction, type AgentAction } from "@/lib/agent-actions";
@@ -102,7 +106,7 @@ interface RegionBounds {
 }
 
 interface ChatMessage { role: "user" | "assistant"; content: string; kind?: string; sources?: Array<{ title: string; url?: string; detail?: string }> }
-type WorkspaceView = "studio" | "map" | "plan";
+type WorkspaceView = "studio" | "map" | "plan" | "execution" | "library" | "archive";
 interface ConversationResponse {
   weatherContext?: { cityName?: string; date?: string };
   activeTopic?: string;
@@ -120,6 +124,7 @@ interface ConversationResponse {
 
 export function DecisionDashboard() {
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("studio");
+  const [workspaceData,setWorkspaceData]=useState<WorkspaceData>(emptyWorkspace);
   const workspaceMotion = useSwitchEntrance(workspaceView);
   const [input, setInput] = useState<ActivityInput>(initialInput);
   const [layer, setLayer] = useState<LayerKey>("comfort");
@@ -161,12 +166,13 @@ export function DecisionDashboard() {
 
   useEffect(() => {
     let active = true;
-    void authenticatedRequest<{ version?: number; messages?: ChatMessage[]; intake?: IntakeState; knowledgeContext?: DestinationContext; weatherContext?: { cityName?: string; date?: string }; activeTopic?: string; input?: ActivityInput; result?: DecisionResult; route?: TourismRoute; compareDays?: boolean }>("/api/v1/conversation-memory").then(saved => {
+    void authenticatedRequest<{ workspaceData?:WorkspaceData; version?: number; messages?: ChatMessage[]; intake?: IntakeState; knowledgeContext?: DestinationContext; weatherContext?: { cityName?: string; date?: string }; activeTopic?: string; input?: ActivityInput; result?: DecisionResult; route?: TourismRoute; compareDays?: boolean }>("/api/v1/conversation-memory").then(saved => {
       if (!active) return;
       if (saved.version === 1 && Array.isArray(saved.messages) && saved.messages.length) {
         setChatMessages(saved.messages.filter(item => ["user", "assistant"].includes(item.role) && typeof item.content === "string").slice(-60));
         setIntake(saved.intake || { known: {} }); setKnowledgeContext(saved.knowledgeContext || {}); setWeatherContext(saved.weatherContext || {}); setActiveTopic(saved.activeTopic || "");
         if (saved.input) setInput(saved.input);
+        if(saved.workspaceData) setWorkspaceData({...emptyWorkspace,...saved.workspaceData});
         if (saved.result) {
           setResult(saved.result);
           const restored = saved.result;
@@ -187,16 +193,17 @@ export function DecisionDashboard() {
   useEffect(() => {
     if (!memoryReady || chatBusy || isAnalyzing || isPlanning) return;
     const timer = window.setTimeout(() => {
-      const snapshot = { version: 1, messages: chatMessages.slice(-60), intake, knowledgeContext, weatherContext, activeTopic, input, result, route, compareDays };
+      const snapshot = { version: 1, messages: chatMessages.slice(-60), intake, knowledgeContext, weatherContext, activeTopic, input, result, route, compareDays,workspaceData };
       memoryQueue.current = memoryQueue.current.catch(() => undefined).then(() => authenticatedRequest("/api/v1/conversation-memory", "PUT", snapshot)).catch(() => setMemoryStatus("记忆保存失败，刷新前请稍后重试"));
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [memoryReady, chatBusy, isAnalyzing, isPlanning, chatMessages, intake, knowledgeContext, weatherContext, activeTopic, input, result, route, compareDays]);
+  }, [memoryReady, chatBusy, isAnalyzing, isPlanning, chatMessages, intake, knowledgeContext, weatherContext, activeTopic, input, result, route, compareDays,workspaceData]);
 
   function clearConversationMemory() {
-    if (!window.confirm("清除已保存的对话、偏好和本轮分析结果？")) return;
+    if (!window.confirm("清除已保存的对话、偏好、方案版本、资料、执行记录和费用？需要保留的内容请先下载。")) return;
     setChatMessages([{ role: "assistant", content: "记忆已清除。你想了解哪个城市，或者准备开展什么活动？" }]);
     setIntake({ known: {} }); setKnowledgeContext({}); setWeatherContext({}); setActiveTopic(""); setResult(null); setRoute(null); setCompareDays(false); setInput(initialInput);
+    setWorkspaceData(emptyWorkspace);
     memoryQueue.current = memoryQueue.current.catch(() => undefined).then(() => authenticatedRequest("/api/v1/conversation-memory", "DELETE")).catch(() => setMemoryStatus("清除失败，请重试"));
   }
 
@@ -207,7 +214,7 @@ export function DecisionDashboard() {
   useEffect(() => {
     const readView = () => {
       const value = new URLSearchParams(window.location.search).get("view");
-      setWorkspaceView(value === "map" || value === "plan" ? value : "studio");
+      setWorkspaceView(["map","plan","execution","library","archive"].includes(value || "") ? value as WorkspaceView : "studio");
     };
     readView();
     window.addEventListener("popstate", readView);
@@ -220,6 +227,16 @@ export function DecisionDashboard() {
     const url = view === "studio" ? "/XingZhi" : `/XingZhi?view=${view}`;
     window.history.pushState({ view }, "", url);
   };
+  function restorePlan(plan:SavedPlan){setError(null);setInput(plan.input);setResult(plan.result);setRoute(plan.route);setIntake({known:{...plan.input}});switchWorkspace("plan");}
+  function removeStop(name:string){
+    if(!route)return;
+    try {
+      const updated=removeTourismStop(route,input,name);
+      const before:SavedPlan={id:crypto.randomUUID(),createdAt:new Date().toISOString(),label:`删除${name}前`,input:{...input},result:null,route};
+      const planKey=`${input.cityName}:${input.activityType}:${input.date}:${input.endDate || input.date}`;
+      setWorkspaceData(current=>({...current,costs:current.costs.filter(cost=>cost.placeName!==name || cost.planKey&&cost.planKey!==planKey),plans:[before,...current.plans].slice(0,4)}));setRoute(updated);
+    }catch(error){setError(error instanceof Error?error.message:"重新排程失败");}
+  }
 
   const meta: CityOption = useMemo(() => {
     if (input.longitude != null && input.latitude != null) {
@@ -513,7 +530,7 @@ export function DecisionDashboard() {
         date: activity.date || dateString(),
         endDate: activity.endDate || activity.date || dateString(),
         hours: hourlyDays.flat(),
-        participants: activity.participants, group: activity.group, intensity: activity.intensity, referenceUrls: activity.referenceUrls, allowedStartHour: activity.allowedStartHour, allowedEndHour: activity.allowedEndHour,
+        participants: activity.participants, group: activity.group, audienceDescription:activity.audienceDescription,budgetPerPerson:activity.budgetPerPerson,intensity: activity.intensity, referenceUrls: activity.referenceUrls, allowedStartHour: activity.allowedStartHour, allowedEndHour: activity.allowedEndHour,
       });
       data.totalDurationMs = performance.now() - startedAt;
       data.trace = data.trace.map((item) => item.id === "tour-forecast" ? { ...item, durationMs: item.durationMs + environmentMs, detail: `已读取 ${hourlyDays.length}/${dates.length} 天的逐小时环境数据，并计算推荐出行时段。` } : item);
@@ -620,6 +637,8 @@ export function DecisionDashboard() {
         }
       }
       completed.totalDurationMs = performance.now() - conversationStarted;
+      const savedPlan:SavedPlan={id:crypto.randomUUID(),createdAt:new Date().toISOString(),label:`${nextInput.cityName} · ${nextInput.activityType}`,input:{...nextInput},result:"recommendation" in completed?{...completed,socialResearch:undefined}:null,route:"recommendation" in completed?null:{...completed,socialResearch:undefined}};
+      setWorkspaceData(current=>({...current,plans:[savedPlan,...current.plans].slice(0,4)}));
       if ("recommendation" in completed) { setLiveTrace(completed.trace); setResult({ ...completed }); }
       else setRoute({ ...completed });
       setChatMessages((current) => [...current, { role: "assistant", content: "recommendation" in completed ? `${completed.recommendation}。\n${completed.summary}\n完整规划书已生成，可在执行方案中阅读或下载。也可以继续询问依据、比较时段或生成筹备清单。` : `${completed.cityName}${completed.dayCount}日规划已完成。\n${completed.summary}\n共安排 ${completed.stops.length} 个景点与美食站点。前往执行方案阅读完整规划书并下载。` }]);
@@ -650,6 +669,7 @@ export function DecisionDashboard() {
           <button type="button" className={`nav-item ${workspaceView === "studio" ? "is-active" : ""}`} onClick={() => switchWorkspace("studio")}>分析台</button>
           <button type="button" className={`nav-item ${workspaceView === "map" ? "is-active" : ""}`} onClick={() => switchWorkspace("map")}>环境地图</button>
           <button type="button" className={`nav-item ${workspaceView === "plan" ? "is-active" : ""}`} onClick={() => switchWorkspace("plan")}>执行方案</button>
+          {([["execution","执行管理"],["library","资料库"],["archive","活动档案"]] as const).map(([view,label])=><button type="button" key={view} className={`nav-item ${workspaceView===view?"is-active":""}`} onClick={()=>switchWorkspace(view)}>{label}</button>)}
         </nav>
         <div className="topbar-actions">
           <span className={`system-status ${error ? "has-error" : ""}`}><i /> {error ? "数据连接异常" : !hasDestination ? "全国环境总览" : isLoadingCity ? "正在同步实时数据" : `实时数据 · ${updatedAt}`}</span>
@@ -660,7 +680,7 @@ export function DecisionDashboard() {
         </div>
       </header>
 
-      <section ref={workspaceMotion} className={`workspace workspace-${workspaceView}`}>
+      {workspaceView==="execution"||workspaceView==="library"||workspaceView==="archive" ? <OperationsWorkspace view={workspaceView} input={input} result={result} route={route} data={workspaceData} onChange={setWorkspaceData} onRestore={restorePlan}/> : <section ref={workspaceMotion} className={`workspace workspace-${workspaceView}`}>
         <aside className="control-rail">
           <div className="rail-heading">
             <div><span className="section-kicker">目的地与需求</span><h1>一起完善这份规划</h1></div>
@@ -714,7 +734,9 @@ export function DecisionDashboard() {
               {intake.known.activityType && <div><dt>活动</dt><dd>{intake.known.activityType}</dd></div>}
               {intake.known.date && <div><dt>日期</dt><dd>{intake.known.date}{intake.known.endDate && intake.known.endDate !== intake.known.date ? ' 至 ' + intake.known.endDate : ''}</dd></div>}
               {intake.known.tripDays && <div><dt>天数</dt><dd>{intake.known.tripDays}天</dd></div>}
-              {intake.known.participants && <div><dt>人数</dt><dd>{intake.known.participants}人 · {intake.known.group || '人群待确认'}</dd></div>}
+              {intake.known.participants && <div><dt>人数</dt><dd>{intake.known.participants}人 · {intake.known.audienceDescription || intake.known.group || '人群待确认'}</dd></div>}
+              {intake.known.budgetPerPerson && <div><dt>人均预算</dt><dd>{intake.known.budgetPerPerson}元</dd></div>}
+              {intake.known.equipmentCount && <div><dt>器材数量</dt><dd>{intake.known.equipmentCount}件/套</dd></div>}
               {intake.known.duration && <div><dt>单次时长</dt><dd>{intake.known.duration}小时</dd></div>}
               {intake.known.intensity && <div><dt>强度</dt><dd>{intake.known.intensity}</dd></div>}
               {intake.known.startHour !== undefined && <div><dt>偏好时段</dt><dd>{String(intake.known.startHour).padStart(2, '0')}:00 起</dd></div>}
@@ -770,7 +792,7 @@ export function DecisionDashboard() {
           <div className="timeline-card">
             <div className="timeline-header"><div><span className="section-kicker">活动日期逐小时预测 · {input.date || "待选择日期"}</span><h3>{isTourism ? "旅游路线 · 推荐出行时段" : "候选时段活动适宜度"}</h3></div><div className="legend"><span className="good" />适宜 <span className="caution" />谨慎 <span className="bad" />不建议</div></div>
             {isTourism
-              ? <div className="timeline-empty">{route ? `推荐时段：${route.bestHours}` : "选择城市与日期后生成旅游路线"}</div>
+              ? route ? <TourismScheduleChart route={route}/> : <div className="timeline-empty">选择城市与日期后生成旅游路线</div>
               : result
                 ? <div className="slot-chart">{visibleSlots.map((slot) => { const isBest = slot.hour === result.bestSlot.hour && slot.date === result.bestSlot.date; return <button type="button" key={`${slot.date}-${slot.hour}`} className={`slot-column ${isBest ? "is-best" : ""}`} onClick={() => setInput((current) => ({ ...current, date: slot.date || current.date, startHour: slot.hour }))} aria-label={`${slot.label}适宜度${slot.score}`}><span className="slot-score">{isBest ? slot.score : ""}</span><span className={`slot-bar level-${slot.level}`} style={{ height: `${Math.max(18, slot.score)}%` }} /><span className="slot-time">{slot.hour}</span></button>; })}</div>
                 : <div className="timeline-empty">选择活动条件后生成逐小时决策</div>}
@@ -778,8 +800,8 @@ export function DecisionDashboard() {
           </div>
         </section>
 
-        <DecisionResultPanel input={input} isTourism={isTourism} route={route} result={result} liveTrace={liveTrace} activePanel={activePanel} onPanel={setActivePanel} isPlanning={isPlanning} isAnalyzing={isAnalyzing} />
-      </section>
+        <DecisionResultPanel input={input} isTourism={isTourism} route={route} result={result} liveTrace={liveTrace} activePanel={activePanel} onPanel={setActivePanel} isPlanning={isPlanning} isAnalyzing={isAnalyzing} onRemoveStop={removeStop} />
+      </section>}
     </main>
   );
 }

@@ -24,6 +24,10 @@ export interface CityEnvironment {
 }
 
 export interface ActivityInput {
+  audienceDescription?: string;
+  budgetPerPerson?: number;
+  equipmentCount?: number;
+  teamSize?: number;
   cityId: string;
   activityType: ActivityType;
   date: string;
@@ -161,6 +165,17 @@ export interface MapLegendInfo {
 }
 
 export interface TourismStop {
+  endTime?: string;
+  visitMinutes?: number;
+  queueMinutes?: number;
+  restMinutes?: number;
+  travelMinutes?: number;
+  travelDistanceKm?: number;
+  travelSource?: "amap-driving" | "estimate";
+  openingStatus?: string;
+  openingHours?: string;
+  weatherAssessment?: string;
+  estimatedCost?: number;
   name: string;
   longitude: number | null;
   latitude: number | null;
@@ -182,6 +197,9 @@ export interface TourismStop {
 }
 
 export interface TourismRoute {
+  scheduleVersion?: number;
+  scheduleWarnings?: string[];
+  schedulingHours?: import("./tourism").TourismHourSnapshot[];
   socialResearch?: SocialResearch;
   totalDurationMs?: number;
   cityName: string;

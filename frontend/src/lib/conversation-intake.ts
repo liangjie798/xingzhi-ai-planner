@@ -1,6 +1,6 @@
 import type { ActivityInput } from "./types";
 
-export type IntakePatch = Partial<Pick<ActivityInput, "cityName" | "activityType" | "date" | "endDate" | "startHour" | "duration" | "participants" | "intensity" | "group" | "referenceUrls" | "allowedStartHour" | "allowedEndHour">> & { tripDays?: number };
+export type IntakePatch = Partial<Pick<ActivityInput, "audienceDescription" | "budgetPerPerson" | "equipmentCount" | "teamSize" | "cityName" | "activityType" | "date" | "endDate" | "startHour" | "duration" | "participants" | "intensity" | "group" | "referenceUrls" | "allowedStartHour" | "allowedEndHour">> & { tripDays?: number };
 export interface IntakeState { known: IntakePatch }
 const activities = ["校园运动会", "体育课", "社区活动", "户外训练", "研学活动", "旅游规划"] as const;
 const numbers: Record<string, number> = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
@@ -55,6 +55,8 @@ export function calendarDateFromText(text:string, today:string): { matched:boole
 }
 export function cleanIntake(raw: IntakePatch = {}): IntakePatch {
   const out: IntakePatch = {};
+  if(typeof raw.audienceDescription === "string" && /^(大学生|研究生|高中生|初中生|小学生|学生|成年人|老年人|亲子家庭|儿童青少年|敏感人群)$/.test(raw.audienceDescription)) out.audienceDescription=raw.audienceDescription;
+  for(const field of ["budgetPerPerson","equipmentCount","teamSize"] as const) if(typeof raw[field]==="number"&&Number.isFinite(raw[field])&&raw[field]!>=1&&raw[field]!<=100000) out[field]=Math.round(raw[field]!);
   if (Array.isArray(raw.referenceUrls)) out.referenceUrls = raw.referenceUrls.filter((url) => typeof url === "string" && /^https:\/\/(?:[a-z0-9-]+\.)*(?:douyin|xiaohongshu)\.com\//i.test(url)).slice(0, 4);
   if (typeof raw.cityName === "string" && raw.cityName.trim()) out.cityName = raw.cityName.trim().slice(0, 40);
   if (activities.includes(raw.activityType!)) out.activityType = raw.activityType;
@@ -72,6 +74,18 @@ export function cleanIntake(raw: IntakePatch = {}): IntakePatch {
 /** Explicit facts only: the dashboard's initial Hangzhou/date/500 students are not answers. */
 export function extractIntake(text: string, today: string, known: IntakePatch): IntakePatch {
   const patch: IntakePatch = {};
+  const audience=text.match(/大学生|研究生|高中生|初中生|小学生|学生|成年人|老年人|儿童青少年|敏感人群/);
+  if(audience) patch.audienceDescription=audience[0];
+  if(/亲子/.test(text)) patch.audienceDescription="亲子家庭";
+  if(/老人|长者/.test(text)) patch.audienceDescription="老年人";
+  if(!audience&&/儿童|孩子|青少年/.test(text)) patch.audienceDescription="儿童青少年";
+  if(!audience&&/成人|成年|年轻人|普通人群/.test(text)) patch.audienceDescription="成年人";
+  const budget=text.match(/(?:人均|每人|预算每人)\s*([一二两三四五六七八九十百千\d]+)\s*元?/);
+  if(budget) patch.budgetPerPerson=number(budget[1]);
+  const equipment=text.match(/([一二两三四五六七八九十百千\d]+)\s*(?:个|套|副|件)(?:篮球|足球|球拍|器材|装备)/);
+  if(equipment) patch.equipmentCount=number(equipment[1]);
+  const team=text.match(/(?:每组|一组)\s*([一二两三四五六七八九十\d]+)\s*人/);
+  if(team) patch.teamSize=number(team[1]);
   const links = text.match(/https:\/\/(?:[a-z0-9-]+\.)*(?:douyin|xiaohongshu)\.com\/[^\s，。；<>]+/gi);
   if (links) patch.referenceUrls = [...new Set([...(known.referenceUrls || []), ...links])].slice(0, 4);
   patch.activityType = activities.find((item) => text.includes(item)) || (/运动会/.test(text) ? "校园运动会" : /旅游|旅行|行程|游玩|游览/.test(text) ? "旅游规划" : undefined);
@@ -79,7 +93,8 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   if (days) patch.tripDays = number(days[1]);
   const duration = text.match(/([一二两三四五六七八九十\d]+)\s*个?小时/);
   if (duration) patch.duration = number(duration[1]);
-  const people = text.match(/([零〇一二两三四五六七八九十百千\d]+)\s*(?:个|位|名)?\s*(?:大学生|研究生|成年人|成人|初中生|高中生|小学生|学生|同学|小朋友|孩子|老人|老年人|人|位|名)/)
+  const participantText=text.replace(/(?:每组|一组)\s*[一二两三四五六七八九十\d]+\s*人/g,"");
+  const people = participantText.match(/([零〇一二两三四五六七八九十百千\d]+)\s*(?:个|位|名)?\s*(?:大学生|研究生|成年人|成人|初中生|高中生|小学生|学生|同学|小朋友|孩子|老人|老年人|人|位|名)/)
     || (known.activityType && !known.participants ? text.match(/^\s*([零〇一二两三四五六七八九十百千\d]+)\s*个?[。！]?\s*$/) : null);
   if (people) patch.participants = number(people[1]);
   if (/大学生|研究生|成年人|成人/.test(text)) patch.group = "普通人群";
@@ -165,7 +180,7 @@ export function completeIntake(previous: IntakePatch, delta: IntakePatch, today:
   if (invalidRange) reply = `当前可结合真实天气规划的日期为 ${today} 至 ${addDays(today, 6)}。请调整出发或结束日期，覆盖整个行程后我再分析。`;
   else if (invalidWindow) reply = `已记下活动持续${known.duration}小时，但所选${known.allowedStartHour ?? 6}:00–${known.allowedEndHour ?? 21}:00时段无法容纳完整活动。请缩短时长，或选择不限时段后重新分析。`;
   else if (missing.length) reply = `好的，${known.tripDays && tourism ? `${known.tripDays}天旅游已记下。` : "已记下你提供的条件。"}还需要了解：\n${missing.slice(0, 3).map((question, i) => `${i + 1}. ${question}？`).join("\n")}\n可以一条回复一起告诉我；人数、强度和时段也可以说“按常规推荐”。`;
-  else reply = `条件齐了：${known.cityName}，${known.date}${known.endDate && known.endDate !== known.date ? ` 至 ${known.endDate}` : ""}，${known.activityType}，${known.participants}人（${known.group}）${tourism ? "，结合天气安排景点与美食" : `，每次${known.duration}小时，${known.intensity}`}。现在查询对应地区的真实数据并生成详细规划。`;
+  else reply = `条件齐了：${known.cityName}，${known.date}${known.endDate && known.endDate !== known.date ? ` 至 ${known.endDate}` : ""}，${known.activityType}，${known.participants}人（${known.audienceDescription || known.group}）${tourism ? "，结合天气安排景点与美食" : `，每次${known.duration}小时，${known.intensity}`}。现在查询对应地区的真实数据并生成详细规划。`;
   const { tripDays: _days, ...patch } = known;
   void _days;
   const choices = invalidRange ? [] : intakeChoices(known);
@@ -192,6 +207,7 @@ export function intakeChoices(known: IntakePatch): IntakeChoice[] {
 export function isPlanRevision(message: string, known: IntakePatch): boolean {
   if (!known.activityType) return false;
   if (/来源|出处|是什么意思|有什么区别|为什么|如何使用/.test(message)) return false;
+  if(/(?:人均|每人|预算每人)\s*[一二两三四五六七八九十百千\d]+|[一二两三四五六七八九十百千\d]+\s*(?:个|套|副|件)(?:篮球|足球|球拍|器材|装备)|每组\s*[一二两三四五六七八九十\d]+人/.test(message)) return true;
   return /改成|改为|换成|调整|改到|只看|仅看|只考虑|只在|参与者|参加者|人数|取消.*限制|不限时段|重新分析|重新计算|(?:画|绘制|生成).*(?:对比图|比较图)|两天.*对比/.test(message)
     || /^(?:那|如果|那么)?[一二两三四五六七八九十\d]+个?小时呢[？?]?$/.test(message.trim());
 }

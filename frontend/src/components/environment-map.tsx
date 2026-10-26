@@ -185,6 +185,12 @@ function createRasterSurface(points: GridPoint[], layer: LayerKey, rings: number
 }
 
 export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, grid, route, national = false, sampledAdcodes }: EnvironmentMapProps) {
+  const [selectedDay,setSelectedDay]=useState(1);
+  const [compact,setCompact]=useState(false);
+  const routeDetails=useRef<Record<string,()=>void>>({});
+  useEffect(()=>{const query=window.matchMedia("(max-width: 640px)");const update=()=>setCompact(query.matches);update();query.addEventListener("change",update);return()=>query.removeEventListener("change",update);},[]);
+  const routeDays=[...new Set(route?.stops.map(stop=>stop.day) || [])];
+  const visibleDay=routeDays.includes(selectedDay)?selectedDay:routeDays[0];
   const containerRef = useRef<HTMLDivElement>(null);
   const initialCenterRef = useRef(city.center);
   const mapRef = useRef<MapInstance | null>(null);
@@ -265,8 +271,8 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
   }, [amapKey, securityCode, serviceHost, onPointSelected, national]);
 
   useEffect(() => {
-    if (mapState === "ready") mapRef.current?.setCenter?.(city.center);
-  }, [mapState, city.center]);
+    if (mapState === "ready" && !route?.stops.length) mapRef.current?.setCenter?.(city.center);
+  }, [mapState, city.center,route]);
 
   // 使用阿里云 DataV 中国大陆公开行政区 GeoJSON，让视野与采样范围覆盖完整城市/区县。
   useEffect(() => {
@@ -339,7 +345,8 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
         });
         map.add([...boundaryOverlays, ...boundaryLabels]);
         const isDistrict = !city.adcode.endsWith("00");
-        map.setFitView?.(boundaryOverlays, true, [34, 34, 34, 34], national ? 5 : isDistrict ? 13 : 10);
+        // Async boundary rendering must not replace the itinerary's closer fit.
+        if(!route?.stops.length) map.setFitView?.(boundaryOverlays, true, [34, 34, 34, 34], national ? 5 : isDistrict ? 13 : 10);
         const longitudes = points.map((point) => point[0]);
         const latitudes = points.map((point) => point[1]);
         onRegionBounds?.({
@@ -359,7 +366,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
       if (boundaryOverlays.length) map.remove(boundaryOverlays);
       if (boundaryLabels.length) map.remove(boundaryLabels);
     };
-  }, [mapState, city.id, city.name, city.adcode, city.center, onRegionBounds, national, sampledAdcodes]);
+  }, [mapState, city.id, city.name, city.adcode, city.center, onRegionBounds, national, sampledAdcodes,route]);
 
   // 图层着色：将逐像素插值结果作为 Canvas 栅格覆盖层，不使用圆形热力核。
   useEffect(() => {
@@ -372,9 +379,9 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
       position: city.center,
       title: `${city.name} ${layerLabel[layer]} ${pointLabel}`,
       content: isCurrentLocation ? '<div class="user-location-marker"><span></span></div>' : undefined,
-      label: { content: `${isCurrentLocation ? "你的位置 · " : ""}${layerLabel[layer]} ${pointLabel}`, direction: "top" },
+      label: compact&&route ? undefined : { content: `${isCurrentLocation ? "你的位置 · " : ""}${layerLabel[layer]} ${pointLabel}`, direction: "top" },
     });
-    if (!national) map.add(centerMarker);
+    if (!national && !(compact&&route)) map.add(centerMarker);
 
     const raster = createRasterSurface(grid ?? [], layer, regionRings);
     const rasterLayer = raster ? new AMap.CanvasLayer({
@@ -389,7 +396,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
       if (!national) map.remove(centerMarker);
       if (rasterLayer) map.remove(rasterLayer);
     };
-  }, [mapState, city, layer, pointLabel, grid, regionRings, national]);
+  }, [mapState, city, layer, pointLabel, grid, regionRings, national,compact,route]);
 
   // 旅游路线：折线 + 编号站点
   useEffect(() => {
@@ -398,8 +405,8 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
     if (mapState !== "ready" || !AMap || !map || !route) return;
 
     const stops = route.stops.filter((stop): stop is typeof stop & { longitude: number; latitude: number } =>
-      stop.longitude != null && stop.latitude != null);
-    if (stops.length < 2) return;
+      stop.day===visibleDay && stop.longitude != null && stop.latitude != null);
+    if (!stops.length) return;
 
     const path = stops.map((stop) => [stop.longitude, stop.latitude]);
     const routeLine = new AMap.Polyline({
@@ -411,17 +418,17 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
       showDir: true,
       zIndex: 28,
     });
-    const overlays: unknown[] = [routeLine];
+    const overlays: unknown[] = stops.length>1 ? [routeLine]:[];
     let activeInfoWindow: InfoWindowInstance | null = null;
     stops.forEach((stop, index) => {
       const marker = new AMap.Marker({
         position: [stop.longitude, stop.latitude],
-        content: `<div class="route-map-marker ${stop.category === "美食" ? "is-food" : ""}" title="${escapeHtml(stop.name)}"><span>${index + 1}</span><b>${escapeHtml(stop.name)}</b></div>`,
+        content: `<div class="route-map-marker ${stop.category === "美食" ? "is-food" : ""}" title="${escapeHtml(stop.name)}"><span>${index + 1}</span>${compact ? "" : `<b>${escapeHtml(stop.name)}</b>`}</div>`,
         offset: [-13, -13],
         title: stop.name,
         zIndex: 32,
       });
-      marker.on("click", () => {
+      const showDetails=() => {
         activeInfoWindow?.close();
         const image = stop.imageUrl ? `<img src="${escapeHtml(stop.imageUrl)}" alt="" />` : "";
         activeInfoWindow = new AMap.InfoWindow({
@@ -430,16 +437,19 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
           content: `<article class="route-map-popover">${image}<div><small>第${stop.day}日 · ${escapeHtml(stop.date)} · ${escapeHtml(stop.category)} · ${escapeHtml(stop.time)}</small><strong>${escapeHtml(stop.name)}</strong><p><b>推荐理由：</b>${escapeHtml(stop.tip)}</p></div></article>`,
         });
         activeInfoWindow.open(map, [stop.longitude, stop.latitude]);
-      });
+      };
+      marker.on("click",showDetails);
+      routeDetails.current[stop.name]=showDetails;
       overlays.push(marker);
     });
     map.add(overlays);
-    map.setFitView?.(overlays, false, [70, 70, 70, 70], 13);
+    map.setFitView?.(overlays, false, compact ? [55,35,50,35] : [70, 70, 70, 70], compact ? 16:13);
     return () => {
       activeInfoWindow?.close();
+      routeDetails.current={};
       map.remove(overlays);
     };
-  }, [mapState, route]);
+  }, [mapState, route,compact,visibleDay]);
 
   const showFallback = mapState === "coordinates" || mapState === "error";
   const gridBounds = useMemo(() => {
@@ -454,8 +464,8 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
   }, [grid]);
   const routeStops = useMemo(
     () => (route?.stops ?? []).filter((stop): stop is typeof stop & { longitude: number; latitude: number } =>
-      stop.longitude != null && stop.latitude != null),
-    [route],
+      stop.day===visibleDay && stop.longitude != null && stop.latitude != null),
+    [route,visibleDay],
   );
 
   const projectToCanvas = (longitude: number, latitude: number) => {
@@ -467,6 +477,8 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
 
   return (
     <div className="map-shell">
+      {routeDays.length>0 && <div className="map-day-selector" role="group" aria-label="地图行程日期">{routeDays.map(day=><button type="button" key={day} aria-pressed={day===visibleDay} onClick={()=>setSelectedDay(day)}>第{day}天</button>)}<small>点击编号查看地点</small></div>}
+      {compact&&route&&<div className="map-mobile-stops" aria-label="本日地点列表">{route.stops.filter(stop=>stop.day===visibleDay).map((stop,index)=><button type="button" key={stop.name} onClick={()=>routeDetails.current[stop.name]?.()}>{index+1} · {stop.name}</button>)}</div>}
       <div ref={containerRef} className={`amap-canvas ${showFallback ? "is-hidden" : ""}`} />
 
       {showFallback && national && <div className="map-unavailable"><WarningCircle size={24} /><p>全国地图底图暂不可用，请检查网络后刷新。下方仍可查看已获取的环境数据。</p></div>}

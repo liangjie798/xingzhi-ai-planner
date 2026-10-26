@@ -1,3 +1,4 @@
+const promotionalContent=(text:string)=>/旅行社|TOP\s*\d|排名前|十大|十佳|口碑排名|家庭游|跟团|包车|旅游团|主营|招商|加盟|咨询热线|联系我们|招标|名额抢购|省心游|纯玩团/i.test(text);
 export interface SocialItem { platform: string; title: string; excerpt: string; url: string; retrievedAt: string; provider?: string; publishedAt?: string }
 export interface SocialResearch { items: SocialItem[]; sources: Array<{ platform: string; status: "available" | "unavailable"; detail: string }>; durationMs: number }
 const decode = (s: string) => s.replace(/<[^>]*>/g, " ").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
@@ -22,7 +23,7 @@ export function normalizeSearchResults(payload: unknown, city: string, provider:
     if (row.type && row.type !== "web") continue;
     const title = typeof row.title === "string" ? decode(row.title).slice(0, 160) : "";
     const excerpt = typeof row.content === "string" ? decode(row.content).slice(0, 650) : "";
-    if (!title || (!generalQuestion && !`${title} ${excerpt}`.includes(cityTerm)) || /登录后|安全验证|验证码|页面不存在/.test(title)) continue;
+    if (!title || (!generalQuestion && !`${title} ${excerpt}`.includes(cityTerm)) || /登录后|安全验证|验证码|页面不存在/.test(title) || promotionalContent(title+" "+excerpt)) continue;
     try {
       const url = new URL(String(row.url || ""));
       if (url.protocol !== "https:" || url.username || url.password || url.port || !/\.[a-z]{2,}$/i.test(url.hostname) || /(?:^|\.)(?:localhost|local|internal|test)$/.test(url.hostname)) continue;

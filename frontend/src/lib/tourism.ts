@@ -12,6 +12,8 @@ export interface TourismHourSnapshot {
 }
 
 export interface TourismRequestPayload {
+  audienceDescription?: string;
+  budgetPerPerson?: number;
   cityName: string;
   province?: string;
   longitude?: number;

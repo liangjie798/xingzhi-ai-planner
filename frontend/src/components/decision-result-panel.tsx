@@ -2,6 +2,8 @@
 
 import { Binoculars, Brain, CalendarCheck, CheckCircle, ClipboardText, Database, Info, MapPin, Pulse, ShieldCheck, Sparkle, UsersThree, ArrowUpRight, Clock } from "@phosphor-icons/react";
 import Image from "next/image";
+import { promotionalContent } from "@/lib/place-evidence";
+import { stopScheduleText } from "@/lib/planning-document";
 import { useState } from "react";
 import { SlidingSelection, useSwitchEntrance } from "./switch-motion";
 import { cityById } from "@/lib/cities";
@@ -19,6 +21,7 @@ const toolLabels: Record<string, string> = {
 };
 const toolLabel = (name: string) => toolLabels[name] ?? name;
 interface Props {
+  onRemoveStop?:(name:string)=>void;
   input: ActivityInput; isTourism: boolean; route: TourismRoute | null; result: DecisionResult | null;
   liveTrace: ToolTraceItem[]; activePanel: Panel; onPanel: (panel: Panel) => void;
   isPlanning: boolean; isAnalyzing: boolean;
@@ -79,19 +82,20 @@ function PlanDocumentReader({ document }: { document: PlanningDocument }) {
     </div></div>
     {exportError && <p role="alert">{exportError}</p>}
     <div className="document-layout"><nav className="document-toc" aria-label="规划书目录"><span>文档目录</span>{document.sections.map((section, index) => <a href={`#plan-chapter-${index}`} key={section.title}>{section.title}</a>)}</nav>
-      <article className="planning-manuscript"><header><span>行知 / 活动与出行规划</span><h2>{document.title}</h2><p>{document.subtitle}</p></header>{document.sections.map((section, index) => <section id={`plan-chapter-${index}`} key={section.title}><h3>{section.title}</h3>{section.paragraphs.map((paragraph, i) => <p key={i}>{paragraph}</p>)}{section.venues && <div className="activity-venue-list">{section.venues.map(venue => <article key={venue.id}><h4>{venue.name}</h4><p className="venue-address">{venue.address}</p><p><strong>推荐理由：</strong>{venue.reason}</p><p><strong>活动任务：</strong>{venue.task}</p><p className="venue-checks">{venue.checks}</p></article>)}</div>}{section.references && <ul className="compact-references">{section.references.map(reference => <li key={reference.url}><a href={reference.url} target="_blank" rel="noopener noreferrer">{reference.title} ↗</a><small>{reference.note}</small></li>)}</ul>}{section.diagram && <figure className="plan-route-diagram"><Image src={section.diagram} alt="本日景点与美食的行程顺序示意，非道路导航" width={900} height={210} unoptimized /></figure>}{section.stops && <div className="illustrated-stops">{section.stops.map((stop) => <article className="illustrated-stop" key={stop.name}><PlanPhoto key={stop.imageUrl || stop.name} url={stop.imageUrl} name={stop.name} /><div><span className="section-kicker">{stop.time} · {stop.category}</span><h4>{stop.name}</h4><p><strong>推荐理由：</strong>{stop.tip}</p>{stop.address && <p className="plan-stop-address">地址：{stop.address}</p>}<p className="plan-stop-task">{stop.category === "美食" ? "到店先确认营业与等位情况，按同行人数点餐，留足用餐和休息时间。" : "抵达后确认预约入口与集合点，按现场开放路线参观；离开前清点同行人员。"}</p><div className="stop-links">{stop.links.filter((link) => link.kind !== "map").map((link) => <a href={link.url} key={link.url} target="_blank" rel="noopener noreferrer">{link.label}<ArrowUpRight size={13} /></a>)}</div></div></article>)}</div>}{section.agenda && <ol className="document-agenda">{section.agenda.map((item, index) => <li key={index}><time>{item.time}</time><div><h4>{item.title}</h4><p>{item.action}</p><span>负责岗位：{item.owner}</span>{item.reference && <p className="agenda-reference"><strong>组织灵感（执行前由负责人确认）：</strong>{item.reference.excerpt}<a href={item.reference.url} target="_blank" rel="noopener noreferrer">{item.reference.title} ↗</a></p>}</div></li>)}</ol>}</section>)}<footer>本规划基于本轮条件与数据生成，执行前请确认现场安排。</footer></article>
+      <article className="planning-manuscript"><header><span>行知 / 活动与出行规划</span><h2>{document.title}</h2><p>{document.subtitle}</p></header>{document.sections.map((section, index) => <section id={`plan-chapter-${index}`} key={section.title}><h3>{section.title}</h3>{section.paragraphs.map((paragraph, i) => <p key={i}>{paragraph}</p>)}{section.venues && <div className="activity-venue-list">{section.venues.map(venue => <article key={venue.id}><h4>{venue.name}</h4><p className="venue-address">{venue.address}</p><p><strong>推荐理由：</strong>{venue.reason}</p><p><strong>活动任务：</strong>{venue.task}</p><p className="venue-checks">{venue.checks}</p></article>)}</div>}{section.references && <ul className="compact-references">{section.references.map(reference => <li key={reference.url}><a href={reference.url} target="_blank" rel="noopener noreferrer">{reference.title} ↗</a><small>{reference.note}</small></li>)}</ul>}{section.diagram && <figure className="plan-route-diagram"><Image src={section.diagram} alt="本日景点与美食的行程顺序示意，非道路导航" width={900} height={210} unoptimized /></figure>}{section.stops && <div className="illustrated-stops">{section.stops.map((stop) => <article className="illustrated-stop" key={stop.name}><PlanPhoto key={stop.imageUrl || stop.name} url={stop.imageUrl} name={stop.name} /><div><span className="section-kicker">{stop.time} · {stop.category}</span><h4>{stop.name}</h4><p><strong>推荐理由：</strong>{stop.tip}</p><p className="schedule-detail">{stopScheduleText(stop)}</p>{stop.address && <p className="plan-stop-address">地址：{stop.address}</p>}<p className="plan-stop-task">{stop.category === "美食" ? "到店先确认营业与等位情况，按同行人数点餐，留足用餐和休息时间。" : "抵达后确认预约入口与集合点，按现场开放路线参观；离开前清点同行人员。"}</p><div className="stop-links">{stop.links.filter((link) => link.kind !== "map").map((link) => <a href={link.url} key={link.url} target="_blank" rel="noopener noreferrer">{link.label}<ArrowUpRight size={13} /></a>)}</div></div></article>)}</div>}{section.agenda && <ol className="document-agenda">{section.agenda.map((item, index) => <li key={index}><time>{item.time}</time><div><h4>{item.title}</h4><p>{item.action}</p><span>负责岗位：{item.owner}</span>{item.reference && <p className="agenda-reference"><strong>组织灵感（执行前由负责人确认）：</strong>{item.reference.excerpt}<a href={item.reference.url} target="_blank" rel="noopener noreferrer">{item.reference.title} ↗</a></p>}</div></li>)}</ol>}</section>)}<footer>本规划基于本轮条件与数据生成，执行前请确认现场安排。</footer></article>
     </div>
   </div>;
 }
 
-function EvidenceReport({ items, isTourism, places }: { items: EvidenceItem[]; isTourism: boolean; places: string[] }) {
+function EvidenceReport({ items:rawItems, isTourism, places }: { items: EvidenceItem[]; isTourism: boolean; places: string[] }) {
+  const items=rawItems.filter(item=>!promotionalContent(item.title+" "+item.excerpt) && (!/联网|检索摘要/.test(item.tag) || item.relatedPlaces?.some(place=>places.includes(place)) || places.some(place=>(item.title+item.excerpt).includes(place))));
   const [filter, setFilter] = useState("全部");
   const tags = [...new Set(items.map((item) => item.tag))];
   const activeFilter = tags.includes(filter) ? filter : "全部";
   const visible = activeFilter === "全部" ? items : items.filter((item) => item.tag === activeFilter);
   const uncovered = places.filter(place=>!items.some(item=>item.relatedPlaces?.includes(place)));
   return <div className="evidence-layout">
-    <aside className="evidence-index"><span className="section-kicker">来源索引</span><strong>{items.length}<small>条参考依据</small></strong>
+    <aside className="evidence-index"><span className="section-kicker">地点资料关联覆盖</span><strong>{places.length-uncovered.length}/{places.length}<small>个推荐地点有关联资料，非已验证可执行</small></strong><p>{items.length}份资料 · 官方介绍、检索摘要与数据接口分别列示</p>
       <div className="evidence-filters" role="group" aria-label="筛选证据类型">{["全部", ...tags].map((tag) => <button type="button" key={tag} className={activeFilter === tag ? "is-selected" : ""} aria-pressed={activeFilter === tag} onClick={() => setFilter(tag)}><span>{tag}</span><b>{tag === "全部" ? items.length : items.filter((item) => item.tag === tag).length}</b></button>)}</div>
       <div className="report-note"><ShieldCheck size={19} /><p>{isTourism ? "平台链接提供关键词检索入口，景点与餐饮信息请以原始来源为准。" : "环境数据与政策依据共同支持建议，点击来源可核对原文。"}</p></div>
     </aside>
@@ -144,7 +148,7 @@ function TourismPlan({ route }: { route: TourismRoute }) {
   const activeDay = days.includes(selectedDay) ? selectedDay : days[0];
   const stops = route.stops.map((stop, index) => ({ ...stop, index })).filter((stop) => stop.day === activeDay);
   return <>
-    <section className="tourism-report-heading"><span className="report-badge">{route.generatedBy === "llm" ? "AI 编排行程" : "城市 POI 路线"}</span><h2>{route.cityName}{route.dayCount}日旅游路线</h2><p>{route.summary}</p></section>
+    <section className="tourism-report-heading"><span className="report-badge">{route.generatedBy === "llm" ? "模型候选 + 约束排程" : "城市 POI 路线"}</span><h2>{route.cityName}{route.dayCount}日旅游路线</h2><p>{route.summary}</p></section>
     <dl className="report-facts"><div><CalendarCheck size={19} /><dt>出行日期</dt><dd>{route.date}<small>至 {route.endDate}</small></dd></div><div><Clock size={19} /><dt>推荐出行时段</dt><dd>{route.bestHours}</dd></div><div><MapPin size={19} /><dt>行程站点</dt><dd>{route.stops.length} 站<small>景点与美食</small></dd></div></dl>
     <div className="tourism-plan-layout"><aside className="trip-day-index"><span className="section-kicker">每日行程</span><nav aria-label="选择行程日期">{days.map((day) => <button type="button" key={day} onClick={() => setSelectedDay(day)} aria-pressed={activeDay === day} className={activeDay === day ? "is-selected" : ""}><strong>第 {day} 天</strong><span>{route.stops.find((stop) => stop.day === day)?.date}</span></button>)}</nav><div className="report-note"><MapPin size={18} /><p>切换到环境地图可查看完整路线与站点位置。</p></div></aside>
       <section className="trip-day-content"><SectionHeading number={String(activeDay ?? 1).padStart(2, "0")} title={`第 ${activeDay ?? 1} 天 · 景点与美食`} detail={`${stops[0]?.date ?? route.date} · ${stops.length} 个停靠点`} />
@@ -160,7 +164,7 @@ function TourismPlan({ route }: { route: TourismRoute }) {
   </>;
 }
 
-export function DecisionResultPanel({ input, isTourism, route, result, liveTrace, activePanel, onPanel, isPlanning, isAnalyzing }: Props) {
+export function DecisionResultPanel({ input, isTourism, route, result, liveTrace, activePanel, onPanel, isPlanning, isAnalyzing,onRemoveStop }: Props) {
   const panelMotion = useSwitchEntrance(activePanel);
   const ready = isTourism ? !!route : !!result;
   const running = isTourism ? isPlanning : isAnalyzing;
@@ -179,6 +183,7 @@ export function DecisionResultPanel({ input, isTourism, route, result, liveTrace
       {tabs.map(({ key, label, detail, icon: Icon }) => <button type="button" role="tab" id={`report-tab-${key}`} aria-selected={activePanel === key} aria-controls={`report-content-${key}`} tabIndex={activePanel === key ? 0 : -1} className={activePanel === key ? "is-active" : ""} key={key} onClick={() => onPanel(key)}><Icon size={22} weight={activePanel === key ? "duotone" : "regular"} /><span><strong>{label}</strong><small>{detail}</small></span></button>)}
     </div>
     <div ref={panelMotion} className={`report-body report-body-${activePanel}`} role="tabpanel" id={`report-content-${activePanel}`} aria-labelledby={`report-tab-${activePanel}`} tabIndex={0}>
+      {activePanel==="plan"&&route&&<details className="route-edit-panel"><summary>调整地点与查看排程约束</summary><p>删除前自动保存版本；删除后重新计算天气、交通估算和休息，地图与规划书同步更新。关联费用同步移除。</p>{route.scheduleWarnings?.map(text=><p className="constraint-warning" key={text}>{text}</p>)}{route.scheduleVersion!==2&&<p className="constraint-warning">旧方案未执行完整时长与交通校验，请返回分析台重新生成。</p>}{route.stops.map(stop=><article key={stop.name}><strong>{stop.date} {stop.time} · {stop.name}</strong><p>{stopScheduleText(stop)}</p><button type="button" disabled={running||route.scheduleVersion!==2} onClick={()=>onRemoveStop?.(stop.name)}>移除此地点并重新排程</button></article>)}</details>}
       {!ready && !(activePanel === "trace" && trace.length > 0) ? <div className="report-empty">{running ? <Pulse size={36} /> : isTourism ? <Binoculars size={36} /> : <Sparkle size={36} />}<h2>{running ? "正在准备这份报告" : "先完成一次对话分析"}</h2><p>{running ? "工具返回后，方案、证据与执行轨迹会自动更新。" : "在分析台描述城市、日期与活动需求，完成后即可在这里查看详细内容。"}</p><a href="/XingZhi">返回分析台 <ArrowUpRight size={16} /></a></div>
         : activePanel === "plan" ? <>{document && <PlanDocumentReader document={document} />}<details className="structured-plan"><summary>{isTourism ? "查看按天行程与地点图片" : "查看时间线与执行卡片"}</summary>{isTourism && route ? <TourismPlan key={`${route.cityName}-${route.date}-${route.endDate}`} route={route} /> : result && <ActivityPlan input={input} result={result} />}</details></>
         : activePanel === "evidence" ? <EvidenceReport items={evidence} isTourism={isTourism} places={isTourism ? route?.stops.map(stop=>stop.name) || [] : result?.venues?.map(venue=>venue.name) || []} />
