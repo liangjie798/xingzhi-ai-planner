@@ -2,6 +2,7 @@
 
 import { ArrowRight, CheckCircle, Compass, IdentificationCard, LockKey, User, UserCircle } from "@phosphor-icons/react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { currentUser, login, loginAsGuest, register } from "@/lib/auth";
@@ -28,7 +29,7 @@ export default function LoginPage() {
   }
   const title = portal === "GUEST" ? "访客体验" : isRegistering ? "创建用户账户" : "用户登录";
   return <main className="auth-page">
-    <section className="auth-story"><Link href="/welcome" className="auth-brand"><span><Compass size={22} weight="duotone" /></span>行知</Link><div className="auth-story-copy"><span className="section-kicker">从想法到出发</span><h1>从一次对话，<br />开始一份好计划。</h1><p>登录后保留自己的规划记录，也可以先以访客身份体验，再决定下一次去哪里。</p></div><div className="auth-proof"><CheckCircle size={18} weight="fill" /><span>你的规划记录，留在自己的账户里。</span></div></section>
+    <section className="auth-story"><Image src="/images/xingzhi-landscape.webp" alt="" fill priority unoptimized sizes="(max-width: 800px) 100vw, 55vw" className="auth-landscape" /><Link href="/welcome" className="auth-brand"><span><Compass size={22} weight="duotone" /></span>行知</Link><div className="auth-story-copy"><span className="section-kicker">从想法到出发</span><h1>从一次对话，<br />开始一份好计划。</h1><p>登录后保留自己的规划记录，也可以先以访客身份体验，再决定下一次去哪里。</p></div><div className="auth-proof"><CheckCircle size={18} weight="fill" /><span>你的规划记录，留在自己的账户里。</span></div></section>
     <section className="auth-form-wrap"><form className="auth-card" onSubmit={submit}>
       <div className="portal-tabs portal-tabs-public" role="group" aria-label="登录身份"><SlidingSelection value={portal} /><button type="button" className={portal === "USER" ? "is-active" : ""} disabled={busy} onClick={() => choose("USER")}><UserCircle size={16} />用户</button><button type="button" className={portal === "GUEST" ? "is-active" : ""} disabled={busy} onClick={() => choose("GUEST")}><IdentificationCard size={16} />访客</button></div>
       <LoginPanel value={`${portal}-${isRegistering}-${error}`}><span className="section-kicker">{portal === "GUEST" ? "免注册体验" : "个人决策空间"}</span><h2>{title}</h2><p>{portal === "GUEST" ? "不保存个人决策档案，退出会话后身份失效。" : "登录后自动保存由你生成的活动决策。"}</p>

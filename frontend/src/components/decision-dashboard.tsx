@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  ArrowClockwise, Clock, CloudSun, Compass,
+  ArrowClockwise, Clock, CloudSun,
   ChatCircleDots,
   Crosshair, Drop, Gauge, GearSix, MagnifyingGlass, MapPin, MapTrifold,
   ShieldCheck, Sparkle,
@@ -18,7 +18,8 @@ import type { WeatherChartSpec } from "@/lib/visualization-request";
 import type { SocialResearch } from "@/lib/social-research";
 import { EnvironmentMap } from "./environment-map";
 import { NationalEnvironmentMap } from "./national-environment-map";
-import { SlidingSelection, useSwitchEntrance } from "./switch-motion";
+import { useSwitchEntrance } from "./switch-motion";
+import { WorkspaceSidebar } from "./workspace-sidebar";
 import { WelcomeGreeting } from "./welcome-greeting";
 import { AccountBadge } from "./account-badge";
 import { UserFeedbackPanel } from "./user-feedback";
@@ -729,18 +730,10 @@ export function DecisionDashboard() {
     : [];
 
   return (
-    <main className="app-shell">
+    <main className="app-shell product-workspace">
+      <WorkspaceSidebar view={workspaceView} sessions={sessions} sessionId={sessionId} disabled={!memoryReady||chatBusy||isAnalyzing||isPlanning||chartLoading} onView={switchWorkspace} onOpen={id=>void openConversation(id)} onDelete={()=>void deleteConversation()} />
       <header className="topbar">
-        <div className="brand-block">
-          <div className="brand-mark" aria-hidden="true"><Compass size={23} weight="duotone" /></div>
-          <div><p className="brand-name">行知</p><p className="brand-subtitle">AI 活动与旅行规划</p></div>
-        </div>
-        <nav className="primary-nav" aria-label="工作区导航"><SlidingSelection value={workspaceView} />
-          <button type="button" className={`nav-item ${workspaceView === "studio" ? "is-active" : ""}`} onClick={() => switchWorkspace("studio")}>分析台</button>
-          <button type="button" className={`nav-item ${workspaceView === "map" ? "is-active" : ""}`} onClick={() => switchWorkspace("map")}>环境地图</button>
-          <button type="button" className={`nav-item ${workspaceView === "plan" ? "is-active" : ""}`} onClick={() => switchWorkspace("plan")}>执行方案</button>
-          {([["execution","执行管理"],["library","资料收藏"],["archive","活动档案"]] as const).map(([view,label])=><button type="button" key={view} className={`nav-item ${workspaceView===view?"is-active":""}`} onClick={()=>switchWorkspace(view)}>{label}</button>)}
-        </nav>
+        <div className="workspace-context"><strong>{{studio:"分析台",map:"环境地图",plan:"执行方案",execution:"执行管理",library:"资料收藏",archive:"活动档案"}[workspaceView]}</strong><span>{sessions.find(item=>item.id===sessionId)?.title || "新的一份计划"}</span></div>
         <div className="topbar-actions">
           <span className={`system-status ${error ? "has-error" : ""}`}><i /> {error ? "数据连接异常" : !hasDestination ? "全国环境总览" : isLoadingCity ? "正在同步实时数据" : `实时数据 · ${updatedAt}`}</span>
           <Link className="icon-button" href="/hourly" title="逐小时数据" aria-label="逐小时数据页面"><Clock size={18} /></Link>
@@ -749,8 +742,6 @@ export function DecisionDashboard() {
           <AccountBadge />
         </div>
       </header>
-
-      <section className="conversation-session-bar" aria-label="对话管理"><button type="button" disabled={!memoryReady||chatBusy||isAnalyzing||isPlanning||chartLoading} onClick={()=>void openConversation()}>＋ 新建对话</button><label>历史对话<select aria-label="历史对话" value={sessionId} disabled={!memoryReady||chatBusy||isAnalyzing||isPlanning||chartLoading} onChange={event=>void openConversation(event.target.value)}>{sessions.map(item=><option key={item.id} value={item.id}>{item.title} · {new Date(item.updatedAt).toLocaleDateString("zh-CN",{timeZone:"Asia/Shanghai"})}</option>)}</select></label><button type="button" disabled={!memoryReady||chatBusy||isAnalyzing||isPlanning||chartLoading} onClick={()=>void deleteConversation()}>删除此对话</button><small>每条对话独立保存城市、条件、图表与方案</small></section>
 
       {workspaceView==="execution"||workspaceView==="library"||workspaceView==="archive" ? <OperationsWorkspace view={workspaceView} input={input} result={result} route={route} data={workspaceData} onChange={setWorkspaceData} onRestore={restorePlan}/> : <section ref={workspaceMotion} className={`workspace workspace-${workspaceView}`}>
         <aside className="control-rail">
@@ -824,23 +815,23 @@ export function DecisionDashboard() {
         </aside>
 
         <section className="map-workbench">
-          <header className="studio-page-heading"><WelcomeGreeting /><span>行知 / 智能规划工作室</span><h1>从一个想法，到一份可执行的计划。</h1><p>告诉我想去哪、何时出发、准备做什么。</p></header>
-          <section className="analysis-console is-expanded" aria-label="对话驱动数据分析">
+          {chatMessages.length <= 1 && <header className="studio-page-heading"><WelcomeGreeting /><span>行知 / 智能规划工作室</span><h1>从一个想法，<br className="mobile-heading-break" />到一份可执行的计划。</h1><p>告诉我想去哪、何时出发、准备做什么。</p></header>}
+          <section className={`analysis-console is-expanded${chatMessages.length <= 1 ? " is-empty" : ""}`} aria-label="对话驱动数据分析">
             <div className="analysis-console-head">
               <div><span className="conversation-icon"><ChatCircleDots size={19} weight="duotone" /></span><div><strong>与行知对话</strong><small>查天气 · 问知识 · 做规划，回答附资料依据</small></div></div>
               <span className="conversation-count">{chatMessages.length} 条消息 · 自动显示</span>
             </div>
-            <div className="memory-toolbar"><small role="status">{memoryStatus}{activeTopic === "weather" && weatherContext.cityName ? ` · 天气：${weatherContext.cityName}` : ""}</small><button type="button" disabled={chatBusy || !memoryReady || chartLoading} onClick={clearConversationMemory}>清除当前对话记忆</button></div>
+            <div className="memory-toolbar conversation-memory-toolbar"><small role="status">{memoryStatus}{activeTopic === "weather" && weatherContext.cityName ? ` · 天气：${weatherContext.cityName}` : ""}</small><button type="button" disabled={chatBusy || !memoryReady || chartLoading} onClick={clearConversationMemory}>清除当前对话记忆</button></div>
             {knowledgeContext.topic && <div className="knowledge-context" aria-label="已确认问答偏好"><span>正在讨论：{knowledgeContext.city || "选择目的地"}{describeDestinationPreferences(knowledgeContext) ? ` · ${describeDestinationPreferences(knowledgeContext)}` : ""}</span><button type="button" disabled={chatBusy} onClick={() => setKnowledgeContext({})}>清除偏好</button></div>}
             <div ref={chatScroll} className="conversation-messages" aria-live="polite">{chatMessages.map((message, index) => <InkMessage message={message} key={`${message.role}-${index}`} />)}{chatBusy && <ThinkingIndicator />}</div>
             <IntakeChoiceButtons known={intake.known} onAnswer={submitConversation} enabled={!chatBusy && memoryReady && activeTopic === "planning"} />
             <div className="agent-actions" aria-label="Agent 分析工具"><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("explain")}>解释推荐依据</button><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("compare")}>对比候选时段</button><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("checklist")}>生成筹备清单</button></div>
-            <form className="analysis-console-form" onSubmit={(event) => { event.preventDefault(); void submitConversation(); }}>
+            <form className="analysis-console-form chat-form" onSubmit={(event) => { event.preventDefault(); void submitConversation(); }}>
               <textarea id="conversation-input" aria-label="问题或规划需求" value={chatText} onChange={(event) => setChatText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submitConversation(); } }} placeholder="问一个问题，或告诉我你的旅行与活动想法…" rows={2} />
               <button type="submit" disabled={!chatText.trim() || chatBusy || !memoryReady} aria-label="发送分析要求">{chatBusy ? <span className="button-loader" /> : <PaperPlaneTilt size={18} weight="fill" />}<span>发送</span></button>
             </form>
             {chatMessages.length === 1 && <div className="conversation-suggestions"><button type="button" onClick={() => setChatText("明天西安的天气怎么样？")}>查明天天气</button><button type="button" onClick={() => setChatText("US AQI 和 PM2.5 有什么区别？")}>了解空气指标</button><button type="button" onClick={() => setChatText("帮我规划三天旅游路线")}>规划三天旅行</button></div>}
-            <p className="conversation-disclosure">实时信息以查询结果为准，搜索摘要附原文链接；无法确认的内容会明确说明。Enter 发送 · Shift+Enter 换行</p>
+            <p className="conversation-disclosure chat-disclosure">实时信息以查询结果为准，搜索摘要附原文链接；无法确认的内容会明确说明。Enter 发送 · Shift+Enter 换行</p>
           </section>
           <div className="studio-agent-progress"><AgentProgress items={liveTrace.length ? liveTrace : route?.trace ?? result?.trace ?? []} running={isAnalyzing || isPlanning || chatBusy} phase={chatBusy && !isAnalyzing && !isPlanning ? "正在理解活动条件" : agentPhase} /></div>
           <UserFeedbackPanel />
