@@ -39,6 +39,7 @@ export function isWeatherFollowup(message: string, lastAssistant: string): boole
   if (!/天气预报（北京时间）|你想查询哪个城市|可靠天气数据|可靠天气。/.test(lastAssistant)) return false;
   if (sourceQuestion.test(message) || retrieveKnowledge(message).length || /什么|怎么|如何|为什么|学生|强度|预算|人数|规划|旅游/.test(message)) return false;
   const text = message.trim().replace(/^(?:那么|那|改成|换成)/, "").replace(/(?:的呢|呢)?[?？。！!]?$/, "");
+  if (/^(?:20\d{2}[-/年])?\d{1,2}[-/月]\d{1,2}[日号]?$/.test(text)) return true;
   if (/^(?:(?:本月|这个月|下个月|下月)?[零〇一二两三四五六七八九十\d]+[日号]|(?:今年|明年)?[零〇一二两三四五六七八九十\d]+月[零〇一二两三四五六七八九十\d]+[日号]?)$/.test(text)) return true;
   if (/^(?:(?:今天|明天|后天|大后天|下周)(?:上午|下午|晚上)?|(?:再过|过|往后)?[一二两三四五六七八九十\d]+(?:天|个?(?:星期|周))(?:以|之)?后|(?:再过|过)[一二两三四五六七八九十\d]+天)(?:上午|下午|晚上)?$/.test(text)) return true;
   if (!/你想查询哪个城市/.test(lastAssistant) && !/^(?:那么|那|改成|换成)|呢[?？。！!]*$/.test(message.trim())) return false;

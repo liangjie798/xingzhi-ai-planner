@@ -43,12 +43,15 @@ function validDate(value: unknown): value is string {
 /** A day without a month means this Beijing calendar month, never a saved query date. */
 export function calendarDateFromText(text:string, today:string): { matched:boolean; date?:string; error?:string } {
   const token = "([零〇一二两三四五六七八九十\\d]+)";
-  const full = text.match(/(20\d{2})[-/年](\d{1,2})[-/月](\d{1,2})[日号]?/);
+  const full = text.match(/(?<!\d)(20\d{2})[-/年](\d{1,2})[-/月](\d{1,2})[日号]?(?!\d)/);
+  // Resolve M-D/M/D before bare days; otherwise "11-1日" becomes this month's 1st.
+  const short = text.match(/(?<![\d\-/])(\d{1,2})[-/](\d{1,2})(?:[日号])?(?![\d\-/])/);
   const monthDay = text.match(new RegExp(`(?:(今年|明年))?${token}月${token}[日号]?`));
   const bare = text.match(new RegExp(`(?:(本月|这个月|下个月|下月))?${token}[日号]`));
-  if (!full && !monthDay && !bare) return {matched:false};
+  if (!full && !short && !monthDay && !bare) return {matched:false};
   let year=Number(today.slice(0,4)), month=Number(today.slice(5,7)), day:number;
   if(full) { year=Number(full[1]);month=Number(full[2]);day=Number(full[3]); }
+  else if(short) { month=Number(short[1]);day=Number(short[2]); }
   else if(monthDay) { year+=monthDay[1] === "明年" ? 1 : 0;month=number(monthDay[2]);day=number(monthDay[3]); }
   else { day=number(bare![2]);if(/下/.test(bare![1] || "")){month++;if(month>12){month=1;year++;}} }
   const date=`${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
@@ -93,7 +96,9 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   const links = text.match(/https:\/\/(?:[a-z0-9-]+\.)*(?:douyin|xiaohongshu)\.com\/[^\s，。；<>]+/gi);
   if (links) patch.referenceUrls = [...new Set([...(known.referenceUrls || []), ...links])].slice(0, 4);
   patch.activityType = activities.find((item) => text.includes(item)) || (/运动会/.test(text) ? "校园运动会" : /旅游|旅行|行程|游玩|游览/.test(text) ? "旅游规划" : undefined);
-  const days = text.match(/([一二两三四五六七八九十\d]+)\s*(?:天|日)(?!期|后|以后|之后)/);
+  // Calendar days are dates, not trip lengths. Keep "三日游" as a duration.
+  const durationText = text.replace(/20\d{2}[-/年]\d{1,2}[-/月]\d{1,2}[日号]?|[零〇一二两三四五六七八九十\d]+月[零〇一二两三四五六七八九十\d]+[日号]?|\d{1,2}[-/]\d{1,2}[日号]?/g, "");
+  const days = durationText.match(/([一二两三四五六七八九十\d]+)\s*(?:天(?!期|后|以后|之后)|日(?=游|旅|行程|活动))/);
   if (days) patch.tripDays = number(days[1]);
   const duration = text.match(/([一二两三四五六七八九十\d]+)\s*个?小时/);
   if (duration) patch.duration = number(duration[1]);

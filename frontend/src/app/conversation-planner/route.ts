@@ -66,7 +66,7 @@ export async function POST(request: Request) {
   const comparison = Boolean(known.activityType) && /对比|比较/.test(message) && /图|两天|两日/.test(message);
   const destinationFollowup = isDestinationFollowup(message, knowledgeContext);
   const recommendation = destinationRecommendationRequest(message);
-  const intent = revision || comparison || fieldAnswer ? "planning" : weatherFollowup ? "weather" : destinationFollowup || recommendation ? "knowledge" : classifyConversation(message, pending);
+  const intent = weatherFollowup ? "weather" : revision || comparison || fieldAnswer ? "planning" : destinationFollowup || recommendation ? "knowledge" : classifyConversation(message, pending);
   if (intent === "planning" && !known.cityName) {
     const city = body.activeTopic === "weather" ? savedWeather.cityName : knowledgeContext.city || savedWeather.cityName;
     if (city) known = { ...known, cityName: city };
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
     }
     const previousWeather = weatherFollowup ? history.filter((h) => h.role === "user" && h.content !== message).reduce<IntakePatch>((state, h) => ({ ...state, ...extractIntake(h.content, today, state) }), {}) : {};
     const weatherContext = { cityName: savedWeather.cityName || previousWeather.cityName || knowledgeContext.city || known.cityName, date: savedWeather.date || previousWeather.date };
-    const answer = intent === "weather" ? await answerWeather(request, message, today, weatherContext) : await answerKnowledge(request, message, history);
+    const answer = intent === "weather" ? await answerWeather(request, message, today, weatherContext, lastAssistant) : await answerKnowledge(request, message, history, weatherContext.cityName);
     const facts = extractIntake(message, today, weatherContext);
     const nextWeatherContext = intent === "weather" ? answer.weatherContext || { cityName: weatherDestination(message, facts.cityName, weatherContext.cityName), date: facts.date || weatherContext.date || today } : savedWeather;
     // A question must never overwrite a pending planning form or trigger generation.
