@@ -16,13 +16,15 @@ export function OperationsWorkspace({view,input,result,route,data:allData,onChan
   const conflicts=resourceConflicts(data.events);
   const plan=compare?data.plans.find(item=>item.id===compare):undefined;
   const id=()=>crypto.randomUUID();
+  const sources=(route?.evidence || result?.evidence || []).filter((item,index,all)=>item.sourceUrl?.startsWith("https://")&&all.findIndex(row=>row.sourceUrl===item.sourceUrl)===index);
   function saveVersion(){
     if(!result&&!route){setMessage("请先完成一次分析。");return;}
     const snapshot:SavedPlan={id:id(),createdAt:new Date().toISOString(),label:`${input.cityName} · ${input.activityType}`,input:{...input},result:result?{...result,socialResearch:undefined}:null,route:route?{...route,socialResearch:undefined}:null};
     onChange({...data,plans:[snapshot,...data.plans].slice(0,4)});setMessage("已保存方案版本；最多保留4份，可下载后再清理。");
   }
   if(view==="execution"&&!result&&!route) return <section className="operations-workspace"><header><span className="section-kicker">执行管理</span><h1>先确认一份活动方案</h1><p>在分析台补齐城市、日期、参与者与活动需求后，这里会按已确认条件生成专项任务、分工和费用记录。不会使用初始默认人数创建执行方案。</p><a href="/XingZhi">返回分析台 →</a></header></section>;
-  return <section className="operations-workspace"><header><span className="section-kicker">行知 / 组织者工作区</span><h1>{view==="execution"?"执行管理":view==="library"?"资料与核对清单":"活动档案与版本"}</h1><p>数据随当前账户的对话记忆保存。负责人字段用于分工记录，不会自动向他人发送通知。</p></header>{message&&<p role="status" className="report-note">{message}</p>}
+  return <section className="operations-workspace"><header><span className="section-kicker">行知 / 组织者工作区</span><h1>{view==="execution"?"执行管理":view==="library"?"资料收藏":"活动档案与版本"}</h1><p>{view==="library"?"保存以后还会用到的场馆官网、预约要求和组织笔记，方便活动前核对。它是个人收藏夹；保存的链接不会自动成为 Agent 的知识或计算约束。普通旅行可以直接跳过。":"数据随当前账户的对话记忆保存。负责人字段用于分工记录，不会自动向他人发送通知。"}</p></header>{message&&<p role="status" className="report-note">{message}</p>}
+    {view==="library"&&<section className="operations-card"><h2>从当前方案收藏</h2>{sources.length?<><p>这些是方案已经引用的来源，可按需要保存，以便之后核对。</p>{sources.slice(0,12).map(item=><article className="material-card" key={item.sourceUrl}><h3><a href={item.sourceUrl} target="_blank" rel="noopener noreferrer">{item.title} ↗</a></h3><p>{item.publisher} · {item.tag}</p><button type="button" disabled={data.materials.some(row=>row.url===item.sourceUrl)} onClick={()=>onChange({...data,materials:[...data.materials,{id:id(),title:item.title,url:item.sourceUrl!,note:item.excerpt.slice(0,500),status:"待确认" as const,updatedAt:new Date().toISOString()}].slice(-60)})}>{data.materials.some(row=>row.url===item.sourceUrl)?"已收藏":"收藏此来源"}</button></article>)}</>:<p>完成一次规划后，可以在这里一键收藏方案的参考来源；也可以在下方自行保存链接。</p>}</section>}
     {view==="execution"&&<>
       <section className="operations-card"><h2>{input.activityType} · 专项组织任务</h2><div className="scenario-grid">{scenarioPlan(input,result).map(block=><article key={block.title}><h3>{block.title}</h3><p>{block.detail}</p><small>交付：{block.deliverable}</small></article>)}</div></section>
       <section className="operations-card"><h2>项目、场地与人员冲突</h2><p>参赛者与负责人可填写组织编号，多个编号用逗号分隔；按同日时间重叠检查，不能替代现场确认。</p>

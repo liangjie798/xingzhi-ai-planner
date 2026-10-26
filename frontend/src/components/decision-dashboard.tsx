@@ -29,6 +29,7 @@ import { emptyWorkspace,type WorkspaceData,type SavedPlan } from "@/lib/workspac
 import { removeTourismStop } from "@/lib/tourism-replan";
 import { TourismScheduleChart } from "./tourism-schedule-chart";
 import { JourneyComparison } from "./journey-comparison";
+import type { TicketSearchResult } from "@/lib/ticket-types";
 import { DecisionResultPanel } from "./decision-result-panel";
 import { AgentProgress } from "./agent-progress";
 import { answerAgentAction, detectAgentAction, type AgentAction } from "@/lib/agent-actions";
@@ -109,6 +110,7 @@ interface RegionBounds {
 interface ChatMessage { role: "user" | "assistant"; content: string; kind?: string; sources?: Array<{ title: string; url?: string; detail?: string }> }
 type WorkspaceView = "studio" | "map" | "plan" | "execution" | "library" | "archive";
 interface ConversationResponse {
+  ticketSearch?: TicketSearchResult;
   weatherContext?: { cityName?: string; date?: string };
   activeTopic?: string;
   visualization?: "compare-days";
@@ -127,6 +129,7 @@ export function DecisionDashboard() {
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("studio");
   const [workspaceData,setWorkspaceData]=useState<WorkspaceData>(emptyWorkspace);
   const [journeyExpanded,setJourneyExpanded]=useState(false);
+  const [ticketSearch,setTicketSearch]=useState<TicketSearchResult|null>(null);
   const workspaceMotion = useSwitchEntrance(workspaceView);
   const [input, setInput] = useState<ActivityInput>(initialInput);
   const [layer, setLayer] = useState<LayerKey>("comfort");
@@ -586,10 +589,10 @@ export function DecisionDashboard() {
       if (!response.ok) throw new Error(await apiError(response));
       const plan = await response.json() as ConversationResponse;
       setIntake(plan.intake);
-      if(plan.kind==="交通方案比较"){
+      if(plan.kind==="交通方案比较"||plan.kind==="实时票价查询"){
         setJourneyExpanded(true);
+        setTicketSearch(plan.ticketSearch || null);
         setInput(current=>({...current,...plan.patch}));
-        window.requestAnimationFrame(()=>document.querySelector(".journey-comparison")?.scrollIntoView({behavior:"smooth",block:"start"}));
       }
       if (plan.knowledgeContext) setKnowledgeContext(plan.knowledgeContext);
       if (plan.weatherContext) setWeatherContext(plan.weatherContext);
@@ -677,7 +680,7 @@ export function DecisionDashboard() {
           <button type="button" className={`nav-item ${workspaceView === "studio" ? "is-active" : ""}`} onClick={() => switchWorkspace("studio")}>分析台</button>
           <button type="button" className={`nav-item ${workspaceView === "map" ? "is-active" : ""}`} onClick={() => switchWorkspace("map")}>环境地图</button>
           <button type="button" className={`nav-item ${workspaceView === "plan" ? "is-active" : ""}`} onClick={() => switchWorkspace("plan")}>执行方案</button>
-          {([["execution","执行管理"],["library","资料库"],["archive","活动档案"]] as const).map(([view,label])=><button type="button" key={view} className={`nav-item ${workspaceView===view?"is-active":""}`} onClick={()=>switchWorkspace(view)}>{label}</button>)}
+          {([["execution","执行管理"],["library","资料收藏"],["archive","活动档案"]] as const).map(([view,label])=><button type="button" key={view} className={`nav-item ${workspaceView===view?"is-active":""}`} onClick={()=>switchWorkspace(view)}>{label}</button>)}
         </nav>
         <div className="topbar-actions">
           <span className={`system-status ${error ? "has-error" : ""}`}><i /> {error ? "数据连接异常" : !hasDestination ? "全国环境总览" : isLoadingCity ? "正在同步实时数据" : `实时数据 · ${updatedAt}`}</span>
@@ -811,7 +814,7 @@ export function DecisionDashboard() {
           </div>
         </section>
 
-        <div className="journey-workspace"><JourneyComparison input={{...input,...intake.known,cityName:intake.known.cityName||"",participants:intake.known.participants||1}} data={workspaceData} onChange={setWorkspaceData} expanded={journeyExpanded} onToggle={setJourneyExpanded} onConditions={patch=>{setInput(current=>({...current,...patch}));setIntake(current=>({known:{...current.known,...patch}}));}}/></div>
+        <div className="journey-workspace"><JourneyComparison input={{...input,...intake.known,cityName:intake.known.cityName||"",participants:intake.known.participants||1}} answer={ticketSearch} expanded={journeyExpanded} onToggle={setJourneyExpanded} onConditions={patch=>{setInput(current=>({...current,...patch}));setIntake(current=>({known:{...current.known,...patch}}));}}/></div>
         <DecisionResultPanel input={input} isTourism={isTourism} route={route} result={result} liveTrace={liveTrace} activePanel={activePanel} onPanel={setActivePanel} isPlanning={isPlanning} isAnalyzing={isAnalyzing} onRemoveStop={removeStop} />
       </section>}
     </main>

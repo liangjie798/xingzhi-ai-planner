@@ -1,3 +1,7 @@
+export function isTransportQuestion(text:string) {
+  return /高铁|动车|航班|飞机|火车|机票|票价|怎么去|如何去|怎么走|如何走/.test(text) && !/研学.*任务|体育课|运动会|天气|气温/.test(text)
+    || /(?:到|去|前往).+(?:便宜|省钱|划算|性价比)/.test(text);
+}
 export function journeyLocations(text:string):{originCity?:string;destination?:string} {
   const stop="(?=出发|前往|去|到|明天|后天|今天|未来|[，。；！？\\s]|$)";
   const origin=text.match(new RegExp(`(?:从|出发地(?:是|为|：|:)?|出发城市(?:是|为|：|:)?)\\s*([\\u4e00-\\u9fa5]{2,18}?)${stop}`));

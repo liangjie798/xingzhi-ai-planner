@@ -1,8 +1,9 @@
 import type { ActivityInput, DecisionResult, TourismRoute } from "./types";
+import { isTransportQuestion } from "./journey.ts";
 
 export type AgentAction = "explain" | "compare" | "checklist";
 export function detectAgentAction(message: string): AgentAction | null {
-  if(/高铁|动车|航班|飞机|火车|机票|票价|怎么去|如何去/.test(message)) return null;
+  if(isTransportQuestion(message)) return null;
   if (/改成|调整为|换成|重新规划|改到/.test(message)) return null;
   if (/清单|准备什么|带什么|筹备/.test(message)) return "checklist";
   if (/比较|对比|候选/.test(message)) return "compare";
