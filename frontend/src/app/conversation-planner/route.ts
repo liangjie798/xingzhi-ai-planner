@@ -8,9 +8,13 @@ import { candidateCityTopic, cityIntroductionSubject } from "@/lib/city-introduc
 import { cleanDestinationContext, destinationRecommendationRequest, isDestinationFollowup, type DestinationContext } from "@/lib/destination-knowledge";
 import { answerDestination } from "@/lib/destination-answer";
 import { weatherDestination } from "@/lib/conversation-weather";
+import { compareJourney,type JourneyQuote } from "@/lib/journey";
 
 export const maxDuration = 45;
 interface ConversationRequest {
+  journeyQuotes?:JourneyQuote[];
+  journeyTimeValue?:number;
+  journeyParticipants?:number;
   message: string;
   today: string;
   intake?: IntakeState;
@@ -31,6 +35,25 @@ export async function POST(request: Request) {
   const history = Array.isArray(body.history) ? body.history.filter((item) => item && ["user", "assistant"].includes(item.role) && typeof item.content === "string").slice(-12).map((item) => ({ role: item.role, content: item.content.slice(0, 4000) })) : [];
   const pending = Object.keys(known).length > 0 || /还需要了解|哪天|哪个城市|几个人/.test(history.filter((h) => h.role === "assistant").at(-1)?.content || "");
   const lastAssistant = history.filter((h) => h.role === "assistant").at(-1)?.content || "";
+  const transportQuestion=/(?:高铁|动车|航班|飞机|火车|机票).*(?:性价比|划算|比较|对比|哪个|哪种|票价)|(?:性价比|划算|比较|对比|哪个|哪种).*(?:高铁|动车|航班|飞机|火车|机票)|怎么去|如何去/.test(message);
+  const transportFollowup=body.activeTopic==="transport"&&!/天气|气温|下雨|AQI|规划|运动会|研学|体育课|社区|训练|景点|美食|介绍|来源|为什么/.test(message);
+  if(transportQuestion||transportFollowup){
+    const facts=extractIntake(message,today,known);
+    let origin=facts.originCity || known.originCity;
+    if(!origin&&transportFollowup&&!/从|到|去/.test(message)){
+      const answer=message.match(/^([\u4e00-\u9fa5]{2,12}?)(?=明天|后天|今天|[，。\s]|$)/)?.[1];
+      if(answer&&!/明天|后天|今天|一周|两周|以后|之后|高铁|飞机|航班|比较|划算|推荐|确认/.test(answer))origin=answer;
+    }
+    const destination=facts.cityName || known.journeyDestination || known.cityName;
+    const departureDate=facts.date || known.departureDate || known.date;
+    const patch=cleanIntake({originCity:origin,journeyDestination:destination,departureDate});
+    const missing=[!origin?"从哪个城市出发":null,!destination?"要去哪个城市或区县":null,!departureDate?"哪天出发":null].filter(Boolean);
+    const timeValue=typeof body.journeyTimeValue==="number"&&Number.isFinite(body.journeyTimeValue)?Math.min(10000,Math.max(0,body.journeyTimeValue)):0;
+    const passengers=typeof body.journeyParticipants==="number"&&Number.isFinite(body.journeyParticipants)?Math.min(100000,Math.max(1,Math.round(body.journeyParticipants))):known.participants || 1;
+    const comparison=compareJourney(Array.isArray(body.journeyQuotes)?body.journeyQuotes.slice(0,20):[],origin || "",destination || "",departureDate || "",passengers,timeValue);
+    const reply=missing.length?`可以比较高铁与航班。请补充：${missing.join("、")}。我会分别核算票款、未包含的税费/行李、两端接驳及门到门时间。`:comparison.comparable?`按你录入的${origin} → ${destination}、${departureDate}报价计算：\n${comparison.rows.map(row=>`${row.mode}：单人门到门费用${row.cost}元，总时长${row.minutes}分钟。`).join("\n")}\n费用较低方案为${comparison.cheapest!.mode}，时间较短方案为${comparison.fastest!.mode}；按你设置的每小时${timeValue}元时间价值，比较值较低方案为${comparison.recommended!.mode}。若数值相同视为并列。报价由用户录入，未独立核验实时票价、余票及退改条件；到达后活动排程未自动调整。`:`交通比较条件：${origin} → ${destination}，${departureDate}。当前未接入可核验的实时报价，不能直接认定高铁或航班更划算。请在下方“出发地与交通比较”中录入同日的报价、未含费用、两端接驳与候车/值机时间；系统会计算更省钱、更省时及你设置的时间价值下的结果。比较只针对交通，不会自动改变已有活动排程。`;
+    return NextResponse.json({reply,kind:"交通方案比较",command:"answer",patch,intake:{known:{...known,...patch}},missing,activeTopic:"transport",sources:[{title:"12306官方车票查询",url:"https://www.12306.cn/index/",detail:"官方查询入口，不代表本次已取得票价或余票"},{title:"东方航空官网",url:"https://www.ceair.com/",detail:"航班查询入口；请核对日期、含税总价、行李和退改条件"}]});
+  }
   const knowledgeContext = cleanDestinationContext(body.knowledgeContext);
   if (body.knowledgeContext === undefined && !knowledgeContext.city) {
     const previousCity = history.filter((item) => item.role === "user" && item.content !== message).map((item) => cityIntroductionSubject(item.content)).filter(Boolean).at(-1);

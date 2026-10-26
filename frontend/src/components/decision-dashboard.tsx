@@ -28,6 +28,7 @@ import { OperationsWorkspace } from "./operations-workspace";
 import { emptyWorkspace,type WorkspaceData,type SavedPlan } from "@/lib/workspace-data";
 import { removeTourismStop } from "@/lib/tourism-replan";
 import { TourismScheduleChart } from "./tourism-schedule-chart";
+import { JourneyComparison } from "./journey-comparison";
 import { DecisionResultPanel } from "./decision-result-panel";
 import { AgentProgress } from "./agent-progress";
 import { answerAgentAction, detectAgentAction, type AgentAction } from "@/lib/agent-actions";
@@ -125,6 +126,7 @@ interface ConversationResponse {
 export function DecisionDashboard() {
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("studio");
   const [workspaceData,setWorkspaceData]=useState<WorkspaceData>(emptyWorkspace);
+  const [journeyExpanded,setJourneyExpanded]=useState(false);
   const workspaceMotion = useSwitchEntrance(workspaceView);
   const [input, setInput] = useState<ActivityInput>(initialInput);
   const [layer, setLayer] = useState<LayerKey>("comfort");
@@ -578,12 +580,17 @@ export function DecisionDashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message, today: dateString(), intake, history: history.slice(-12), knowledgeContext, weatherContext, activeTopic,
+          message, today: dateString(), intake, history: history.slice(-12), knowledgeContext, weatherContext, activeTopic,journeyQuotes:workspaceData.journeyQuotes,journeyTimeValue:workspaceData.journeyTimeValue,journeyParticipants:workspaceData.journeyParticipants,
         }),
       });
       if (!response.ok) throw new Error(await apiError(response));
       const plan = await response.json() as ConversationResponse;
       setIntake(plan.intake);
+      if(plan.kind==="交通方案比较"){
+        setJourneyExpanded(true);
+        setInput(current=>({...current,...plan.patch}));
+        window.requestAnimationFrame(()=>document.querySelector(".journey-comparison")?.scrollIntoView({behavior:"smooth",block:"start"}));
+      }
       if (plan.knowledgeContext) setKnowledgeContext(plan.knowledgeContext);
       if (plan.weatherContext) setWeatherContext(plan.weatherContext);
       setActiveTopic(plan.activeTopic || (plan.command === "answer" ? "knowledge" : "planning"));
@@ -594,6 +601,7 @@ export function DecisionDashboard() {
       let nextInput: ActivityInput = { ...input, ...plan.patch };
       if (plan.patch.cityName && plan.patch.cityName !== meta.name) {
         const matches = await searchChinaDistricts(plan.patch.cityName);
+        if(matches.length>1) throw new Error(`“${plan.patch.cityName}”对应多个同名行政区，请补充省、市和区县后再分析。`);
         const match = matches[0];
         if (!match) throw new Error(`没有找到“${plan.patch.cityName}”，请换用完整的市或区县名称`);
         targetMeta = {
@@ -731,6 +739,9 @@ export function DecisionDashboard() {
             <div className="control-section-title"><ChatCircleDots size={16} /><span>对话已确认</span></div>
             {Object.keys(intake.known).length === 0 ? <p>日期、活动和同行信息会在对话中逐步确认。</p> : <dl>
               {intake.known.cityName && <div><dt>目的地</dt><dd>{intake.known.cityName}</dd></div>}
+              {intake.known.originCity && <div><dt>交通出发地</dt><dd>{intake.known.originCity}</dd></div>}
+              {intake.known.journeyDestination && <div><dt>交通目的地</dt><dd>{intake.known.journeyDestination}</dd></div>}
+              {intake.known.departureDate && <div><dt>交通出发日</dt><dd>{intake.known.departureDate}</dd></div>}
               {intake.known.activityType && <div><dt>活动</dt><dd>{intake.known.activityType}</dd></div>}
               {intake.known.date && <div><dt>日期</dt><dd>{intake.known.date}{intake.known.endDate && intake.known.endDate !== intake.known.date ? ' 至 ' + intake.known.endDate : ''}</dd></div>}
               {intake.known.tripDays && <div><dt>天数</dt><dd>{intake.known.tripDays}天</dd></div>}
@@ -800,6 +811,7 @@ export function DecisionDashboard() {
           </div>
         </section>
 
+        <div className="journey-workspace"><JourneyComparison input={{...input,...intake.known,cityName:intake.known.cityName||"",participants:intake.known.participants||1}} data={workspaceData} onChange={setWorkspaceData} expanded={journeyExpanded} onToggle={setJourneyExpanded} onConditions={patch=>{setInput(current=>({...current,...patch}));setIntake(current=>({known:{...current.known,...patch}}));}}/></div>
         <DecisionResultPanel input={input} isTourism={isTourism} route={route} result={result} liveTrace={liveTrace} activePanel={activePanel} onPanel={setActivePanel} isPlanning={isPlanning} isAnalyzing={isAnalyzing} onRemoveStop={removeStop} />
       </section>}
     </main>

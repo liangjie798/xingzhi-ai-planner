@@ -1,6 +1,7 @@
 import type { ActivityInput } from "./types";
+import { journeyLocations } from "./journey.ts";
 
-export type IntakePatch = Partial<Pick<ActivityInput, "audienceDescription" | "budgetPerPerson" | "equipmentCount" | "teamSize" | "cityName" | "activityType" | "date" | "endDate" | "startHour" | "duration" | "participants" | "intensity" | "group" | "referenceUrls" | "allowedStartHour" | "allowedEndHour">> & { tripDays?: number };
+export type IntakePatch = Partial<Pick<ActivityInput, "journeyDestination" | "departureDate" | "originCity" | "audienceDescription" | "budgetPerPerson" | "equipmentCount" | "teamSize" | "cityName" | "activityType" | "date" | "endDate" | "startHour" | "duration" | "participants" | "intensity" | "group" | "referenceUrls" | "allowedStartHour" | "allowedEndHour">> & { tripDays?: number };
 export interface IntakeState { known: IntakePatch }
 const activities = ["校园运动会", "体育课", "社区活动", "户外训练", "研学活动", "旅游规划"] as const;
 const numbers: Record<string, number> = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
@@ -55,6 +56,9 @@ export function calendarDateFromText(text:string, today:string): { matched:boole
 }
 export function cleanIntake(raw: IntakePatch = {}): IntakePatch {
   const out: IntakePatch = {};
+  if(typeof raw.originCity==="string"&&raw.originCity.trim()) out.originCity=raw.originCity.trim().slice(0,40);
+  if(typeof raw.journeyDestination==="string"&&raw.journeyDestination.trim()) out.journeyDestination=raw.journeyDestination.trim().slice(0,40);
+  if(validDate(raw.departureDate)) out.departureDate=raw.departureDate;
   if(typeof raw.audienceDescription === "string" && /^(大学生|研究生|高中生|初中生|小学生|学生|成年人|老年人|亲子家庭|儿童青少年|敏感人群)$/.test(raw.audienceDescription)) out.audienceDescription=raw.audienceDescription;
   for(const field of ["budgetPerPerson","equipmentCount","teamSize"] as const) if(typeof raw[field]==="number"&&Number.isFinite(raw[field])&&raw[field]!>=1&&raw[field]!<=100000) out[field]=Math.round(raw[field]!);
   if (Array.isArray(raw.referenceUrls)) out.referenceUrls = raw.referenceUrls.filter((url) => typeof url === "string" && /^https:\/\/(?:[a-z0-9-]+\.)*(?:douyin|xiaohongshu)\.com\//i.test(url)).slice(0, 4);
@@ -139,13 +143,18 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   else if (/晚上/.test(text)) { patch.allowedStartHour = 18; patch.allowedEndHour = 21; }
   if (/不限时段|全天|取消.*(?:时段|下午|上午).*限制/.test(text)) { patch.allowedStartHour = 6; patch.allowedEndHour = 21; }
   const common = text.match(/北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|香港|澳门|重庆|天津/);
-  const named = text.match(/(?:去|在|到|目的地[是为：:]?|城市[是为：:]?)\s*([\u4e00-\u9fa5]{2,8}?[市县区])/) || text.match(/^([\u4e00-\u9fa5]{2,8}[市县区])(?:[，。\s]|$)/);
+  const locationText=text.replace(/^(?:请|帮我|帮忙|规划|分析|查询|我想去|去|在|到|目的地[是为：:]?|城市[是为：:]?)+/,"");
+  const fullAdministrative=locationText.match(/^([\u4e00-\u9fa5]{2,18}?[省市区县旗])(?=明天|后天|今天|未来|出发|旅游|旅行|[一二两三四五六七八九十\d]+[日天号个名人]|[，。；\s]|$)/);
+  const named = fullAdministrative || text.match(/(?:去|在|到|目的地[是为：:]?|城市[是为：:]?)\s*([\u4e00-\u9fa5]{2,8}?[市县区])/) || text.match(/^([\u4e00-\u9fa5]{2,8}[市县区])(?:[，。\s]|$)/);
   const embedded = text.match(/(?:规划|分析|查询|去|到|在)\s*([\u4e00-\u9fa5]{2,8}?)(?=明天|后天|今天|未来|[一二两三四五六七\d]+[天日]|旅游|旅行|的|[，。]|$)/);
   if (named) patch.cityName = named[1];
   else if (common) patch.cityName = common[0] + (/香港|澳门/.test(common[0]) ? "特别行政区" : "市");
   else if (embedded && !/今天|明天|后天|未来|[一二两三四五六七\d]+[天日]|路线|活动|运动会/.test(embedded[1])) patch.cityName = embedded[1];
   // A bare place name is a valid answer to the destination question.
   else if (!known.cityName && !Object.keys(cleanIntake(patch)).length && /^[\u4e00-\u9fa5]{2,6}$/.test(text) && !/规划|旅游|路线|随便|安排|明天|后天|今天|出发|默认|推荐/.test(text)) patch.cityName = text;
+  const journey=journeyLocations(text);
+  if(journey.originCity){patch.originCity=journey.originCity;if(!journey.destination)delete patch.cityName;}
+  if(journey.destination)patch.cityName=journey.destination;
   if (/你(?:来)?安排|按(?:常规|默认)|常规推荐|默认推荐|都可以|你(?:来)?推荐|帮我(?:选|定)/.test(text)) {
     const tourism = (patch.activityType || known.activityType) === "旅游规划";
     patch.startHour ??= known.startHour ?? 9;

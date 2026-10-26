@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { nationalLocations } from "@/lib/national-environment";
 
 const AMAP_ENDPOINT = "https://restapi.amap.com/v3";
 
@@ -25,19 +26,35 @@ export async function GET(request: NextRequest) {
   try {
     if (action === "search") {
       const query = request.nextUrl.searchParams.get("q")?.trim();
-      if (!query || query.length < 2) return NextResponse.json([]);
+      if (!query || query.length < 2 || query.length>80) return NextResponse.json([]);
+      interface District {name?:string;center?:string;adcode?:string;level?:string;districts?:District[];provinceName?:string}
       const body = await getAmap("/config/district", new URLSearchParams({
         keywords: query,
         subdistrict: "0",
         extensions: "base",
-      })) as { districts?: Array<Record<string, string | string[]>> };
-      const results = (body.districts ?? []).flatMap((item) => {
+      })) as { districts?:District[] };
+      let districts=body.districts || [];
+      // Full paths are not accepted as a single keyword by the district API.
+      // Resolve the named parent and require the child to belong to it.
+      const path=query.match(/[\u4e00-\u9fa5]{2,12}?(?:特别行政区|自治区|自治州|地区|省|市|区|县|旗)/g) || [];
+      if(!districts.length&&path.length>=2&&path.join("")===query){
+        const parentName=path.at(-2)!,childName=path.at(-1)!;
+        const parent=await getAmap("/config/district",new URLSearchParams({keywords:parentName,subdistrict:"1",extensions:"base"})) as {districts?:District[]};
+        let parents=(parent.districts || []).filter(item=>item.name===parentName);
+        if(path.length>=3){
+          const province=await getAmap("/config/district",new URLSearchParams({keywords:path[0]!,subdistrict:"0",extensions:"base"})) as {districts?:District[]};
+          const codes=(province.districts || []).filter(item=>item.name===path[0]).map(item=>item.adcode?.slice(0,2)).filter(Boolean);
+          parents=parents.filter(item=>codes.includes(item.adcode?.slice(0,2)));
+        }
+        districts=parents.flatMap(item=>(item.districts || []).filter(child=>child.name===childName).map(child=>({...child,provinceName:path.length>=3?path[0]:parentName})));
+      }
+      const results = districts.flatMap((item) => {
         const center = typeof item.center === "string" ? item.center.split(",").map(Number) : [];
         if (center.length !== 2 || !Number.isFinite(center[0]) || !Number.isFinite(center[1])) return [];
         return [{
           id: `amap-${item.adcode}`,
           name: String(item.name || query),
-          province: String(item.level === "province" ? item.name : "中国大陆"),
+          province: String(nationalLocations.find(([code])=>item.adcode?.startsWith(code.slice(0,2)))?.[1] || item.provinceName || (item.level === "province" ? item.name : "中国大陆")),
           district: String(item.level === "district" ? item.name : ""),
           adcode: String(item.adcode || ""),
           longitude: center[0],

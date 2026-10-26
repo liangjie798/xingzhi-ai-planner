@@ -24,6 +24,9 @@ export interface CityEnvironment {
 }
 
 export interface ActivityInput {
+  originCity?: string;
+  journeyDestination?: string;
+  departureDate?: string;
   audienceDescription?: string;
   budgetPerPerson?: number;
   equipmentCount?: number;
