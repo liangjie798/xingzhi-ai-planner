@@ -10,6 +10,7 @@ import { answerDestination } from "@/lib/destination-answer";
 import { weatherDestination } from "@/lib/conversation-weather";
 import { isTransportQuestion,journeyLocations } from "@/lib/journey";
 import { searchTickets } from "@/lib/ticket-search-server";
+import { weatherChartRequest } from "@/lib/visualization-request";
 
 export const maxDuration = 45;
 interface ConversationRequest {
@@ -33,6 +34,8 @@ export async function POST(request: Request) {
   const history = Array.isArray(body.history) ? body.history.filter((item) => item && ["user", "assistant"].includes(item.role) && typeof item.content === "string").slice(-12).map((item) => ({ role: item.role, content: item.content.slice(0, 4000) })) : [];
   const pending = Object.keys(known).length > 0 || /还需要了解|哪天|哪个城市|几个人/.test(history.filter((h) => h.role === "assistant").at(-1)?.content || "");
   const lastAssistant = history.filter((h) => h.role === "assistant").at(-1)?.content || "";
+  const chart=weatherChartRequest(message,known);
+  if(chart)return NextResponse.json({reply:`保留${known.cityName || "已确认城市"}和原活动条件，绘制${chart.dates.join("、")}的${chart.metrics.map(metric=>metric==="temperature"?"气温（℃）":"降雨概率（%）").join("、")}逐小时对比图。`,kind:"环境指标对比",command:"answer",patch:{},intake:{known},missing:[],visualization:chart,activeTopic:body.activeTopic||"planning",weatherContext:body.weatherContext,knowledgeContext:body.knowledgeContext,sources:[]});
   const transportQuestion=isTransportQuestion(message);
   const transportFollowup=body.activeTopic==="transport"&&!/天气|气温|下雨|AQI|规划|运动会|研学|体育课|社区|训练|景点|美食|介绍|来源|为什么/.test(message);
   if(transportQuestion||transportFollowup){

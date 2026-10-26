@@ -8,6 +8,7 @@ import { resolveAccountModelConfig } from "@/lib/account-model-config-server";
 import { rankDestinationPlaces } from "@/lib/destination-knowledge";
 import { buildScheduledStops } from "@/lib/tourism-scheduled-route";
 import { matchedSearchEvidence, mergePlaceEvidence } from "@/lib/place-evidence";
+import { executionFloor } from "@/lib/beijing-time";
 
 export const maxDuration = 60;
 type TourismRequestBody = TourismRequestPayload;
@@ -89,8 +90,9 @@ function comfortIndex(hour: TourismHourSnapshot): number {
 
 function bestHoursText(hours: TourismHourSnapshot[]): string {
   if (!hours.length) return "缺少逐小时数据，推荐时段待确认";
-  const daylight = hours.filter((hour) => hour.hour >= 8 && hour.hour <= 20);
-  return (daylight.length ? daylight : hours).slice().sort((a, b) => comfortIndex(b) - comfortIndex(a))
+  const daylight = hours.filter((hour) => hour.hour >= 8 && hour.hour <= 20 && hour.hour*60>=executionFloor(hour.date,30));
+  if(!daylight.length)return "没有剩余可执行时段，请调整日期";
+  return daylight.slice().sort((a, b) => comfortIndex(b) - comfortIndex(a))
     .slice(0, 4).sort((a, b) => a.hour - b.hour)
     .map((hour) => `${hour.date} ${String(hour.hour).padStart(2, "0")}:00`).join("、");
 }
@@ -174,7 +176,7 @@ async function fallbackRoute(body: TourismRequestBody, candidates: PoiSpot[], ti
   trace.push({id:"tour-constraints",name:"完整窗口与交通约束校验",detail:`${stops.length}站已校验餐饮时段、完整游览/排队、交通与休息衔接；${scheduled.drivingLegs}段取得高德驾车预估，其余标为估算。营业未知地点使用保守假设，待确认。`,status:scheduled.warnings.length ? "fallback":"done",durationMs:performance.now()-validationStarted});
   return {cityName:body.cityName,date:body.date,endDate:dates.at(-1)!,dayCount:dates.length,
     summary:stops.length ? `${body.cityName}${dates.length}日候选方案：按完整停留窗口的天气、地点距离、餐饮时间与交通休息缓冲筛选${stops.length}站；营业与预约未核实的项目已标为待确认。` : "当前条件下未找到可行行程，请补充室内候选或放宽时段。",
-    bestHours:bestHoursText(body.hours || []),stops,notes:[`同行安排：${body.participants ?? 1}人，${body.audienceDescription || body.group || "普通人群"}。`,...scheduled.warnings,"交通为高德驾车预估或坐标估算（含缓冲），非实时路况保证；另行核对实际交通方式。","开放、预约与团体接待条件须由组织者确认；未取得资料不等于已验证。"],
+    bestHours:stops.length?stops.slice(0,4).map(stop=>`${stop.date} ${stop.time}–${stop.endTime}`).join("、"):"没有剩余可执行时段，请调整日期",stops,notes:[`同行安排：${body.participants ?? 1}人，${body.audienceDescription || body.group || "普通人群"}。`,...scheduled.warnings,"交通为高德驾车预估或坐标估算（含缓冲），非实时路况保证；另行核对实际交通方式。","开放、预约与团体接待条件须由组织者确认；未取得资料不等于已验证。"],
     scheduleVersion:2,schedulingHours:body.hours,scheduleWarnings:scheduled.warnings,generatedBy,provider,evidence,socialResearch:timing.social,trace};
 }
 

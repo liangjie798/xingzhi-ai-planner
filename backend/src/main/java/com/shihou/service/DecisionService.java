@@ -86,7 +86,7 @@ public class DecisionService {
 
         started = System.nanoTime();
         List<TimeSlotScore> slots = RiskCalculator.calculateSlots(forecast, request);
-        if (slots.isEmpty()) throw new IllegalArgumentException("当前时段限制内没有覆盖完整活动时长的连续预报，请缩短时长或扩大时段范围");
+        if (slots.isEmpty()) throw new IllegalArgumentException("当前时段内没有覆盖完整活动和准备缓冲的未来窗口，请调整日期、缩短时长或扩大时段范围；不会推荐已过去的时间");
         TimeSlotScore best = RiskCalculator.bestSlot(slots);
         emit(trace, eventListener, new ToolTraceItem("score", "score_activity_slots",
                 "按" + request.duration() + "小时完整窗口计算" + slots.size() + "个候选时段；气温取均值，热风险、AQI和降水取窗口最大值；已执行人群、强度及时段约束", "done", elapsedMillis(started)));

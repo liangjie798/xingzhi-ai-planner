@@ -79,6 +79,7 @@ public class AuthController {
     private void establish(Authentication authentication, HttpServletRequest request, HttpServletResponse response) {
         if (request.getSession(false) != null) {
             request.getSession(false).removeAttribute("conversation-memory");
+            request.getSession(false).removeAttribute("conversation-owner");
             request.changeSessionId();
         }
         var context = SecurityContextHolder.createEmptyContext();

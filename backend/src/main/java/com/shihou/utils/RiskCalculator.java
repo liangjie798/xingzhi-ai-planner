@@ -8,6 +8,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 public final class RiskCalculator {
     private static final Map<String, Integer> GROUP_FACTOR = Map.of(
@@ -33,12 +36,20 @@ public final class RiskCalculator {
     }
 
     public static List<TimeSlotScore> calculateSlots(List<EnvironmentalForecastPoint> forecast, ActivityDecisionRequest input) {
+        return calculateSlots(forecast, input, Clock.system(ZoneId.of("Asia/Shanghai")));
+    }
+
+    public static List<TimeSlotScore> calculateSlots(List<EnvironmentalForecastPoint> forecast, ActivityDecisionRequest input, Clock clock) {
+        LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneId.of("Asia/Shanghai"));
         List<TimeSlotScore> slots = new ArrayList<>();
         int earliest = input.allowedStartHour() == null ? 6 : input.allowedStartHour();
         int latestEnd = input.allowedEndHour() == null ? 21 : input.allowedEndHour();
         if (latestEnd <= earliest) throw new IllegalArgumentException("允许结束时间必须晚于开始时间");
         for (EnvironmentalForecastPoint point : forecast) {
             if (point.hour() < earliest || point.hour() + input.duration() > latestEnd) continue;
+            String date = point.date() == null ? input.date() : point.date();
+            // Exported preparation/check-in needs one hour before the event.
+            if (date.compareTo(now.toLocalDate().toString()) < 0 || date.equals(now.toLocalDate().toString()) && point.hour() * 60 < now.getHour() * 60 + now.getMinute() + 60) continue;
             // A slot is valid only if every hour of the activity is present on the same day.
             List<EnvironmentalForecastPoint> window = new ArrayList<>();
             for (int offset = 0; offset < input.duration(); offset++) {

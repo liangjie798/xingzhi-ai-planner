@@ -14,13 +14,15 @@ function time(date: string, minute: number) {
   const prefix = offset ? new Date(Date.parse(date) + offset * 86400000).toISOString().slice(5, 10) + " " : "";
   return `${prefix}${String(Math.floor(clock / 60)).padStart(2, "0")}:${String(clock % 60).padStart(2, "0")}`;
 }
+export function activityWindow(input:ActivityInput,result:DecisionResult,date:string) {
+  return result.slots.filter(slot=>(slot.date||input.date)===date&&slot.hour>=(input.allowedStartHour??6)&&slot.hour+input.duration<=(input.allowedEndHour??21)).sort((a,b)=>b.score-a.score)[0];
+}
 export function activityAgenda(input: ActivityInput, result: DecisionResult, date: string): AgendaItem[] {
-  const daily = result.slots.filter((slot) => (slot.date || input.date) === date).sort((a, b) => b.score - a.score);
-  const requested = input.startHour ?? result.bestSlot.hour;
   const periodStart = input.allowedStartHour ?? 6;
   const periodEnd = input.allowedEndHour ?? 21;
-  const feasible = daily.filter((slot) => slot.hour >= periodStart && slot.hour + input.duration <= periodEnd);
-  const start = (feasible[0]?.hour ?? Math.max(periodStart, Math.min(requested, periodEnd - input.duration))) * 60;
+  const window=activityWindow(input,result,date);
+  if(!window)return [{time:"待调整",title:"没有完整可执行窗口",action:"请调整日期、活动时长或允许时段后重新分析；不使用过去时间补齐方案。",owner:"组织者"}];
+  const start = window.hour * 60;
   const duration = Math.max(1, Math.min(12, input.duration)) * 60;
   const title = stages[input.activityType === "旅游规划" ? "研学活动" : input.activityType];
   const items: AgendaItem[] = [
@@ -42,8 +44,9 @@ export function activityAgenda(input: ActivityInput, result: DecisionResult, dat
       cursor = end;
     }
   }
-  items.push({ time: `${time(date, start + duration)}–${time(date, start + duration + 15)}`, title: "收尾与离场清点", action: "回收物资、清理场地、核对离场人数与接送安排；登记异常、完成交接并汇总复盘。", owner: "总协调 / 秩序岗" });
-  return items;
+  if(start+duration+15<=periodEnd*60)items.push({ time: `${time(date, start + duration)}–${time(date, start + duration + 15)}`, title: "收尾与离场清点", action: "回收物资、清理场地、核对离场人数与接送安排；登记异常、完成交接并汇总复盘。", owner: "总协调 / 秩序岗" });
+  else {items.at(-1)!.title+="与离场清点";items.at(-1)!.action+="；在本时段内完成收尾及人数清点。";}
+  return items.filter(item=>{const [from,to]=item.time.split("–").map(value=>Number(value.slice(0,2))*60+Number(value.slice(3,5)));return from>=periodStart*60&&to<=periodEnd*60;});
 }
 
 export function activityDates(input: ActivityInput) {

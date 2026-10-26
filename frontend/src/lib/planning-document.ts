@@ -1,5 +1,5 @@
 import type { ActivityInput, DecisionResult, TourismRoute, TourismStop } from "./types";
-import { activityAgenda, activityDates, type AgendaItem } from "./activity-agenda";
+import { activityAgenda, activityDates, activityWindow, type AgendaItem } from "./activity-agenda";
 import { routeDiagram, documentImage } from "./planning-visuals";
 import { cityById } from "./cities";
 import { planningReferences, type PlanningReference } from "./planning-references";
@@ -22,9 +22,9 @@ export function buildPlanningDocument(input: ActivityInput, result: DecisionResu
     });
     sections.push({ title: "出行准备与调整", paragraphs: [...route.notes, "出发前一日与出发前两小时复核天气、预约和交通；遇到明显不利的天气，将户外站点换为已核实开放的室内场馆，并预留交通缓冲。", "携带饮水、雨具、充电设备和个人必需用品；团队出行应指定联络人，约定集合与失联处理方式。"] });
   } else if (result) {
-    const primaryAgenda = activityAgenda(input, result, result.bestSlot.date || input.date);
-    const start = primaryAgenda[2].time.split("–")[0];
-    const end = primaryAgenda.at(-1)!.time.split("–")[0];
+    const window=activityWindow(input,result,result.bestSlot.date||input.date);
+    const start = window?`${String(window.hour).padStart(2,"0")}:00`:"待重新分析";
+    const end = window?`${String(window.hour+input.duration).padStart(2,"0")}:00`:"待重新分析";
     sections.push(
       { title: "一、活动目标与结论", paragraphs: [result.recommendation, result.summary, `本次规划面向${input.audienceDescription || input.group}，参与规模 ${input.participants} 人，活动强度为${input.intensity}，单次时长 ${input.duration} 小时。综合适宜度为 ${result.overallScore} 分，等级为“${result.overallLevel}”。`] },
       { title: "二、时间与组织安排", paragraphs: [`活动区域：${city}。执行日期：${result.bestSlot.date || input.date}，建议执行时段：${start}–${end}（遵守用户确认的时段偏好；多日安排见逐日执行表）。`, "活动前 60 分钟，由负责人复查天气与空气质量、场地通道、集合区域及应急物资；活动前 30 分钟完成参与者签到、分组和岗位确认。", `${start} 开始活动。按年龄与项目分批组织，在各阶段安排补水、休息与状态观察；${end} 结束并完成人员确认、场地清理和异常登记。`, "岗位分工建议：设置总协调、签到与秩序、医疗联络、物资补水和环境观察岗位。具体人员与联系方式由组织方在执行前补齐。"] },

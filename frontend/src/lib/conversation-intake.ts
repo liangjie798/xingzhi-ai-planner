@@ -22,6 +22,8 @@ export function addDays(date: string, days: number) {
 /** Parse a date phrase relative to Beijing today. This is shared by planning and weather follow-ups. */
 export function relativeDateFromText(text: string, today: string): string | undefined {
   const compact = text.replace(/\s+/g, "");
+  const range=compact.match(/(大后天|后天|明天|今天|今日|下周)(?:到|至|—|~)(大后天|后天|明天|今天|今日|下周)/);
+  if(range)return relativeDateFromText(range[1],today);
   // Parse numeric offsets before day words: "10天后天气" contains "后天"
   // across the offset/weather boundary, but means ten days rather than two.
   const weeks = compact.match(/(?:再过|过|往后)?([一二两三四五六七八九十\d]+)个?(?:星期|周)(?:以|之)?后/);
@@ -125,6 +127,8 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   const calendar = calendarDateFromText(text,today);
   // A trailing calendar day in "明天到30号" is the range end, not a new start.
   if(calendar.date && (!patch.date || !relativeDateFromText(text,today))) patch.date=calendar.date;
+  const relativeRange=text.match(/(大后天|后天|明天|今天|今日|下周)\s*(?:到|至|—|~)\s*(大后天|后天|明天|今天|今日|下周)/);
+  if(relativeRange){patch.date=relativeDateFromText(relativeRange[1],today);patch.endDate=relativeDateFromText(relativeRange[2],today);}
   if (dates[1]) patch.endDate = dates[1];
   else {
     const rangeEnd = text.match(/(?:到|至|直到|截至)\s*(?:(\d{1,2})月)?(\d{1,2})[日号]/);
@@ -147,6 +151,12 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   else if (/早上|上午/.test(text)) { patch.allowedStartHour = 6; patch.allowedEndHour = 12; }
   else if (/晚上/.test(text)) { patch.allowedStartHour = 18; patch.allowedEndHour = 21; }
   if (/不限时段|全天|取消.*(?:时段|下午|上午).*限制/.test(text)) { patch.allowedStartHour = 6; patch.allowedEndHour = 21; }
+  const timeRange=text.match(/(?:(上午|早上|下午|晚上|中午)\s*)?([零一二两三四五六七八九十\d]+)(?:点|时|:00|：00)\s*(?:到|至|[-—~])\s*(?:(上午|早上|下午|晚上|中午)\s*)?([零一二两三四五六七八九十\d]+)(?:点|时|:00|：00)/);
+  if(timeRange){
+    const period=timeRange[1] || (/(?:下午|晚上)/.test(text)?text.match(/下午|晚上/)?.[0]:undefined);
+    const convert=(value:string,label?:string)=>number(value)+(/下午|晚上/.test(label || "")&&number(value)<12?12:0);
+    patch.allowedStartHour=convert(timeRange[2],period);patch.allowedEndHour=convert(timeRange[4],timeRange[3]||period);patch.startHour=patch.allowedStartHour;
+  }
   const common = text.match(/北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|香港|澳门|重庆|天津/);
   const locationText=text.replace(/^(?:请|帮我|帮忙|规划|分析|查询|我想去|去|在|到|目的地[是为：:]?|城市[是为：:]?)+/,"");
   const fullAdministrative=locationText.match(/^([\u4e00-\u9fa5]{2,18}?[省市区县旗])(?=明天|后天|今天|未来|出发|旅游|旅行|[一二两三四五六七八九十\d]+[日天号个名人]|[，。；\s]|$)/);
@@ -154,7 +164,7 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   const embedded = text.match(/(?:规划|分析|查询|去|到|在)\s*([\u4e00-\u9fa5]{2,8}?)(?=明天|后天|今天|未来|[一二两三四五六七\d]+[天日]|旅游|旅行|的|[，。]|$)/);
   if (named) patch.cityName = named[1];
   else if (common) patch.cityName = common[0] + (/香港|澳门/.test(common[0]) ? "特别行政区" : "市");
-  else if (embedded && !/今天|明天|后天|未来|[一二两三四五六七\d]+[天日]|路线|活动|运动会/.test(embedded[1])) patch.cityName = embedded[1];
+  else if (embedded && !/今天|明天|后天|未来|[一二两三四五六七\d]+[天日]|路线|活动|运动会|比较|对比|一起|图表|范围|时间|条件/.test(embedded[1])) patch.cityName = embedded[1];
   // A bare place name is a valid answer to the destination question.
   else if (!known.cityName && !Object.keys(cleanIntake(patch)).length && /^[\u4e00-\u9fa5]{2,6}$/.test(text) && !/规划|旅游|路线|随便|安排|明天|后天|今天|出发|默认|推荐/.test(text)) patch.cityName = text;
   const journey=journeyLocations(text);

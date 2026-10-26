@@ -1,9 +1,11 @@
 import type { PoiSpot } from "./poi";
 import type { TourismHourSnapshot } from "./tourism";
+import { executionFloor } from "./beijing-time.ts";
 
 export interface ScheduleOptions {
   dates:string[]; hours:TourismHourSnapshot[]; allowedStartHour?:number; allowedEndHour?:number;
   group?:string; intensity?:string; audienceDescription?:string;
+  now?:Date;
   transfers?:Record<string,{minutes:number;distanceKm:number;source:"amap-driving"|"estimate"}>;
 }
 export interface ScheduledVisit {
@@ -65,10 +67,11 @@ export function scheduleTourism(candidates:PoiSpot[],options:ScheduleOptions) {
     .filter(poi=>!isFood(poi)||!/茶香体验|咖啡|奶茶|甜品|茶园|茶馆/.test(poi.name)||/餐|本地菜|饭|酒家/.test(poi.name));
   const used=new Set<string>();
   const visits:ScheduledVisit[]=[];const warnings:string[]=[];
-  const dayStart=Math.max(8,options.allowedStartHour ?? 9)*60;
+  const baseStart=Math.max(8,options.allowedStartHour ?? 9)*60;
   const dayEnd=Math.min(21,options.allowedEndHour ?? 20)*60;
   const gentle=options.group==="老年人" || options.group==="儿童青少年" || options.intensity==="低强度";
   options.dates.forEach((date,dayIndex)=>{
+    const dayStart=Math.max(baseStart,Math.ceil(executionFloor(date,30,options.now)/15)*15);
     let cursor=dayStart;let last:PoiSpot|undefined;
     let sightCount=0;const meals=new Set<string>();
     for(let count=0;count<5;count++) {
@@ -118,7 +121,7 @@ export function validateSchedule(visits:ScheduledVisit[],options:ScheduleOptions
     if(names.has(visit.poi.name)) errors.push(`${visit.poi.name}重复`);names.add(visit.poi.name);
     if(!options.dates.includes(visit.date)) errors.push(`${visit.poi.name}日期无效`);
     const start=minute(visit.time),end=minute(visit.endTime);
-    if(end-start!==visit.visitMinutes+visit.queueMinutes||start<(options.allowedStartHour??8)*60||end>(options.allowedEndHour??21)*60) errors.push(`${visit.poi.name}完整停留超出时段`);
+    if(end-start!==visit.visitMinutes+visit.queueMinutes||start<Math.max((options.allowedStartHour??8)*60,executionFloor(visit.date,30,options.now))||end>(options.allowedEndHour??21)*60) errors.push(`${visit.poi.name}完整停留超出可执行时段`);
     if(!visitWindows(visit.poi,visit.date).windows.some(([a,b])=>start>=a&&end<=b)) errors.push(`${visit.poi.name}不符合营业时段或保守假设`);
     const previous=visits.filter(other=>other.date===visit.date&&other.time<visit.time).at(-1);
     if(previous&&start<minute(previous.endTime)+visit.travelMinutes+visit.restMinutes) errors.push(`${visit.poi.name}交通/休息衔接不足`);
