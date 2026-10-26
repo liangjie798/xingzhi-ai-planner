@@ -38,6 +38,21 @@ export function relativeDateFromText(text: string, today: string): string | unde
 function validDate(value: unknown): value is string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 }
+
+/** A day without a month means this Beijing calendar month, never a saved query date. */
+export function calendarDateFromText(text:string, today:string): { matched:boolean; date?:string; error?:string } {
+  const token = "([零〇一二两三四五六七八九十\\d]+)";
+  const full = text.match(/(20\d{2})[-/年](\d{1,2})[-/月](\d{1,2})[日号]?/);
+  const monthDay = text.match(new RegExp(`(?:(今年|明年))?${token}月${token}[日号]?`));
+  const bare = text.match(new RegExp(`(?:(本月|这个月|下个月|下月))?${token}[日号]`));
+  if (!full && !monthDay && !bare) return {matched:false};
+  let year=Number(today.slice(0,4)), month=Number(today.slice(5,7)), day:number;
+  if(full) { year=Number(full[1]);month=Number(full[2]);day=Number(full[3]); }
+  else if(monthDay) { year+=monthDay[1] === "明年" ? 1 : 0;month=number(monthDay[2]);day=number(monthDay[3]); }
+  else { day=number(bare![2]);if(/下/.test(bare![1] || "")){month++;if(month>12){month=1;year++;}} }
+  const date=`${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+  return validDate(date) ? {matched:true,date} : {matched:true,error:`${year}年${month}月没有${day}号，请提供有效日期。`};
+}
 export function cleanIntake(raw: IntakePatch = {}): IntakePatch {
   const out: IntakePatch = {};
   if (Array.isArray(raw.referenceUrls)) out.referenceUrls = raw.referenceUrls.filter((url) => typeof url === "string" && /^https:\/\/(?:[a-z0-9-]+\.)*(?:douyin|xiaohongshu)\.com\//i.test(url)).slice(0, 4);
@@ -83,6 +98,9 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
     const monthDay = text.match(/(\d{1,2})月(\d{1,2})[日号]?/);
     if (monthDay) patch.date = `${today.slice(0, 4)}-${monthDay[1].padStart(2, "0")}-${monthDay[2].padStart(2, "0")}`;
   }
+  const calendar = calendarDateFromText(text,today);
+  // A trailing calendar day in "明天到30号" is the range end, not a new start.
+  if(calendar.date && (!patch.date || !relativeDateFromText(text,today))) patch.date=calendar.date;
   if (dates[1]) patch.endDate = dates[1];
   else {
     const rangeEnd = text.match(/(?:到|至|直到|截至)\s*(?:(\d{1,2})月)?(\d{1,2})[日号]/);

@@ -1,8 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractIntake, completeIntake, relativeDateFromText, isPlanRevision, intakeChoices } from "../src/lib/conversation-intake.ts";
+import { extractIntake, completeIntake, relativeDateFromText, calendarDateFromText, isPlanRevision, intakeChoices } from "../src/lib/conversation-intake.ts";
 
 const today = "2026-10-23";
+test("calendar day and week queries replace old dates and validate the real calendar",()=>{
+  const known={cityName:"西安市",date:"2026-10-27"};
+  for(const phrase of ["28号气温","二十八号的气温","28日呢"])
+    assert.equal(extractIntake(phrase,"2026-10-26",known).date,"2026-10-28",phrase);
+  assert.equal(extractIntake("一周后的气温","2026-10-26",known).date,"2026-11-02");
+  assert.equal(extractIntake("下月5号气温","2026-10-26",known).date,"2026-11-05");
+  assert.equal(extractIntake("下个月5号气温","2026-12-26",known).date,"2027-01-05");
+  assert.equal(extractIntake("明年二月二十八号气温","2026-10-26",known).date,"2027-02-28");
+  assert.match(calendarDateFromText("2月30号气温","2026-10-26").error,/没有30号/);
+  assert.match(calendarDateFromText("32号气温","2026-10-26").error,/没有32号/);
+  assert.equal(calendarDateFromText("2月29号气温","2028-02-20").date,"2028-02-29");
+});
 test("reported study activity conversation accepts inverted intensity and delegation without repeating questions", () => {
   const day = "2026-10-25";
   let state = { cityName: "西安市" };

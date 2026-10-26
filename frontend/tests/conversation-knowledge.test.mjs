@@ -36,6 +36,11 @@ test("source questions after a forecast never become location queries", () => {
 });
 
 test("weather summaries use actual observations and never fabricate absent periods", () => {
+  for(const phrase of ["28号气温","二十八号的气温","一周后的气温","下月5号气温","明年二月二十八号气温"]) {
+    assert.equal(classifyConversation(phrase,true),"weather",phrase);
+    assert.equal(weatherDestination(phrase,undefined,"西安市"),"西安市",phrase);
+  }
+  for(const phrase of ["28号呢","二十八号呢","下个月5号呢"]) assert.equal(isWeatherFollowup(phrase,"天气预报（北京时间）"),true,phrase);
   for(const phrase of ["十天后的天气","十天以后天气","十天之后天气","再过十天天气","10天后天气"]) assert.equal(weatherDestination(phrase,undefined,"西安市"),"西安市",phrase);
   assert.equal(weatherDestination("十天后成都天气",undefined,"西安市"),"成都");
   assert.equal(isWeatherFollowup("十天以后呢？","天气预报（北京时间）"),true);

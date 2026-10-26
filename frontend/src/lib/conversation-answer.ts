@@ -1,4 +1,4 @@
-import { addDays, extractIntake, type IntakePatch } from "./conversation-intake";
+import { addDays, calendarDateFromText, extractIntake, type IntakePatch } from "./conversation-intake";
 import { retrieveKnowledge } from "./conversation-knowledge";
 import { searchKnowledge } from "./social-research";
 import { callLlm } from "./llm-server";
@@ -11,6 +11,8 @@ export interface AnswerSource { title: string; url?: string; detail?: string }
 export interface DirectAnswer { reply: string; sources: AnswerSource[]; kind: string; weatherContext?: { cityName?: string; date?: string } }
 
 export async function answerWeather(request: Request, message: string, today: string, known: IntakePatch): Promise<DirectAnswer> {
+  const calendar=calendarDateFromText(message,today);
+  if(calendar.error) return {reply:calendar.error,sources:[],kind:"需要确认日期",weatherContext:{cityName:known.cityName,date:known.date}};
   const facts = extractIntake(message, today, known);
   const city = weatherDestination(message, facts.cityName, known.cityName);
   const date = facts.date || known.date || today;
