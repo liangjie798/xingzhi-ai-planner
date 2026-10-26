@@ -11,6 +11,7 @@ export function JourneyComparison({input,onConditions,expanded,onToggle,answer}:
   const sequence=useRef(0);
   const matching=(value:TicketSearchResult|null)=>value?.origin===origin&&value?.destination===destination&&value?.date===date ? value : null;
   const shown=[matching(result),matching(answer)].filter((value):value is TicketSearchResult=>Boolean(value)).sort((a,b)=>b.checkedAt.localeCompare(a.checkedAt))[0];
+  const time=(value?:string)=>value?.match(/(?:^|[T ])(\d{2}:\d{2})/)?.[1] || "";
   async function search(){
     const id=++sequence.current;
     setBusy(true);setError("");setResult(null);
@@ -31,7 +32,7 @@ export function JourneyComparison({input,onConditions,expanded,onToggle,answer}:
       <button type="submit" disabled={busy||!origin.trim()||!destination.trim()||!date}>{busy?"正在查价…":"查询低价出行"}</button>
     </form>
     {error&&<p role="alert">{error}</p>}
-    {shown&&<div className="journey-result" aria-live="polite"><p style={{whiteSpace:"pre-line"}}>{shown.reply}</p>{shown.options.length>0&&<><small>查询时间：{new Date(shown.checkedAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai"})}（北京时间）</small><div className="journey-ticket-list">{shown.options.map((item,index)=><article key={index}><strong>{item.mode} · ¥{item.price}/人</strong><span>{item.service} · {item.seat}</span></article>)}</div></>}</div>}
+    {shown&&<div className="journey-result" aria-live="polite"><p style={{whiteSpace:"pre-line"}}>{shown.reply}</p>{shown.options.length>0&&<><small>查询时间：{new Date(shown.checkedAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai"})}（北京时间，同线路结果最多复用1分钟）</small><div className="journey-ticket-list">{shown.options.map((item,index)=><article key={index}><strong>{item.mode} · ¥{item.price}/人</strong><span>{item.service} · {item.seat}{item.originStation?` · ${item.originStation} → ${item.destinationStation || destination}`:""}{item.departure?` · ${time(item.departure)}–${time(item.arrival)}`:""}{item.durationMinutes?` · ${Math.floor(item.durationMinutes/60)}小时${item.durationMinutes%60}分钟`:""}</span></article>)}</div></>}</div>}
     <nav className="journey-sources" aria-label="票价查询来源"><a href="https://www.12306.cn/index/" target="_blank" rel="noopener noreferrer">12306购票 ↗</a><a href="https://www.variflight.com/" target="_blank" rel="noopener noreferrer">飞常准 ↗</a></nav>
   </details>;
 }

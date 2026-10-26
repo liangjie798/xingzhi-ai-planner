@@ -6,6 +6,9 @@ export interface TicketOption {
   price: number;
   departure?: string;
   arrival?: string;
+  originStation?: string;
+  destinationStation?: string;
+  durationMinutes?: number;
 }
 export interface TicketSearchResult {
   origin: string;

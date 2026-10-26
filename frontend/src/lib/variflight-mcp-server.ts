@@ -1,6 +1,6 @@
 // Server-only transport: the application key never reaches browser code.
 const endpoint = "https://c-gw.variflight.com/chat_message/mcp/api";
-const readOnlyTools = new Set(["searchAirport", "getRouteFlightTickets", "domesticDirectTrainSearch", "trainDetail"]);
+const readOnlyTools = new Set(["searchAirport", "getRouteFlightTickets", "getFlightTicketPrice", "domesticDirectTrainSearch", "trainDetail"]);
 type ObjectValue = Record<string, unknown>;
 const object = (value: unknown): value is ObjectValue => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
@@ -19,6 +19,7 @@ export class VariflightClient {
   private protocol = "2025-03-26";
   private key: string;
   private signal: AbortSignal;
+  private flightTool = "";
   constructor(key: string, signal: AbortSignal) { this.key = key; this.signal = signal; }
   private async send(method: string, params: unknown, notification = false): Promise<unknown> {
     const response = await fetch(endpoint, {
@@ -39,6 +40,19 @@ export class VariflightClient {
     const result = await this.send("initialize", { protocolVersion: this.protocol, capabilities: {}, clientInfo: { name: "xingzhi-ticket-search", version: "1.0.0" } });
     if (object(result) && typeof result.protocolVersion === "string") this.protocol = result.protocolVersion;
     await this.send("notifications/initialized", {}, true);
+    // Deployments expose different names. Accept only a tool whose schema requires SQL,
+    // never the similarly named historical price-calendar/forecast tool.
+    const catalog = await this.send("tools/list", {});
+    if (object(catalog) && Array.isArray(catalog.tools)) {
+      for (const name of ["getRouteFlightTickets", "getFlightTicketPrice"]) {
+        const tool = catalog.tools.find(tool => object(tool) && tool.name === name);
+        if (object(tool) && object(tool.inputSchema) && Array.isArray(tool.inputSchema.required) && tool.inputSchema.required.includes("sql") && object(tool.inputSchema.properties) && object(tool.inputSchema.properties.sql) && tool.inputSchema.properties.sql.type === "string") { this.flightTool = name; break; }
+      }
+    }
+  }
+  async flightSearch(sql: string) {
+    if (!this.flightTool) throw new Error("live-flight-tool-unavailable");
+    return this.call(this.flightTool, { sql });
   }
   async call(name: string, args: ObjectValue) {
     if (!readOnlyTools.has(name)) throw new Error("unsupported-tool");

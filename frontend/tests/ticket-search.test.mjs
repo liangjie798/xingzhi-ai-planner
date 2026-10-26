@@ -7,6 +7,7 @@ import { isTransportQuestion,journeyLocations } from "../src/lib/journey.ts";
 test("cheap journey requests enter transport and preserve their direction",()=>{
   for(const phrase of ["西安到榆林怎么出发便宜","西安到榆林怎么走便宜","查询明天的机票","高铁和航班哪个便宜"])assert.equal(isTransportQuestion(phrase),true,phrase);
   assert.deepEqual(journeyLocations("西安到榆林怎么出发便宜"),{originCity:"西安",destination:"榆林"});
+  for(const prefix of ["明天","一周后","11月1日","2026-11-01"]){assert.deepEqual(journeyLocations(`${prefix}西安到榆林怎么走便宜`),{originCity:"西安",destination:"榆林"});}
   assert.equal(isTransportQuestion("明天西安气温"),false);
 });
 test("MCP SSE and embedded table rows are parsed without treating prose as price",()=>{
@@ -19,12 +20,16 @@ test("MCP SSE and embedded table rows are parsed without treating prose as price
 });
 test("airport ambiguity, SQL injection, unavailable seats and stale train dates fail closed",()=>{
   assert.equal(cityCode([{cityName:"西安",cityCode:"SIA"}],"西安市"),"SIA");
+  assert.equal(cityCode({kind:"collection",items:[{type:"city",code:"SIA",name:"西安",cityCode:"",cityName:""},{type:"airport",code:"XIY",name:"西安咸阳"}]},"西安"),"SIA");
   assert.equal(cityCode([{cityName:"西安",cityCode:"SIA"},{cityName:"西安",cityCode:"XIY"}],"西安"),undefined);
   assert.throws(()=>flightSql("SIA';DROP","UYN","2026-10-27"));
   assert.equal(trainOptions({seatName:"硬座",price:80,remaining:0},"K1").length,0);
   assert.equal(trainOptions({seatName:"硬座",price:80},"K1").length,0);
   assert.equal(trainOptions({seatName:"硬座",price:80,remaining:"候补"},"K1").length,0);
   assert.equal(trainOptions({seatName:"硬座",price:"80.50",remaining:"有"},"K1")[0].price,80.5);
+  const live=trainOptions({kind:"entity",item:{trainNumber:"7006",fromStation:"西安",toStation:"榆林",fromTime:"08:12",toTime:"17:53",useTime:581,seatLists:[{seatName:"硬座",seatPrice:6400,ticketLeft:195},{seatName:"硬卧",seatPrice:13900,ticketLeft:0}]}},"7006");
+  assert.equal(live.length,1);assert.equal(live[0].price,64);assert.equal(live[0].durationMinutes,581);assert.equal(live[0].originStation,"西安");
+  assert.equal(trainOptions({seatName:"商务座",seatPrice:150000,ticketLeft:3},"G1")[0].price,1500);
   assert.equal(trainCandidates({trainNumber:"K1",depDate:"2026-10-26",depStationCode:"XAY",arrStationCode:"ALY"},"2026-10-27").length,0);
   assert.match(summarizeTickets([{mode:"火车",price:80,service:"K1",seat:"硬座"}],[]),/尚不能判断/);
 });
@@ -46,11 +51,12 @@ test("authorized pipeline uses only read-only MCP tools and preserves quotes in 
     const body=JSON.parse(options.body);calls.push(body);
     if(body.method==="notifications/initialized")return new Response(null,{status:202});
     let result={protocolVersion:"2025-03-26"};
+    if(body.method==="tools/list")result={tools:[{name:"getFlightTicketPrice",inputSchema:{required:["sql"],properties:{sql:{type:"string"}}}}]};
     if(body.method==="tools/call"){
       const {name,arguments:args}=body.params;
-      assert.ok(["searchAirport","getRouteFlightTickets","domesticDirectTrainSearch","trainDetail"].includes(name));
+      assert.ok(["searchAirport","getFlightTicketPrice","domesticDirectTrainSearch","trainDetail"].includes(name));
       if(name==="searchAirport")result={structuredContent:{cityName:args.name,cityCode:args.name==="西安"?"SIA":"UYN"}};
-      if(name==="getRouteFlightTickets")result={content:[{type:"resource",resource:{mimeType:"application/json",text:JSON.stringify({columns:["option_id","adult_total"],rows:[["flight-option",350]]})}}]};
+      if(name==="getFlightTicketPrice")result={content:[{type:"resource",resource:{mimeType:"application/json",text:JSON.stringify({columns:["option_id","adult_total"],rows:[["flight-option",350]]})}}]};
       if(name==="domesticDirectTrainSearch")result={structuredContent:{trains:[{trainNumber:"K1",depDate:args.depDate,depStationCode:"XAY",arrStationCode:"ALY"}]}};
       if(name==="trainDetail")result={structuredContent:{seats:[{seatName:"硬座",price:80,remaining:6},{seatName:"无座",price:60,remaining:0}]}};
     }
@@ -60,5 +66,6 @@ test("authorized pipeline uses only read-only MCP tools and preserves quotes in 
     const result=await searchTickets("西安","榆林","2099-01-01");
     assert.equal(result.status,"available");assert.equal(result.options.length,2);assert.equal(result.options[0].price,80);assert.match(result.reply,/火车 K1/);assert.match(result.reply,/350/);
     assert.equal(calls.filter(row=>row.params?.name==="trainDetail").length,1);
+    const before=calls.length;const repeated=await searchTickets("西安","榆林","2099-01-01");assert.equal(calls.length,before);assert.equal(repeated.checkedAt,result.checkedAt);
   }finally{global.fetch=fetcher;if(key===undefined)delete process.env.VARIFLIGHT_MCP_KEY;else process.env.VARIFLIGHT_MCP_KEY=key;}
 });
