@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { officialPlaceEvidence, matchedSearchEvidence, mergePlaceEvidence } from "@/lib/place-evidence";
 import { searchKnowledge } from "@/lib/social-research";
+import { isRecord } from "@/lib/request-validation";
 
 export async function POST(request:Request) {
   let body:{city?:unknown;places?:unknown};
   try { body = await request.json(); } catch { return NextResponse.json({detail:"请求格式不正确"},{status:400}); }
-  if (typeof body.city !== "string" || !body.city.trim() || body.city.length > 80 || !Array.isArray(body.places) || body.places.length > 40 || body.places.some(place=>typeof place !== "string" || !place.trim() || place.length>100)) return NextResponse.json({detail:"城市或地点参数无效"},{status:400});
+  if (!isRecord(body) || typeof body.city !== "string" || !body.city.trim() || body.city.length > 80 || !Array.isArray(body.places) || body.places.length > 40 || body.places.some(place=>typeof place !== "string" || !place.trim() || place.length>100)) return NextResponse.json({detail:"城市或地点参数无效"},{status:400});
   const city = body.city.trim();
   const places = [...new Set(body.places as string[])];
   const started = performance.now();

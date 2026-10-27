@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { callLlm } from "@/lib/llm-server";
 import { resolveAccountModelConfig } from "@/lib/account-model-config-server";
+import { isRecord } from "@/lib/request-validation";
 
 interface LlmRequestBody {
   system?: string;
@@ -18,12 +19,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ detail: "请求体不是合法 JSON" }, { status: 400 });
   }
 
-  const prompt = body.prompt?.trim();
+  if (!isRecord(body) || typeof body.prompt !== "string" || body.system !== undefined && typeof body.system !== "string") return NextResponse.json({ detail: "prompt 必须为文本，请求体必须为 JSON 对象" }, { status: 400 });
+  const prompt = body.prompt.trim();
   if (!prompt) {
     return NextResponse.json({ detail: "缺少 prompt 参数" }, { status: 400 });
   }
   if (prompt.length > 12_000) return NextResponse.json({ detail: "prompt 过长" }, { status: 413 });
-  if (body.imageDataUrl && (!/^data:image\/(jpeg|png|webp);base64,/i.test(body.imageDataUrl) || body.imageDataUrl.length > 5_500_000))
+  if (body.imageDataUrl !== undefined && (typeof body.imageDataUrl !== "string" || !/^data:image\/(jpeg|png|webp);base64,/i.test(body.imageDataUrl) || body.imageDataUrl.length > 5_500_000))
     return NextResponse.json({ detail: "图片格式或大小不符合要求" }, { status: 413 });
 
   try {

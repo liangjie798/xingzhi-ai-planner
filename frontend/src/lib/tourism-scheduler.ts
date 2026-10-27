@@ -31,7 +31,12 @@ const indoors=(poi:PoiSpot)=>/博物|科技馆|图书馆|美术馆|展览馆|纪
 const evening=(poi:PoiSpot)=>/步行街|不夜城|夜市|历史街区|历史文化特色街区|什刹海|外滩|桥西历史街区/.test(poi.name);
 const placeCore=(name:string)=>name.replace(/[·（）()\s]/g,"").replace(/历史|文化|特色|南馆|北馆|东馆|西馆|国家|风景名胜|风景区/g,"");
 export function sameTourismPlace(a:PoiSpot,b:PoiSpot) {
+  if(a.poiId && b.poiId)return a.poiId===b.poiId;
   if(a.name===b.name)return true;
+  // Branch labels differ across catalog and POI feeds. Only collapse matching
+  // base names at the same site, never a chain's distant branches or neighbours.
+  const base=(name:string)=>name.replace(/[（(][^）)]*[）)]/g,"").replace(/[·\s]/g,"");
+  if(base(a.name)===base(b.name)&&distanceKm(a,b)<0.08)return true;
   const x=placeCore(a.name),y=placeCore(b.name);
   return distanceKm(a,b)<0.8&&(x===y || Math.min(x.length,y.length)>=4&&(x.includes(y)||y.includes(x)));
 }
@@ -118,7 +123,7 @@ export function validateSchedule(visits:ScheduledVisit[],options:ScheduleOptions
   const errors:string[]=[];
   const names=new Set<string>();
   for(const visit of visits){
-    if(names.has(visit.poi.name)) errors.push(`${visit.poi.name}重复`);names.add(visit.poi.name);
+    if(names.has(visit.poi.name)||visits.slice(0,visits.indexOf(visit)).some(previous=>sameTourismPlace(previous.poi,visit.poi))) errors.push(`${visit.poi.name}重复`);names.add(visit.poi.name);
     if(!options.dates.includes(visit.date)) errors.push(`${visit.poi.name}日期无效`);
     const start=minute(visit.time),end=minute(visit.endTime);
     if(end-start!==visit.visitMinutes+visit.queueMinutes||start<Math.max((options.allowedStartHour??8)*60,executionFloor(visit.date,30,options.now))||end>(options.allowedEndHour??21)*60) errors.push(`${visit.poi.name}完整停留超出可执行时段`);

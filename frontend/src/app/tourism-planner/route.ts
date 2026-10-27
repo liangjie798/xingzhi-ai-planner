@@ -9,12 +9,13 @@ import { rankDestinationPlaces } from "@/lib/destination-knowledge";
 import { buildScheduledStops } from "@/lib/tourism-scheduled-route";
 import { matchedSearchEvidence, mergePlaceEvidence } from "@/lib/place-evidence";
 import { executionFloor } from "@/lib/beijing-time";
+import { isRecord } from "@/lib/request-validation";
 
 export const maxDuration = 60;
 type TourismRequestBody = TourismRequestPayload;
 interface LlmStopPlan { name?: string; time?: string; tip?: string; day?: number }
 interface LlmRoutePlan { summary?: string; bestHours?: string; stops?: LlmStopPlan[]; notes?: string[] }
-interface AmapPoi { name?: string; type?: string; location?: string; address?: string | string[]; photos?: Array<{ url?: string }>; business?:{opentime_today?:string} }
+interface AmapPoi { id?: string; name?: string; type?: string; location?: string; address?: string | string[]; photos?: Array<{ url?: string }>; business?:{opentime_today?:string} }
 
 
 function tripDates(start: string, end?: string): string[] {
@@ -55,7 +56,7 @@ async function livePois(body: TourismRequestBody): Promise<PoiSpot[]> {
         if (!poi.name || !Number.isFinite(longitude) || !Number.isFinite(latitude)) return null;
         const resolvedCategory = amapCategory(poi, category);
         return {
-          name: poi.name, longitude, latitude, category: resolvedCategory,
+          poiId: poi.id, name: poi.name, longitude, latitude, category: resolvedCategory,
           tag: resolvedCategory === "美食" ? "本地美食" : keyword.replace(city, ""),
           blurb: resolvedCategory === "美食" ? `高德城市限定检索到的${city}餐饮地点，建议结合营业时间与距离安排用餐。` : `高德城市限定检索到的${city}公共游览地点，建议结合天气与开放时间安排。`,
           address: typeof poi.address === "string" ? poi.address : undefined,
@@ -122,13 +123,14 @@ async function enrichStop(cityName: string, poi: PoiSpot, time: string, day: num
       const result=found?.name && (found.name.includes(poi.name)||poi.name.includes(found.name)||poi.searchKeyword&&found.name.includes(poi.searchKeyword)) ? found:undefined;
       const [lng, lat] = String(result?.location ?? "").split(",").map(Number);
       if (Number.isFinite(lng) && Number.isFinite(lat)) { longitude = lng; latitude = lat; }
+      if (result?.id) poi.poiId = result.id;
       address = typeof result?.address === "string" ? result.address : address;
       imageUrl = result?.photos?.find((photo) => typeof photo.url === "string")?.url?.replace(/^http:/, "https:") || imageUrl;
       if(result?.business?.opentime_today){poi.openingHours=result.business.opentime_today;poi.openingDate=new Date().toLocaleDateString("sv-SE",{timeZone:"Asia/Shanghai"});}
     } catch { /* 内置坐标与文字仍可保证路线可用 */ }
   }
   return {
-    name: poi.name, longitude, latitude, time, day, date, tip: tip?.trim() || poi.blurb, tag: poi.tag,
+    poiId: poi.poiId, name: poi.name, longitude, latitude, time, day, date, tip: tip?.trim() || poi.blurb, tag: poi.tag,
     category: poiCategory(poi), address, imageUrl,
     articleTitle: poi.sourceTitle || `${poi.name}游玩提示`, articleUrl: poi.sourceUrl,
     links: platformLinks(cityName, poi),openingHours:poi.openingHours,
@@ -185,7 +187,8 @@ export async function POST(request: Request) {
   try { body = await request.json() as TourismRequestBody; }
   catch { return NextResponse.json({ detail: "请求体不是合法 JSON" }, { status: 400 }); }
   const validDate=(value:unknown):value is string=>typeof value==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value;
-  if (typeof body.cityName!=="string" || !body.cityName.trim() || body.cityName.length>80 || !validDate(body.date) || body.endDate&&!validDate(body.endDate) || body.endDate&&(body.endDate<body.date || Date.parse(body.endDate)-Date.parse(body.date)>6*86400000) || !Array.isArray(body.hours)||body.hours.length>168||body.hours.some(hour=>!validDate(hour.date)||!Number.isInteger(hour.hour)||hour.hour<0||hour.hour>23||![hour.temperature,hour.humidity,hour.rainProbability,hour.aqi,hour.heatRisk].every(Number.isFinite))) return NextResponse.json({ detail: "城市、日期范围或逐小时数据无效（最多7天）" }, { status: 400 });
+  if (!isRecord(body) || typeof body.cityName!=="string" || !body.cityName.trim() || body.cityName.length>80 || !validDate(body.date) || body.endDate!==undefined&&!validDate(body.endDate) || body.endDate&&(body.endDate<body.date || Date.parse(body.endDate)-Date.parse(body.date)>6*86400000) || !Array.isArray(body.hours)||body.hours.length>168||body.hours.some(hour=>!isRecord(hour)||!validDate(hour.date)||!Number.isInteger(hour.hour)||hour.hour<0||hour.hour>23||![hour.temperature,hour.humidity,hour.rainProbability,hour.aqi,hour.heatRisk].every(Number.isFinite))) return NextResponse.json({ detail: "城市、日期范围或逐小时数据无效（最多7天）" }, { status: 400 });
+  if ([body.group,body.intensity,body.audienceDescription,body.province].some(value=>value!==undefined&&typeof value!=="string") || body.referenceUrls!==undefined&&(!Array.isArray(body.referenceUrls)||body.referenceUrls.some(url=>typeof url!=="string")) || body.participants!==undefined&&(!Number.isInteger(body.participants)||body.participants<1)) return NextResponse.json({detail:"同行条件或参考链接格式不正确"},{status:400});
   if (body.allowedStartHour !== undefined && (!Number.isFinite(body.allowedStartHour) || body.allowedStartHour < 6 || body.allowedStartHour > 20) || body.allowedEndHour !== undefined && (!Number.isFinite(body.allowedEndHour) || body.allowedEndHour > 21 || body.allowedEndHour <= (body.allowedStartHour ?? 6))) return NextResponse.json({ detail: "允许时段无效" }, { status: 400 });
   body.hours = (body.hours || []).filter(hour => hour.hour >= (body.allowedStartHour ?? 6) && hour.hour < (body.allowedEndHour ?? 21));
 

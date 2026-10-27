@@ -9,11 +9,11 @@ import { comfortLevel, comfortScore } from "@/lib/comfort";
 import type { CityEnvironment, EnvironmentalForecastPoint } from "@/lib/types";
 import type { CitySearchResult } from "@/lib/types";
 import { searchChinaDistricts } from "@/lib/amap-lbs";
+import { beijingTime } from "@/lib/beijing-time";
+import { addDays } from "@/lib/conversation-intake";
 
 function dateString(offsetDays = 0) {
-  const date = new Date();
-  date.setDate(date.getDate() + offsetDays);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return addDays(beijingTime().date, offsetDays);
 }
 
 interface HourRow {

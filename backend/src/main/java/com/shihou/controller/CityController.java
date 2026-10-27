@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 
 @Traceable
 @RestController
@@ -59,7 +60,12 @@ public class CityController {
             @RequestParam(required = false, defaultValue = "") String adcode,
             @RequestParam(required = false) Double longitude,
             @RequestParam(required = false) Double latitude) {
-        LocalDate requestedDate = LocalDate.parse(date);
+        LocalDate requestedDate;
+        try {
+            requestedDate = LocalDate.parse(date);
+        } catch (DateTimeParseException exception) {
+            throw new IllegalArgumentException("日期无效，请使用存在的日历日期（YYYY-MM-DD）");
+        }
         CityEnvironmentEntity city = longitude == null || latitude == null
                 ? environmentService.getCity(cityId)
                 : environmentService.getCity(cityId, name, province, adcode, longitude, latitude);

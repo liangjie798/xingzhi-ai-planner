@@ -42,6 +42,7 @@ import { cityById, saveSelectedCity } from "@/lib/cities";
 import type { CityOption } from "@/lib/cities";
 import { addDays, intakeChoices, type IntakeState } from "@/lib/conversation-intake";
 import { beijingTime } from "@/lib/beijing-time";
+import { restoredWorkspaceView, type WorkspaceView } from "@/lib/workspace-view";
 import type { DestinationContext } from "@/lib/destination-knowledge";
 import { describeDestinationPreferences } from "@/lib/destination-knowledge";
 import { fetchTourismRoute } from "@/lib/tourism";
@@ -114,7 +115,6 @@ interface SessionSummary {id:string;title:string;updatedAt:string}
 interface ConversationSnapshot {version?:number;messages?:ChatMessage[];intake?:IntakeState;knowledgeContext?:DestinationContext;weatherContext?:{cityName?:string;date?:string};activeTopic?:string;input?:ActivityInput;result?:DecisionResult|null;route?:TourismRoute|null;compareDays?:boolean;workspaceData?:WorkspaceData;weatherComparison?:WeatherComparisonData|null;workspaceView?:WorkspaceView}
 const greeting:ChatMessage[]=[{role:"assistant",content:"你好，我是行知。可以查询天气、咨询知识，或一起规划旅行和活动。",kind:"从这里开始"}];
 const emptyConversation=():ConversationSnapshot=>({version:1,messages:greeting,intake:{known:{}},knowledgeContext:{},weatherContext:{},activeTopic:"",input:{...initialInput},result:null,route:null,compareDays:false,workspaceData:{...emptyWorkspace},weatherComparison:null,workspaceView:"studio"});
-type WorkspaceView = "studio" | "map" | "plan" | "execution" | "library" | "archive";
 interface ConversationResponse {
   ticketSearch?: TicketSearchResult;
   weatherContext?: { cityName?: string; date?: string };
@@ -179,9 +179,9 @@ export function DecisionDashboard() {
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
   const isTourism = input.activityType === "旅游规划";
 
-  const restoreConversation=useCallback((saved:ConversationSnapshot)=>{
+  const restoreConversation=useCallback((saved:ConversationSnapshot, honorUrl=false)=>{
     setChatMessages(saved.messages?.length?saved.messages:greeting);setIntake(saved.intake||{known:{}});setKnowledgeContext(saved.knowledgeContext||{});setWeatherContext(saved.weatherContext||{});setActiveTopic(saved.activeTopic||"");
-    setInput(saved.input||{...initialInput});setResult(saved.result||null);setRoute(saved.route||null);setCompareDays(Boolean(saved.compareDays));setWorkspaceData({...emptyWorkspace,...saved.workspaceData});setWeatherComparison(saved.weatherComparison||null);setWorkspaceView(saved.workspaceView||"studio");
+    setInput(saved.input||{...initialInput});setResult(saved.result||null);setRoute(saved.route||null);setCompareDays(Boolean(saved.compareDays));setWorkspaceData({...emptyWorkspace,...saved.workspaceData});setWeatherComparison(saved.weatherComparison||null);setWorkspaceView(restoredWorkspaceView(honorUrl?window.location.search:"",saved.workspaceView));
     setCity(null);setGrid([]);setRegionBounds(null);setSearchQuery("");setSearchResults([]);setError(null);setLiveTrace([]);setChatText("");setTicketSearch(null);setJourneyExpanded(false);setActivePanel("plan");
   },[]);
   const snapshot=useMemo<ConversationSnapshot>(()=>({version:1,messages:chatMessages,intake,knowledgeContext,weatherContext,activeTopic,input,result,route,compareDays,workspaceData,weatherComparison,workspaceView}),[chatMessages,intake,knowledgeContext,weatherContext,activeTopic,input,result,route,compareDays,workspaceData,weatherComparison,workspaceView]);
@@ -196,7 +196,7 @@ export function DecisionDashboard() {
       const id=list.find(item=>item.id===selected)?.id||list[0].id;
       const saved=await authenticatedRequest<ConversationSnapshot>(`/api/v1/conversation-sessions/${id}`);
       if (!active) return;
-      setSessions(list);setSessionId(id);restoreConversation(saved);
+      setSessions(list);setSessionId(id);restoreConversation(saved,true);
       setMemoryStatus("已恢复独立对话 · 用户按账户保存，访客限当前登录会话");setMemoryReady(true);
     })().catch(()=>{if(active){setMemoryStatus("历史对话加载失败，请刷新重试；尚未覆盖原记录");setError("无法加载对话，请刷新后重试。");}});
     return () => { active = false; };
@@ -257,8 +257,7 @@ export function DecisionDashboard() {
 
   useEffect(() => {
     const readView = () => {
-      const value = new URLSearchParams(window.location.search).get("view");
-      setWorkspaceView(["map","plan","execution","library","archive"].includes(value || "") ? value as WorkspaceView : "studio");
+      setWorkspaceView(restoredWorkspaceView(window.location.search));
     };
     readView();
     window.addEventListener("popstate", readView);

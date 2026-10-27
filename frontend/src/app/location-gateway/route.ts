@@ -65,9 +65,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (action === "reverse") {
-      const longitude = Number(request.nextUrl.searchParams.get("longitude"));
-      const latitude = Number(request.nextUrl.searchParams.get("latitude"));
-      if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
+      const rawLongitude = request.nextUrl.searchParams.get("longitude");
+      const rawLatitude = request.nextUrl.searchParams.get("latitude");
+      const longitude = Number(rawLongitude);
+      const latitude = Number(rawLatitude);
+      if (!rawLongitude?.trim() || !rawLatitude?.trim() || !Number.isFinite(longitude) || !Number.isFinite(latitude) || longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) {
         return NextResponse.json({ detail: "坐标无效" }, { status: 400 });
       }
       const body = await getAmap("/geocode/regeo", new URLSearchParams({
@@ -76,8 +78,8 @@ export async function GET(request: NextRequest) {
         radius: "1000",
       })) as { regeocode?: { formatted_address?: string; addressComponent?: Record<string, string | string[]> } };
       const component = body.regeocode?.addressComponent;
-      if (!component) return NextResponse.json({ detail: "无法识别该坐标所属地区" }, { status: 404 });
       const scalar = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] || "" : value || "";
+      if (!component || !scalar(component.province) || !scalar(component.adcode)) return NextResponse.json({ detail: "无法识别该坐标所属地区" }, { status: 404 });
       return NextResponse.json({
         name: body.regeocode?.formatted_address || "地图选点",
         longitude,

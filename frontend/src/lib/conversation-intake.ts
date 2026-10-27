@@ -91,7 +91,8 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   if(!audience&&/成人|成年|年轻人|普通人群/.test(text)) patch.audienceDescription="成年人";
   const budget=text.match(/(?:人均|每人|预算每人)\s*([一二两三四五六七八九十百千\d]+)\s*元?/);
   if(budget) patch.budgetPerPerson=number(budget[1]);
-  const equipment=text.match(/([一二两三四五六七八九十百千\d]+)\s*(?:个|套|副|件)(?:篮球|足球|球拍|器材|装备)/);
+  const equipment=text.match(/([一二两三四五六七八九十百千\d]+)\s*(?:个|套|副|件)(?:篮球|足球|球拍|器材|装备)/)
+    || text.match(/(?:篮球|足球|球拍|器材|装备)\s*(?:数量)?\s*(?:改成|改为|调整为|为|是|有|共|：|:)?\s*([一二两三四五六七八九十百千\d]+)\s*(?:个|套|副|件)/);
   if(equipment) patch.equipmentCount=number(equipment[1]);
   const team=text.match(/(?:每组|一组)\s*([一二两三四五六七八九十\d]+)\s*人/);
   if(team) patch.teamSize=number(team[1]);

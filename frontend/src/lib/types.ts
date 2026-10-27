@@ -168,6 +168,7 @@ export interface MapLegendInfo {
 }
 
 export interface TourismStop {
+  poiId?: string;
   endTime?: string;
   visitMinutes?: number;
   queueMinutes?: number;

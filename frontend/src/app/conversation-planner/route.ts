@@ -12,6 +12,7 @@ import { isTransportQuestion,journeyLocations } from "@/lib/journey";
 import { searchTickets, summarizeTickets } from "@/lib/ticket-search-server";
 import { weatherChartRequest, type WeatherChartSpec } from "@/lib/visualization-request";
 import { conversationInputError, isCourtesy, isModelQuestion } from "@/lib/conversation-validation";
+import { isRecord } from "@/lib/request-validation";
 
 export const maxDuration = 45;
 interface ConversationRequest {
@@ -29,7 +30,12 @@ export async function POST(request: Request) {
   let body: ConversationRequest;
   try { body = await request.json() as ConversationRequest; }
   catch { return NextResponse.json({ detail: "请求体不是合法 JSON" }, { status: 400 }); }
-  if (typeof body.message !== "string" || !body.message.trim()) return NextResponse.json({ detail: "请输入规划要求" }, { status: 400 });
+  if (!isRecord(body) || typeof body.message !== "string" || !body.message.trim()) return NextResponse.json({ detail: "请输入规划要求，请求体必须为 JSON 对象" }, { status: 400 });
+  if (body.intake !== undefined && (!isRecord(body.intake) || !isRecord(body.intake.known))
+    || body.weatherContext !== undefined && !isRecord(body.weatherContext)
+    || body.knowledgeContext !== undefined && !isRecord(body.knowledgeContext)
+    || body.history !== undefined && !Array.isArray(body.history)
+    || body.chartContext !== undefined && (!isRecord(body.chartContext) || !Array.isArray(body.chartContext.dates) || body.chartContext.dates.some(date => typeof date !== "string") || !Array.isArray(body.chartContext.metrics) || body.chartContext.metrics.some(metric => !["temperature", "rainProbability"].includes(metric)))) return NextResponse.json({detail:"对话上下文或图表参数格式不正确"},{status:400});
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
   let known = cleanIntake(body.intake?.known);
   const message = body.message.trim().slice(0, 4000);
