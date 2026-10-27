@@ -7,6 +7,8 @@ import { cities, cityById, readSelectedCity, saveSelectedCity } from "@/lib/citi
 import type { CityOption } from "@/lib/cities";
 import { comfortLevel, comfortScore } from "@/lib/comfort";
 import type { CityEnvironment, EnvironmentalForecastPoint } from "@/lib/types";
+import type { CitySearchResult } from "@/lib/types";
+import { searchChinaDistricts } from "@/lib/amap-lbs";
 
 function dateString(offsetDays = 0) {
   const date = new Date();
@@ -28,6 +30,21 @@ export default function HourlyPage() {
   const [hours, setHours] = useState<HourRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cityQuery, setCityQuery] = useState("");
+  const [cityMatches, setCityMatches] = useState<CitySearchResult[]>([]);
+  const [searchError, setSearchError] = useState("");
+  const [searchBusy, setSearchBusy] = useState(false);
+
+  async function searchCity() {
+    if (!cityQuery.trim()) return;
+    setSearchBusy(true); setSearchError(""); setCityMatches([]);
+    try {
+      const matches = await searchChinaDistricts(cityQuery.trim());
+      setCityMatches(matches);
+      if (!matches.length) setSearchError("未找到城市，请输入完整的省、市或区县名称。");
+    } catch (error) { setSearchError(error instanceof Error ? error.message : "城市查询失败"); }
+    finally { setSearchBusy(false); }
+  }
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -38,7 +55,7 @@ export default function HourlyPage() {
     });
   }, []);
 
-  const loadData = useCallback(async (targetCity: CityOption, targetDate: string) => {
+  const loadData = useCallback(async (targetCity: CityOption, targetDate: string, signal: AbortSignal) => {
     if (!targetDate) return;
     setIsLoading(true);
     setError(null);
@@ -52,7 +69,7 @@ export default function HourlyPage() {
         longitude: String(targetCity.center[0]),
         latitude: String(targetCity.center[1]),
       });
-      const response = await fetch(`/api/v1/cities/hourly?${params.toString()}`, { cache: "no-store" });
+      const response = await fetch(`/api/v1/cities/hourly?${params.toString()}`, { cache: "no-store", signal });
       if (!response.ok) {
         let detail = `服务返回 ${response.status}`;
         try {
@@ -62,6 +79,7 @@ export default function HourlyPage() {
         throw new Error(detail);
       }
       const data = await response.json() as { city: CityEnvironment; hours: EnvironmentalForecastPoint[] };
+      if (signal.aborted) return;
       setCitySnapshot(data.city);
       setHours(data.hours.map((point) => ({
         point,
@@ -69,16 +87,19 @@ export default function HourlyPage() {
         level: comfortLevel(comfortScore(point)),
       })));
     } catch (caught) {
+      if (signal.aborted) return;
       setCitySnapshot(null);
       setHours([]);
       setError(caught instanceof Error ? caught.message : "逐小时数据加载失败");
     } finally {
-      setIsLoading(false);
+      if (!signal.aborted) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    queueMicrotask(() => void loadData(cityOption, date));
+    const controller = new AbortController();
+    queueMicrotask(() => { if (!controller.signal.aborted) void loadData(cityOption, date, controller.signal); });
+    return () => controller.abort();
   }, [cityOption, date, loadData]);
 
   const selectedCity = cityOption;
@@ -107,6 +128,12 @@ export default function HourlyPage() {
       </header>
 
       <section className="subpage-body">
+        <form onSubmit={event => { event.preventDefault(); void searchCity(); }} className="hourly-city-search">
+          <label htmlFor="hourly-city-query">搜索全国城市 / 区县</label>
+          <div className="subpage-controls"><input id="hourly-city-query" value={cityQuery} onChange={event => setCityQuery(event.target.value)} placeholder="例如：榆林市、南宫市"/><button type="submit" disabled={searchBusy}>{searchBusy ? "查询中…" : "搜索城市"}</button></div>
+          {searchError && <p role="alert">{searchError}</p>}
+          {cityMatches.length > 0 && <div aria-label="城市搜索结果">{cityMatches.map(place => <button type="button" key={place.adcode} onClick={() => { const next: CityOption = {id:place.id,name:place.name,province:place.province,adcode:place.adcode,center:[place.longitude,place.latitude]}; setCityOption(next);saveSelectedCity(next);setCityMatches([]); }}>{place.province} · {place.name}{place.district && place.district !== place.name ? ` · ${place.district}` : ""}</button>)}</div>}
+        </form>
         <div className="subpage-heading">
           <div>
             <span className="section-kicker">{selectedCity.province} · {selectedCity.adcode}</span>

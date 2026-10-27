@@ -9,8 +9,9 @@ import { cleanDestinationContext, destinationRecommendationRequest, isDestinatio
 import { answerDestination } from "@/lib/destination-answer";
 import { weatherDestination } from "@/lib/conversation-weather";
 import { isTransportQuestion,journeyLocations } from "@/lib/journey";
-import { searchTickets } from "@/lib/ticket-search-server";
-import { weatherChartRequest } from "@/lib/visualization-request";
+import { searchTickets, summarizeTickets } from "@/lib/ticket-search-server";
+import { weatherChartRequest, type WeatherChartSpec } from "@/lib/visualization-request";
+import { conversationInputError, isCourtesy, isModelQuestion } from "@/lib/conversation-validation";
 
 export const maxDuration = 45;
 interface ConversationRequest {
@@ -20,6 +21,7 @@ interface ConversationRequest {
   knowledgeContext?: DestinationContext;
   weatherContext?: { cityName?: string; date?: string };
   activeTopic?: string;
+  chartContext?: WeatherChartSpec;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
 }
 
@@ -34,8 +36,23 @@ export async function POST(request: Request) {
   const history = Array.isArray(body.history) ? body.history.filter((item) => item && ["user", "assistant"].includes(item.role) && typeof item.content === "string").slice(-12).map((item) => ({ role: item.role, content: item.content.slice(0, 4000) })) : [];
   const pending = Object.keys(known).length > 0 || /还需要了解|哪天|哪个城市|几个人/.test(history.filter((h) => h.role === "assistant").at(-1)?.content || "");
   const lastAssistant = history.filter((h) => h.role === "assistant").at(-1)?.content || "";
-  const chart=weatherChartRequest(message,known);
-  if(chart)return NextResponse.json({reply:`保留${known.cityName || "已确认城市"}和原活动条件，绘制${chart.dates.join("、")}的${chart.metrics.map(metric=>metric==="temperature"?"气温（℃）":"降雨概率（%）").join("、")}逐小时对比图。`,kind:"环境指标对比",command:"answer",patch:{},intake:{known},missing:[],visualization:chart,activeTopic:body.activeTopic||"planning",weatherContext:body.weatherContext,knowledgeContext:body.knowledgeContext,sources:[]});
+  const unchanged = { command: "answer", patch: {}, intake: { known }, missing: [], activeTopic: body.activeTopic, weatherContext: body.weatherContext, knowledgeContext: body.knowledgeContext };
+  if (isCourtesy(message)) return NextResponse.json({ ...unchanged, reply: "不客气！已保留当前城市、日期和活动条件，可以继续提问或告诉我想修改什么。", kind: "行知" });
+  if (isModelQuestion(message)) {
+    const started = Date.now();
+    const requestId = crypto.randomUUID();
+    try {
+      const config = await resolveAccountModelConfig(request);
+      const answer = await callLlm({ config, system: "你是行知的对话助手。简短回答用户的问题。模型身份以接口返回的元数据为准，不虚构版本。", prompt: message, maxTokens: 400 });
+      return NextResponse.json({ ...unchanged, kind: "真实大模型回复", reply: `${answer.text}\n\n本次调用成功 · 服务：${answer.provider} · 接口返回模型：${answer.model} · 耗时${Date.now()-started}毫秒\n请求编号：${requestId} · ${new Date().toISOString()}`, modelCall: { success: true, provider: answer.provider, model: answer.model, requestId } });
+    } catch (error) {
+      return NextResponse.json({ ...unchanged, kind: "模型调用未成功", reply: `${error instanceof Error ? error.message : "模型调用失败"}\n本次没有取得大模型回答。请在模型设置中绑定有调用权限的配置后重试。`, modelCall: { success: false, requestId } });
+    }
+  }
+  const invalid = conversationInputError(message, today);
+  if (invalid) return NextResponse.json({ ...unchanged, kind: "条件需要修正", reply: invalid });
+  const chart=weatherChartRequest(message,{...known,...(body.activeTopic==="weather"?body.weatherContext:{})},today,body.chartContext);
+  if(chart)return NextResponse.json({...unchanged,reply:`正在查询${chart.cityName || "已确认城市"}，绘制${chart.dates.join("、")}的${chart.metrics.map(metric=>metric==="temperature"?"气温（℃）":"降雨概率（%）").join("、")}逐小时对比图。活动方案与已确认条件保持不变；缺失日期将明确标记。`,kind:"环境指标对比",visualization:chart});
   const transportQuestion=isTransportQuestion(message);
   const transportFollowup=body.activeTopic==="transport"&&!/天气|气温|下雨|AQI|规划|运动会|研学|体育课|社区|训练|景点|美食|介绍|来源|为什么/.test(message);
   if(transportQuestion||transportFollowup){
@@ -43,13 +60,16 @@ export async function POST(request: Request) {
     let origin=facts.originCity || known.originCity;
     if(!origin&&transportFollowup&&!/从|到|去/.test(message)){
       const answer=message.match(/^([\u4e00-\u9fa5]{2,12}?)(?=明天|后天|今天|[，。\s]|$)/)?.[1];
-      if(answer&&!/明天|后天|今天|一周|两周|以后|之后|高铁|飞机|航班|比较|划算|推荐|确认/.test(answer))origin=answer;
+      if(answer&&!/明天|后天|今天|一周|两周|以后|之后|高铁|火车|飞机|航班|比较|划算|推荐|确认|谢谢|只看|目的地/.test(answer))origin=answer;
     }
-    const destination=journeyLocations(message).destination || facts.cityName || known.journeyDestination || known.cityName;
+    const filterOnly = /^(?:只看|仅看|只考虑)(?:火车|高铁|动车|航班|飞机)[。！？!?]*$/.test(message);
+    const destination=journeyLocations(message).destination || (!filterOnly ? facts.cityName : undefined) || known.journeyDestination || known.cityName;
     const departureDate=facts.date || known.departureDate;
     const patch=cleanIntake({originCity:origin,journeyDestination:destination,departureDate});
     const missing=[!origin?"从哪个城市出发":null,!destination?"要去哪个城市或区县":null,!departureDate?"哪天出发":null].filter(Boolean);
-    const ticketSearch=missing.length?undefined:await searchTickets(origin!,destination!,departureDate!);
+    const found=missing.length?undefined:await searchTickets(origin!,destination!,departureDate!);
+    const selectedMode = /只看|仅看|只考虑/.test(message) ? /火车|高铁|动车/.test(message) ? "火车" : /飞机|航班/.test(message) ? "航班" : undefined : undefined;
+    const ticketSearch = found && selectedMode ? {...found, options:found.options.filter(option=>option.mode===selectedMode), reply:summarizeTickets(found.options.filter(option=>option.mode===selectedMode), found.notes)} : found;
     const reply=ticketSearch?`${origin} → ${destination} · ${departureDate}\n${ticketSearch.reply}`:`我来查火车和航班哪种更便宜。请补充：${missing.join("、")}。`;
     return NextResponse.json({reply,ticketSearch,kind:"实时票价查询",command:"answer",patch,intake:{known:{...known,...patch}},missing,activeTopic:"transport",sources:ticketSearch?.options.length?[{title:"飞常准实时票价",url:"https://www.variflight.com/",detail:`查询时间 ${ticketSearch.checkedAt}；仅针对本次返回候选`}]:[]});
   }

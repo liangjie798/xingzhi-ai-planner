@@ -82,7 +82,7 @@ function providersFrom(clientConfig?: ClientModelConfig): ProviderSpec[] {
   return list;
 }
 
-async function callProvider(spec: ProviderSpec, messages: ChatMessage[], timeoutMs: number, maxTokens: number, jsonMode = false): Promise<string> {
+async function callProvider(spec: ProviderSpec, messages: ChatMessage[], timeoutMs: number, maxTokens: number, jsonMode = false): Promise<{text:string;model:string}> {
   if (spec.userProvided) await assertPublicEndpoint(spec.endpoint);
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (spec.apiKey) headers.Authorization = `Bearer ${spec.apiKey}`;
@@ -98,11 +98,11 @@ async function callProvider(spec: ProviderSpec, messages: ChatMessage[], timeout
   if (!response.ok) {
     throw new Error(`${spec.name}：${response.status === 401 || response.status === 403 ? "模型密钥无效或权限不足" : response.status === 404 ? "模型接口或模型名称不存在（404）" : response.status === 429 ? "模型额度不足或请求受限" : `模型服务返回 ${response.status}`}`);
   }
-  const data = await response.json() as { choices?: Array<{ finish_reason?: string; message?: { content?: string } }> };
+  const data = await response.json() as { model?: string; choices?: Array<{ finish_reason?: string; message?: { content?: string } }> };
   if (data.choices?.[0]?.finish_reason === "length") throw new Error(`${spec.name}：模型输出被截断，请缩短行程或使用支持更长输出的模型`);
   const text = data.choices?.[0]?.message?.content?.trim();
   if (!text) throw new Error(`${spec.name} 返回内容为空`);
-  return text;
+  return {text,model:typeof data.model === "string" && data.model.trim() ? data.model : `${spec.model}（请求模型，接口未返回模型标识）`};
 }
 
 async function assertPublicEndpoint(endpoint: string) {
@@ -132,8 +132,8 @@ export async function callLlm(request: LlmRequest): Promise<LlmResult> {
       const remaining = deadline - Date.now();
       if (remaining <= 0) { errors.push("模型调用总等待时间已到，已停止重试"); break; }
       const anonymous = !spec.apiKey && /pollinations\.ai/.test(spec.endpoint);
-      const text = await callProvider(spec, messages, anonymous ? Math.min(4000, remaining) : remaining, Math.min(4000, Math.max(256, request.maxTokens ?? 1400)), request.jsonMode);
-      return { text, provider: spec.name, model: spec.model };
+      const reply = await callProvider(spec, messages, anonymous ? Math.min(4000, remaining) : remaining, Math.min(4000, Math.max(256, request.maxTokens ?? 1400)), request.jsonMode);
+      return { ...reply, provider: spec.name };
     } catch (error) {
       errors.push(error instanceof Error && /Timeout|Abort/.test(error.name) ? `${spec.name}：模型请求超时` : error instanceof Error ? error.message : "模型调用失败");
     }

@@ -75,7 +75,7 @@ export function cleanIntake(raw: IntakePatch = {}): IntakePatch {
   if (["普通人群", "儿童青少年", "老年人", "敏感人群", "外来旅游人群"].includes(raw.group!)) out.group = raw.group;
   for (const [key, min, max] of [["startHour", 6, 20], ["allowedStartHour", 6, 20], ["allowedEndHour", 7, 21], ["duration", 1, 8], ["participants", 1, 9999], ["tripDays", 1, 7]] as const) {
     const value = raw[key];
-    if (typeof value === "number" && Number.isFinite(value) && value >= min && value <= max) out[key] = Math.round(value);
+    if (typeof value === "number" && Number.isInteger(value) && value >= min && value <= max) out[key] = value;
   }
   return out;
 }
@@ -102,8 +102,8 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   const durationText = text.replace(/20\d{2}[-/年]\d{1,2}[-/月]\d{1,2}[日号]?|[零〇一二两三四五六七八九十\d]+月[零〇一二两三四五六七八九十\d]+[日号]?|\d{1,2}[-/]\d{1,2}[日号]?/g, "");
   const days = durationText.match(/([一二两三四五六七八九十\d]+)\s*(?:天(?!期|后|以后|之后)|日(?=游|旅|行程|活动))/);
   if (days) patch.tripDays = number(days[1]);
-  const duration = text.match(/([一二两三四五六七八九十\d]+)\s*个?小时/);
-  if (duration) patch.duration = number(duration[1]);
+  const duration = text.match(/(\d+(?:\.\d+)?|[一二两三四五六七八九十]+)\s*个?小时/);
+  if (duration) patch.duration = /^\d/.test(duration[1]) ? Number(duration[1]) : number(duration[1]);
   const participantText=text.replace(/(?:每组|一组)\s*[一二两三四五六七八九十\d]+\s*人/g,"");
   const people = participantText.match(/([零〇一二两三四五六七八九十百千\d]+)\s*(?:个|位|名)?\s*(?:大学生|研究生|成年人|成人|初中生|高中生|小学生|学生|同学|小朋友|孩子|老人|老年人|人|位|名)/)
     || (known.activityType && !known.participants ? text.match(/^\s*([零〇一二两三四五六七八九十百千\d]+)\s*个?[。！]?\s*$/) : null);

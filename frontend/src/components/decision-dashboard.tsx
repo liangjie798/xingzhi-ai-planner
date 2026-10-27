@@ -15,6 +15,7 @@ import { EnvironmentCharts } from "./environment-charts";
 import { ActivityComparison } from "./activity-comparison";
 import { WeatherComparison,type WeatherComparisonData } from "./weather-comparison";
 import type { WeatherChartSpec } from "@/lib/visualization-request";
+import { explainScoreDifference, isScoreQuestion } from "@/lib/score-explanation";
 import type { SocialResearch } from "@/lib/social-research";
 import { EnvironmentMap } from "./environment-map";
 import { NationalEnvironmentMap } from "./national-environment-map";
@@ -609,6 +610,10 @@ export function DecisionDashboard() {
     const history = [...chatMessages, userMessage];
     setChatMessages(history);
     setChatText("");
+    if (isScoreQuestion(message)) {
+      setChatMessages([...history, { role: "assistant", content: explainScoreDifference(message, input, result), kind: "本轮评分解释" }]);
+      return;
+    }
     const action = detectAgentAction(message);
     if (action && (result || route) && !knowledgeContext.topic && !/画|图|只看|改|调整|参与者/.test(message) && /本次|本轮|方案|候选时段|推荐依据|筹备清单/.test(message)) {
       setChatMessages([...history, { role: "assistant", content: answerAgentAction(action, input, result, route) }]);
@@ -621,7 +626,7 @@ export function DecisionDashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message, today: dateString(), intake, history: history.slice(-12), knowledgeContext, weatherContext, activeTopic,journeyQuotes:workspaceData.journeyQuotes,journeyTimeValue:workspaceData.journeyTimeValue,journeyParticipants:workspaceData.journeyParticipants,
+          message, today: dateString(), intake, history: history.slice(-12), knowledgeContext, weatherContext, activeTopic, chartContext: weatherComparison?.spec,journeyQuotes:workspaceData.journeyQuotes,journeyTimeValue:workspaceData.journeyTimeValue,journeyParticipants:workspaceData.journeyParticipants,
         }),
       });
       if (!response.ok) throw new Error(await apiError(response));
@@ -632,7 +637,7 @@ export function DecisionDashboard() {
         try{
           const spec=plan.visualization;
           let chartMeta=meta;
-          const requestedCity=plan.intake.known.cityName;
+          const requestedCity=spec.cityName || plan.intake.known.cityName;
           if(requestedCity&&requestedCity.replace(/市$/,"")!==meta.name.replace(/市$/,"")){
             const matches=await searchChinaDistricts(requestedCity);
             if(matches.length!==1)throw new Error("请先确认唯一的城市后绘图。");
@@ -646,7 +651,7 @@ export function DecisionDashboard() {
             if(!payload.hours?.length)throw new Error("无逐小时预报");
             return payload.hours.map(row=>({...row,date}));
           }));
-          setWeatherComparison({spec,cityName:chartMeta.name,points:days.flatMap(day=>day.status==="fulfilled"?day.value:[]),missingDates:spec.dates.filter((_,index)=>days[index].status==="rejected")});
+          setWeatherComparison({spec:{...spec,cityName:chartMeta.name},cityName:chartMeta.name,points:days.flatMap(day=>day.status==="fulfilled"?day.value:[]),missingDates:spec.dates.filter((_,index)=>days[index].status==="rejected")});
         }finally{setChartLoading(false);}
       }
       if(plan.kind==="交通方案比较"||plan.kind==="实时票价查询"){
