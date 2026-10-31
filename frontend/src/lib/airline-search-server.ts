@@ -26,8 +26,9 @@ export function flightInputNote(error: unknown) {
 const providerCache=new Map<string,{expires:number;result:Awaited<ReturnType<typeof probeAirline>>}>();
 const cache=new Map<string,{expires:number;result:AirlineSearchResult}>();
 const running=new Map<string,Promise<AirlineSearchResult>>();
+export const AIRLINE_PROVIDER_WAIT_MS=10_000;
 let hourStart=Date.now(),hourQueries=0;
-export async function searchAirlineFlights(input: FlightQuery, options: { signal?:AbortSignal; probe?:typeof probeAirline; today?:string }={}):Promise<AirlineSearchResult> {
+export async function searchAirlineFlights(input: FlightQuery, options: { signal?:AbortSignal; probe?:typeof probeAirline; today?:string; providerTimeoutMs?:number }={}):Promise<AirlineSearchResult> {
   const base:AirlineSearchResult={origin:typeof input?.origin==="string"?input.origin:"",destination:typeof input?.destination==="string"?input.destination:"",date:typeof input?.date==="string"?input.date:"",checkedAt:new Date().toISOString(),status:"unavailable",quotes:[],providers:[],notes:[]};
   let query:ResolvedFlightQuery;try{query=validateFlightQuery(input,options.today);}catch(error){return {...base,notes:[flightInputNote(error)]};}
   if(!options.probe&&!airlineBrowserConfigured())return {...base,status:"not-configured",notes:["航司官网查价暂未启用，可先前往航司官网查询。"]};
@@ -47,7 +48,10 @@ export async function searchAirlineFlights(input: FlightQuery, options: { signal
       if(signal.aborted){result.notes.push("已达到本次等待上限，保留此前取得的结果。");break;}
       const providerKey=JSON.stringify([provider.code,query.from.code,query.to.code,query.date]);
       const previous=providerCache.get(providerKey);
-      const found=previous&&previous.expires>Date.now()?structuredClone(previous.result):await (options.probe||probeAirline)(provider,query,signal).catch(()=>({attempt:{airlineCode:provider.code,sourceName:provider.name,state:"unverified-page" as const,sourceUrl:provider.home,checkedAt:new Date().toISOString(),quoteCount:0},quotes:[]}));
+      const providerDeadline=AbortSignal.timeout(options.providerTimeoutMs??AIRLINE_PROVIDER_WAIT_MS);
+      const providerSignal=AbortSignal.any([signal,providerDeadline]);
+      const found=previous&&previous.expires>Date.now()?structuredClone(previous.result):await (options.probe||probeAirline)(provider,query,providerSignal).catch(()=>({attempt:{airlineCode:provider.code,sourceName:provider.name,state:"unverified-page" as const,sourceUrl:provider.home,checkedAt:new Date().toISOString(),quoteCount:0},quotes:[]}));
+      if(providerDeadline.aborted&&!signal.aborted&&!found.quotes.length)found.attempt={...found.attempt,state:"timeout"};
       if(!signal.aborted){for(const [k,v] of providerCache)if(v.expires<=Date.now())providerCache.delete(k);if(providerCache.size>=120)providerCache.delete(providerCache.keys().next().value!);providerCache.set(providerKey,{expires:Date.now()+(found.quotes.length?60000:10000),result:structuredClone(found)});}
       result.providers.push(found.attempt);
       // Quotes must still agree with trusted routing even when a browser adapter changes.
@@ -56,7 +60,7 @@ export async function searchAirlineFlights(input: FlightQuery, options: { signal
     }
     result.checkedAt=new Date().toISOString();result.status=result.quotes.length?"partial":"unavailable";
     result.notes.push(`范围：本次最多查询${providers.length}家已适配航司、单程1成人；部分站点只查询所列机场，不代表全航司或全机场最低价。`);
-    result.notes.push("官网展示价尚未核实最终含税支付总额，余票、行李和退改规则以购票页面为准；火车票暂请前往12306官网查询，未取得火车实时报价。");
+    result.notes.push("官网展示价尚未核实最终含税支付总额，余票、行李和退改规则以购票页面为准；火车报价由独立的12306查询返回，请分别核对税费与票面价。");
     return result;
   })();
   running.set(key,job);

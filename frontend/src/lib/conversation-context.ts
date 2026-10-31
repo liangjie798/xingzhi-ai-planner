@@ -57,6 +57,34 @@ function matchingFact(ctx: ConversationContext, query: string) {
   const key = keyOf(query.replace(/(?:是什么|是多少|什么|多少|吗|呢|[？?])+/g, ""));
   return ctx.facts.find(f => f.key === key) || ctx.facts.find(f => key && (key.includes(f.key) || f.key.includes(key)));
 }
+// Normalize question wording only; stored names and literal values are untouched.
+function recallKey(text: string) {
+  return keyOf(text).replace(/(?:是什么|是多少|叫什么|叫啥|是谁|什么|多少|分别|还记得|告诉我|吗|呢|[？?])/g, "").replace(/(.+?)(?:的)?(?:名字|名称)/g, "$1").trim();
+}
+function recallFacts(ctx: ConversationContext, query: string) {
+  const key = recallKey(query);
+  const hits: Array<{ fact: RememberedFact; start: number; end: number }> = [];
+  for (const fact of ctx.facts) {
+    const name = recallKey(fact.key);
+    if (!name) continue;
+    let offset = key.indexOf(name);
+    while (offset >= 0) {
+      // A numbered item such as 备忘1 must not match 备忘11.
+      if (!/\d$/.test(name) || !/^\d/.test(key.slice(offset + name.length))) hits.push({ fact, start: offset, end: offset + name.length });
+      offset = key.indexOf(name, offset + name.length);
+    }
+  }
+  const selected: typeof hits = [];
+  for (const hit of hits.sort((a, b) => (b.end - b.start) - (a.end - a.start))) {
+    if (!selected.some(other => hit.start < other.end && hit.end > other.start)) selected.push(hit);
+  }
+  return [...new Set(selected.sort((a, b) => a.start - b.start).map(hit => hit.fact))];
+}
+function changedFactValue(value: string) {
+  // Only a separate trailing instruction is removed. Quoted literal values and
+  // new "记住…" facts keep their original text, including “其他不变”.
+  return clean(value.replace(/[，,；;]\s*(?:其他|其它|其余)(?:的)?(?:内容|条件|字段|事项|信息)?(?:都)?(?:保持)?(?:不变|不要修改|不用修改|不要改动)[。！!\s]*$/, ""));
+}
 export function applyMemoryIntent(ctx: ConversationContext, message: string): { context: ConversationContext; reply?: string; clear?: boolean; sanitizedMessage?: string } {
   const text = message.trim().replace(/^(?:(?:请|麻烦|帮我|帮忙)[，,\s]*)+/, "");
   if (/^(?:不要|别|不用|无需)(?:再)?(?:记住|更新|修改|更正)/.test(text)) return { context: ctx, reply: "本次未修改已保存事项。" };
@@ -82,7 +110,8 @@ export function applyMemoryIntent(ctx: ConversationContext, message: string): { 
     const assignment = content.match(/^(.{1,60}?)(?:是|为|[:：=])(.+)$/);
     const existing = assignment ? ctx.facts.find(f => f.key === keyOf(assignment[1])) : change ? matchingFact(ctx, change[1]) : undefined;
     const key = existing?.key || (assignment ? keyOf(assignment[1]) : keyOf(content.slice(0, 24)));
-    const value = clean(assignment ? assignment[2] : content);
+    const rawValue = assignment ? assignment[2] : content;
+    const value = existing && change ? changedFactValue(rawValue) : clean(rawValue);
     if (!key || !value) return { context: ctx, reply: "请说明需要记住的具体事项，例如“记住暗号是紫竹海豚739”。" };
     if (!existing && ctx.facts.length >= CONTEXT_LIMITS.facts) return { context: ctx, reply: "当前对话已保存64项事项，请先忘记不需要的事项后再保存；已有事项仍保留。" };
     if (existing) eraseValues(ctx, [existing.value]);
@@ -95,8 +124,17 @@ export function applyMemoryIntent(ctx: ConversationContext, message: string): { 
     const last = ctx.recent.filter(row => row.role === "user").at(-1);
     return { context: ctx, reply: last ? `你上一条消息是：“${last.content}”。` : "当前对话没有可核对的上一条用户原文，我不能准确复述。" };
   }
-  const found = matchingFact(ctx, text);
-  if (found && /什么|多少|复述|告诉我|还记得|[？?]/.test(text)) return { context: ctx, reply: `当前对话保存的${found.key}是：${found.value}。` };
+  if (/什么|多少|复述|告诉我|还记得|叫什么|是谁|[？?]/.test(text)) {
+    const found = recallFacts(ctx, text);
+    if (found.length) {
+      const clauses = text.split(/[，,；;。？！?!\n]+/).map(clause => clause.trim()).filter(Boolean);
+      const missing = clauses.filter(clause => /什么|多少|叫什么|是谁|还记得/.test(clause) && !recallFacts(ctx, clause).length);
+      return { context: ctx, reply: [
+        ...found.map(fact => `当前对话保存的${fact.key}是：${fact.value}。`),
+        ...missing.map(clause => `关于“${clause}”，当前对话没有找到可确认的这项记忆；我不会猜测。`),
+      ].join("\n") };
+    }
+  }
   if (/(?:之前|刚才|前面|本次|这次).*(?:暗号|记住|说过|提到)|(?:我|我们)(?:之前|刚才|前面|上次).*(?:说|提)|记住了什么|保存了什么|记忆里|还记得|对话.*(?:暗号|记忆)/.test(text) || /^(?:之前|刚才|前面)(?:的|说的|保存的).*(?:什么|多少|哪|[？?])/.test(text) || /暗号.*(?:是什么|多少|[？?])/.test(text) || ctx.forgottenKeys.some(key => text.includes(key))) {
     if (/记住了什么|保存了什么|记忆里|记住的事项/.test(text)) return { context: ctx, reply: ctx.facts.length ? `当前对话已保存：\n${ctx.facts.map(f => `${f.key}：${f.value}`).join("\n")}` : "当前对话没有已保存的事项。" };
     return { context: ctx, reply: "当前对话没有找到可确认的这项记忆，可能尚未保存或已被忘记；我不会编造，也不会用联网资料替代你的会话信息。" };

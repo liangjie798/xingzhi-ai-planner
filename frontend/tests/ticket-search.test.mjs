@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {positiveFare,parseAirlinePage,airlinePageBarrier} from '../src/lib/airline-parsing.ts';
+import {positiveFare,parseAirlinePage,airlinePageBarrier,confirmedEmptyAirlinePage} from '../src/lib/airline-parsing.ts';
 import {AIRLINE_PROVIDERS,ACTIVE_AIRLINE_CODES} from '../src/lib/airline-providers.ts';
-import {validateFlightQuery} from '../src/lib/airline-search-server.ts';
+import {validateFlightQuery,searchAirlineFlights} from '../src/lib/airline-search-server.ts';
 import {airlineCoverage,executeAirlineTool,FLIGHT_SEARCH_TOOL} from '../src/lib/airline-tools-server.ts';
 import {runAirlineAgent} from '../src/lib/airline-agent-server.ts';
 import {searchTickets,summarizeTickets} from '../src/lib/ticket-search-server.ts';
@@ -17,8 +17,24 @@ test('strict query validation rejects arbitrary URLs, unknown airports and date 
 test('finite positive fares only; calendar numbers are never accepted as a quote',()=>{for(const v of ['Infinity',Infinity,0,-1,'¥100','100元','1e3',null])assert.equal(positiveFare(v),undefined);assert.equal(positiveFare('1,234.50'),1234.5);assert.equal(parseAirlinePage(provider,query,{...page,rows:[]},new Date().toISOString()).quotes.length,0);});
 test('row quote requires matching date, route, cabin and official origin',()=>{assert.equal(parseAirlinePage(provider,query,page,new Date().toISOString()).quotes[0].price,680);for(const change of [{pageDate:'2026-11-01'},{destinationLabel:'上海'},{url:'https://evil.example/'},{rows:[{...page.rows[0],priceText:'Infinity'}]}])assert.equal(parseAirlinePage(provider,query,{...page,...change},new Date().toISOString()).quotes.length,0);assert.equal(parseAirlinePage(provider,query,page,new Date().toISOString()).quotes[0].priceBasis,'unknown');});
 test('access barriers win over prices, while a captcha help article is not a challenge',()=>{assert.equal(airlinePageBarrier('关于登录滑块验证码操作的提示','https://example.com'),undefined);for(const text of ['请依次点击','请先登录官网再进行操作','会话已过期'])assert.equal(parseAirlinePage(provider,query,{...page,text},new Date().toISOString()).quotes.length,0);});
+test('early empty-result completion requires a verified route and date, not loading text',()=>{
+  const empty={...page,text:'暂无符合条件的航班',rows:[]};
+  assert.equal(confirmedEmptyAirlinePage(provider,query,empty),true);
+  for(const change of [{pageDate:'2026-11-02'},{originLabel:'上海'},{destinationLabel:'上海'},{text:'正在查询，暂无航班'},{text:'请完成验证，暂无航班'},{url:'https://example.org/'}])assert.equal(confirmedEmptyAirlinePage(provider,query,{...empty,...change}),false);
+  assert.equal(confirmedEmptyAirlinePage(provider,query,{...page,text:'暂无航班仅为页面帮助说明'}),false);
+});
 test('a neighbouring business fare or another flight cannot replace an unavailable economy seat',()=>{const mu=AIRLINE_PROVIDERS.find(p=>p.code==='MU');const q=validateFlightQuery({origin:'上海',destination:'北京',date:input.date},'2026-10-30');const p={...page,url:mu.url(q),originLabel:'上海',rows:[{text:'MU5099\n07:00\n09:20\n航班详情\n— —\n¥2100'}]};assert.equal(parseAirlinePage(mu,q,p,new Date().toISOString()).quotes.length,0);assert.equal(parseAirlinePage(provider,query,{...page,rows:[{...page.rows[0],text:page.rows[0].text+'\nMF8105'}]},new Date().toISOString()).quotes.length,0);});
 test('disabled browser and train-only requests do not invent quotes',async()=>{const old=process.env.AIRLINE_BROWSER_ENABLED;process.env.AIRLINE_BROWSER_ENABLED='0';try{const date=new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'Asia/Shanghai'});const r=await searchTickets('厦门','北京',date);assert.equal(r.status,'not-configured');assert.deepEqual(r.options,[]);const train=await searchTickets('厦门','北京',date,{mode:'火车'});assert.deepEqual(train.options,[]);assert.match(train.reply,/12306/);}finally{if(old===undefined)delete process.env.AIRLINE_BROWSER_ENABLED;else process.env.AIRLINE_BROWSER_ENABLED=old;}});
 test('tool dispatcher is read-only and rejects unknown tools and arguments',async()=>{await assert.rejects(executeAirlineTool('buy_ticket',{}));await assert.rejects(executeAirlineTool('list_airline_coverage',{url:'x'}));assert.equal((await executeAirlineTool('list_airline_coverage',{})).totalEntities,65);});
 test('real function-calling protocol is used, and changed confirmed slots fail closed',async()=>{const original=global.fetch,key=process.env.DEEPSEEK_API_KEY;process.env.DEEPSEEK_API_KEY='test-only';const date=new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'Asia/Shanghai'});let sent,executed;const current={origin:'厦门',destination:'北京',date};const executor=async q=>{executed=q;return { ...q,status:'unavailable',quotes:[],providers:[],notes:[],checkedAt:new Date().toISOString()};};try{global.fetch=async(url,init)=>{sent=JSON.parse(init.body);return Response.json({model:'actual-returned-model',choices:[{finish_reason:'tool_calls',message:{tool_calls:[{type:'function',function:{name:FLIGHT_SEARCH_TOOL.function.name,arguments:JSON.stringify(current)}}]}}]});};const r=await runAirlineAgent(current,{useModel:true,executor});assert.equal(sent.tools[0].function.name,'search_domestic_flights');assert.equal(r.modelCall.model,'actual-returned-model');assert.equal(r.modelCall.success,true);assert.deepEqual(executed,current);global.fetch=async()=>Response.json({choices:[{message:{tool_calls:[{type:'function',function:{name:'search_domestic_flights',arguments:JSON.stringify({...current,destination:'上海'})}}]}}]});const rejected=await runAirlineAgent(current,{useModel:true,executor});assert.equal(rejected.modelCall.success,false);assert.deepEqual(executed,current);}finally{global.fetch=original;if(key===undefined)delete process.env.DEEPSEEK_API_KEY;else process.env.DEEPSEEK_API_KEY=key;}});
 test('unknown taxes and missing train data never become a cheapest-total claim',()=>{const text=summarizeTickets([{mode:'航班',service:'MF8103',seat:'官网展示',price:680,priceBasis:'unknown'}],[]);assert.match(text,/不能据此判断含税最低价/);assert.match(text,/不能判断航班比火车更便宜/);});
+test('a slow airline times out independently while later airlines still return verified quotes',async()=>{
+  const calls=[];
+  const result=await searchAirlineFlights({...input,date:'2026-11-04',airlineCodes:['9H','MF']},{today:'2026-10-31',providerTimeoutMs:15,probe:async(p,q,signal)=>{
+    calls.push(p.code);
+    if(p.code==='9H')await new Promise(resolve=>{const keepAlive=setTimeout(resolve,100);signal.addEventListener('abort',()=>{clearTimeout(keepAlive);resolve();},{once:true});});
+    const quotes=p.code==='MF'?[{airlineCode:'MF',date:q.date,price:680,currency:'CNY'}]:[];
+    return {attempt:{airlineCode:p.code,sourceName:p.name,sourceUrl:p.home,state:quotes.length?'quoted':'cancelled',quoteCount:quotes.length,checkedAt:new Date().toISOString()},quotes};
+  }});
+  assert.deepEqual(calls,['9H','MF']);assert.equal(result.providers[0].state,'timeout');assert.equal(result.providers[1].state,'quoted');assert.equal(result.quotes[0].price,680);
+});

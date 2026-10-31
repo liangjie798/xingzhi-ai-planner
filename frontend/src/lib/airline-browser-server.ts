@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import type { Browser, BrowserContext, Page } from "playwright-core";
 import { allowedAirlineUrl, type AirlineProvider } from "./airline-providers.ts";
-import { airlinePageBarrier, parseAirlinePage } from "./airline-parsing.ts";
+import { airlinePageBarrier, confirmedEmptyAirlinePage, parseAirlinePage } from "./airline-parsing.ts";
 import type { AirlineAttempt, AirlinePageObservation, AirlineQuote, ResolvedFlightQuery } from "./airline-types.ts";
 
 let browserJob: Promise<Browser> | undefined;
@@ -129,7 +129,7 @@ export async function probeAirline(provider: AirlineProvider, query: ResolvedFli
     });
     const page=await context.newPage();page.setDefaultTimeout(1800);
     await page.goto(provider.url(query),{waitUntil:"domcontentloaded",timeout:20_000});
-    const deadline=Date.now()+16_000;let observation:AirlinePageObservation|undefined;
+    const deadline=Date.now()+16_000;let observation:AirlinePageObservation|undefined;let emptyChecks=0;
     do{
       if(signal?.aborted)throw new Error("request-cancelled");
       const readiness=await page.evaluate(code=>{
@@ -139,7 +139,15 @@ export async function probeAirline(provider: AirlineProvider, query: ResolvedFli
       },provider.code);
       const blocked=airlinePageBarrier(readiness.text,page.url());
       if(blocked)return {attempt:{...attempt,state:blocked},quotes:[]};
-      if(!readiness.ready){await page.waitForTimeout(600);continue;}
+      if(!readiness.ready){
+        if(/暂无.{0,10}航班|没有.{0,10}航班|无符合.{0,10}航班/.test(readiness.text)){
+          const emptyPage=await readAirlinePage(page,provider,query);
+          emptyChecks=confirmedEmptyAirlinePage(provider,query,emptyPage)?emptyChecks+1:0;
+          if(emptyChecks>=2){observation=emptyPage;break;}
+        }else emptyChecks=0;
+        await page.waitForTimeout(600);continue;
+      }
+      emptyChecks=0;
       observation=await readAirlinePage(page,provider,query);
       if(airlinePageBarrier(observation.text,observation.url)||parseAirlinePage(provider,query,observation,new Date().toISOString()).quotes.length)break;
       await page.waitForTimeout(600);

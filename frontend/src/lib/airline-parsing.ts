@@ -14,6 +14,12 @@ export function positiveFare(value: unknown): number | undefined {
   const price = Number(text);
   return Number.isFinite(price) && price > 0 && price < 100_000 ? price : undefined;
 }
+
+/** Empty results are usable only after date and route have been verified too. */
+export function confirmedEmptyAirlinePage(provider: AirlineProvider, query: ResolvedFlightQuery, page: AirlinePageObservation) {
+  return !/正在(?:查询|加载)|(?:查询|加载)中/.test(page.text)
+    && parseAirlinePage(provider, query, page, new Date().toISOString()).state === "no-flights";
+}
 export function canonicalFlightDate(value: string | undefined): string | undefined {
   const match = value?.trim().match(/^(20\d{2})[-/年]?(\d{2})[-/月]?(\d{2})(?:日|[ T].*)?$/);
   if (!match) return undefined;

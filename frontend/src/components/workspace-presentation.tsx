@@ -129,8 +129,10 @@ export function WorkspaceMetrics({ items }: { items: { label: string; value: str
       {items.map((item) => (
         <div key={item.label}>
           <dt>{item.label}</dt>
-          <dd>{item.value}</dd>
-          {item.detail && <small>{item.detail}</small>}
+          <dd>
+            {item.value}
+            {item.detail && <small>{item.detail}</small>}
+          </dd>
         </div>
       ))}
     </dl>
