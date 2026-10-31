@@ -88,7 +88,7 @@ cd xingzhi-ai-planner
 
 ### 2. 启动后端
 
-Windows 可直接双击项目根目录的 **[start-backend.bat](start-backend.bat)**。启动器自动检查 JDK 21、读取 `backend/.env` 并检查端口；默认8080，也可执行 `start-backend.bat -Port 18080`。详细参数见 [Windows 本地启动与打包](docs/LOCAL-START.md)。
+Windows 可直接双击项目根目录的 **[start-backend.bat](start-backend.bat)**。启动器自动检查 JDK 21和项目指定的 Maven；环境匹配则复用，缺失或版本不同则显示下载进度条、校验并安装到项目 `.tools` 后启动。启动器读取 `backend/.env` 并检查端口；默认8080，也可执行 `start-backend.bat -Port 18080`。首次自动准备需要联网，详细参数见 [Windows 本地启动与打包](docs/LOCAL-START.md)。
 
 Linux / macOS：
 

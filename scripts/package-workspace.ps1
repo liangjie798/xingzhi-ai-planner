@@ -13,7 +13,7 @@ $entries = New-Object 'System.Collections.Generic.Dictionary[string,string]'
 function Add-PackageFile([string]$File, [string]$Entry) {
     if (-not (Test-Path -LiteralPath $File -PathType Leaf)) { return }
     $normalized = $Entry.Replace('\', '/')
-    if ($normalized -match '(^|/)(\.git|node_modules|\.next|target|\.runtime|\.runtime-config|__pycache__|\.playwright-cli)(/|$)') { return }
+    if ($normalized -match '(^|/)(\.git|\.tools|node_modules|\.next|target|\.runtime|\.runtime-config|__pycache__|\.playwright-cli)(/|$)') { return }
     if ($normalized -match '(^|/)\.env($|\.)' -and $normalized -notmatch '(^|/)\.env\.example$') { return }
     if ($normalized -match '\.(key|pem|p12|pfx|jks|mv\.db|trace\.db|h2\.db|log|zip|tar\.gz)$') { return }
     $entries['xingzhi-local/' + $normalized] = (Resolve-Path -LiteralPath $File).Path
@@ -56,7 +56,7 @@ try {
             $writer.WriteLine('Created: ' + (Get-Date -Format o))
             $writer.WriteLine('Application commit: ' + (& git -C $repoRoot rev-parse HEAD))
             $writer.WriteLine('Source entry: amap-jsapi/start-backend.bat')
-            $writer.WriteLine('Requires JDK 21 and internet for the first Maven dependency download.')
+            $writer.WriteLine('The BAT automatically prepares matching JDK and Maven if missing. Internet is required for initial setup and dependencies.')
             $writer.WriteLine('Excluded: actual .env files, credentials, databases, caches, installed dependencies and historical archives.')
         } finally { $writer.Dispose() }
     } finally { $zip.Dispose() }

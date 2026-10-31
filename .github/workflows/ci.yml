@@ -39,6 +39,14 @@ jobs:
         working-directory: .
         run: docker compose --env-file .env.example config --quiet
 
+  windows-launcher:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check automatic environment preparation
+        shell: powershell
+        run: ./scripts/tests/backend-environment.Tests.ps1
+
   backend:
     runs-on: ubuntu-latest
     defaults:
