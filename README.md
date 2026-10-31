@@ -2,6 +2,8 @@
 
 通过自然语言完成活动需求确认、真实环境数据查询、地图展示与规划书生成的 Web 应用。
 
+源码审核包的详细说明见 **[审核包 README](docs/REVIEW-README.md)**，包含首次启动、自动环境安装、前后端配置、功能体验、构建测试与常见问题。打包时该文件会放到 `xingzhi-source/README.md`，可独立阅读。
+
 - **公开仓库**：<https://github.com/liangjie798/xingzhi-ai-planner>
 - **独立测试仓库**：[测试用例、执行报告与缺陷复现](https://github.com/liangjie798/xingzhi-ai-planner-qa)（与业务源码独立维护）
 - **在线演示**：<https://lht574.cn/XingZhi>（可在登录页选择访客体验）

@@ -42,6 +42,6 @@ start-backend.bat -UseJar
 
 `frontend/` 为前端，`backend/` 为后端，`docs/` 为项目材料，`deploy/` 为部署配置，`scripts/` 为启动与打包工具。完整工作区的测试材料保存在独立的 `xingzhi-ai-planner-qa/` 仓库，交付文档保存在同级 `deliverables/`。
 
-运行 `scripts/package-workspace.ps1` 生成提交审核用 ZIP 与旁置 SHA-256 校验文件。压缩包根目录为 `xingzhi-source`，仅保留前后端源码、源码单测、依赖清单、运行配置模板、页面必需静态资源和 BAT 所需的 PowerShell 启动代码。不收集 `docs`、`deliverables`、`ecs-deploy`、独立 QA 仓库、部署资料、报告、截图、Word/PDF、说明文档或临时文件，也不带密钥、数据库、`.tools` 和依赖缓存。解压后双击根目录 `start-backend.bat` 自动准备环境并从源码启动，首次需要联网。
+运行 `scripts/package-workspace.ps1` 生成提交审核用 ZIP 与旁置 SHA-256 校验文件。压缩包根目录为 `xingzhi-source`，仅保留前后端源码、源码单测、依赖清单、运行配置模板、页面必需静态资源和 BAT 所需的 PowerShell 启动代码，并将 `docs/REVIEW-README.md` 作为根目录 `README.md` 加入包内。不收集其他说明文档、`docs` 文件夹、`deliverables`、`ecs-deploy`、独立 QA 仓库、部署资料、报告、截图、Word/PDF或临时文件，也不带密钥、数据库、`.tools` 和依赖缓存。解压后双击根目录 `start-backend.bat` 自动准备环境并从源码启动，首次需要联网。
 
 下载方式遵循 [Adoptium ZIP 安装与校验说明](https://adoptium.net/installation/archives) 和 [Apache Maven 安装说明](https://maven.apache.org/install.html)。后端启动不需要 Node.js；启动前端仍需单独准备 Node.js 和 pnpm。

@@ -15,7 +15,7 @@ function Add-PackageFile([string]$File, [string]$Entry) {
     $normalized = $Entry.Replace('\', '/')
     if ($normalized -match '(^|/)(\.git|\.tools|node_modules|\.next|target|\.runtime|\.runtime-config|__pycache__|\.playwright-cli)(/|$)') { return }
     if ($normalized -match '(^|/)\.env($|\.)' -and $normalized -notmatch '(^|/)\.env\.example$') { return }
-    if ($normalized -match '\.(md|pdf|docx?|pptx?|key|pem|p12|pfx|jks|mv\.db|trace\.db|h2\.db|log|zip|tar\.gz)$' -or $normalized -match '(^|/)\.gitkeep$') { return }
+    if (($normalized -ne 'README.md' -and $normalized -match '\.(md|pdf|docx?|pptx?)$') -or $normalized -match '\.(key|pem|p12|pfx|jks|mv\.db|trace\.db|h2\.db|log|zip|tar\.gz)$' -or $normalized -match '(^|/)\.gitkeep$') { return }
     $entries['xingzhi-source/' + $normalized] = (Resolve-Path -LiteralPath $File).Path
 }
 
@@ -40,8 +40,9 @@ try {
     foreach ($relative in $paths) {
         if (Test-ReviewSource $relative) { Add-PackageFile (Join-Path $repoRoot $relative) $relative }
     }
+    Add-PackageFile (Join-Path $repoRoot 'docs\REVIEW-README.md') 'README.md'
     if ($entries.Count -eq 0) { throw 'No files found. Commit or stage the project files before packaging.' }
-    foreach ($required in @('start-backend.bat','scripts/start-backend.ps1','scripts/backend-environment.ps1','backend/pom.xml','backend/mvnw.cmd','backend/.mvn/wrapper/maven-wrapper.properties','frontend/package.json','frontend/pnpm-lock.yaml')) {
+    foreach ($required in @('README.md','start-backend.bat','scripts/start-backend.ps1','scripts/backend-environment.ps1','backend/pom.xml','backend/mvnw.cmd','backend/.mvn/wrapper/maven-wrapper.properties','frontend/package.json','frontend/pnpm-lock.yaml')) {
         if (-not $entries.ContainsKey('xingzhi-source/' + $required)) { throw "Required source file is missing: $required" }
     }
     Add-Type -AssemblyName System.IO.Compression
