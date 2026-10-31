@@ -35,6 +35,16 @@ public class ConversationSessionController {
     @GetMapping public List<Summary> list(Authentication auth,HttpServletRequest request){return sessions.findByOwnerKeyOrderByUpdatedAtDesc(owner(auth,request)).stream().map(item->new Summary(item.getId(),item.getTitle(),item.getUpdatedAt())).toList();}
     @PostMapping public Summary create(@RequestBody JsonNode body,Authentication auth,HttpServletRequest request){validate(body);String owner=owner(auth,request);if(sessions.countByOwnerKey(owner)>=100)throw new IllegalArgumentException("已保存100条对话，请先整理历史记录。");return summary(sessions.save(new ConversationSession(UUID.randomUUID().toString(),owner,title(body),body.toString())));}
     @GetMapping("/{id}") public JsonNode read(@PathVariable String id,Authentication auth,HttpServletRequest request) throws Exception{return mapper.readTree(find(id,owner(auth,request)).getSnapshot());}
-    @PutMapping("/{id}") public Summary save(@PathVariable String id,@RequestBody JsonNode body,Authentication auth,HttpServletRequest request){validate(body);var session=find(id,owner(auth,request));session.update(title(body),body.toString());return summary(sessions.save(session));}
+    @PutMapping("/{id}") public synchronized Summary save(@PathVariable String id,@RequestBody JsonNode body,
+            @RequestHeader(value="X-Expected-Conversation-Revision",required=false) Long expectedRevision,
+            Authentication auth,HttpServletRequest request) throws Exception {
+        validate(body);
+        var session=find(id,owner(auth,request));
+        long current=mapper.readTree(session.getSnapshot()).path("conversationContext").path("revision").asLong(0);
+        long incoming=body.path("conversationContext").path("revision").asLong(0);
+        if(incoming<current || expectedRevision!=null && expectedRevision!=current)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"对话已有更新，请刷新，未覆盖较新记忆");
+        session.update(title(body),body.toString());return summary(sessions.save(session));
+    }
     @DeleteMapping("/{id}") public void delete(@PathVariable String id,Authentication auth,HttpServletRequest request){sessions.delete(find(id,owner(auth,request)));}
 }

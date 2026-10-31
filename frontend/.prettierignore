@@ -1,0 +1,6 @@
+.next
+storybook-static
+node_modules
+public
+coverage
+*.min.*

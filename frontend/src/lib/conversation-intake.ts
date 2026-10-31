@@ -15,6 +15,7 @@ function number(text: string) {
   }
   return total + digit;
 }
+export { number as parseConversationNumber };
 export function addDays(date: string, days: number) {
   return new Date(Date.parse(`${date}T00:00:00+08:00`) + days * 86400000).toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
 }
@@ -73,7 +74,8 @@ export function cleanIntake(raw: IntakePatch = {}): IntakePatch {
   if (validDate(raw.endDate)) out.endDate = raw.endDate;
   if (["低强度", "中强度", "高强度"].includes(raw.intensity!)) out.intensity = raw.intensity;
   if (["普通人群", "儿童青少年", "老年人", "敏感人群", "外来旅游人群"].includes(raw.group!)) out.group = raw.group;
-  for (const [key, min, max] of [["startHour", 6, 20], ["allowedStartHour", 6, 20], ["allowedEndHour", 7, 21], ["duration", 1, 8], ["participants", 1, 9999], ["tripDays", 1, 7]] as const) {
+  // Remember the requested length even outside the forecast horizon; completeIntake blocks execution.
+  for (const [key, min, max] of [["startHour", 6, 20], ["allowedStartHour", 6, 20], ["allowedEndHour", 7, 21], ["duration", 1, 8], ["participants", 1, 9999], ["tripDays", 1, 365]] as const) {
     const value = raw[key];
     if (typeof value === "number" && Number.isInteger(value) && value >= min && value <= max) out[key] = value;
   }
@@ -91,14 +93,14 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   if(!audience&&/成人|成年|年轻人|普通人群/.test(text)) patch.audienceDescription="成年人";
   const budget=text.match(/(?:人均|每人|预算每人)\s*([一二两三四五六七八九十百千\d]+)\s*元?/);
   if(budget) patch.budgetPerPerson=number(budget[1]);
-  const equipment=text.match(/([一二两三四五六七八九十百千\d]+)\s*(?:个|套|副|件)(?:篮球|足球|球拍|器材|装备)/)
-    || text.match(/(?:篮球|足球|球拍|器材|装备)\s*(?:数量)?\s*(?:改成|改为|调整为|为|是|有|共|：|:)?\s*([一二两三四五六七八九十百千\d]+)\s*(?:个|套|副|件)/);
+  const equipment=text.match(/(?<![\d.负−-])([一二两三四五六七八九十百千\d]+)\s*(?:个|套|副|件)(?:篮球|足球|球拍|器材|装备)/)
+    || text.match(/(?:篮球|足球|球拍|器材|装备)\s*(?:数量)?\s*(?:改成|改为|调整为|为|是|有|共|：|:)?\s*(?<![\d.负−-])([一二两三四五六七八九十百千\d]+)\s*(?:个|套|副|件)/);
   if(equipment) patch.equipmentCount=number(equipment[1]);
   const team=text.match(/(?:每组|一组)\s*([一二两三四五六七八九十\d]+)\s*人/);
   if(team) patch.teamSize=number(team[1]);
   const links = text.match(/https:\/\/(?:[a-z0-9-]+\.)*(?:douyin|xiaohongshu)\.com\/[^\s，。；<>]+/gi);
   if (links) patch.referenceUrls = [...new Set([...(known.referenceUrls || []), ...links])].slice(0, 4);
-  patch.activityType = activities.find((item) => text.includes(item)) || (/运动会/.test(text) ? "校园运动会" : /旅游|旅行|行程|游玩|游览/.test(text) ? "旅游规划" : undefined);
+  patch.activityType = activities.find((item) => text.includes(item)) || (/运动会/.test(text) ? "校园运动会" : /旅游|旅行|行程|游玩|游览|玩\s*[一二两三四五六七八九十\d]+天/.test(text) ? "旅游规划" : undefined);
   // Calendar days are dates, not trip lengths. Keep "三日游" as a duration.
   const durationText = text.replace(/20\d{2}[-/年]\d{1,2}[-/月]\d{1,2}[日号]?|[零〇一二两三四五六七八九十\d]+月[零〇一二两三四五六七八九十\d]+[日号]?|\d{1,2}[-/]\d{1,2}[日号]?/g, "");
   const days = durationText.match(/([一二两三四五六七八九十\d]+)\s*(?:天(?!期|后|以后|之后)|日(?=游|旅|行程|活动))/);
@@ -106,7 +108,7 @@ export function extractIntake(text: string, today: string, known: IntakePatch): 
   const duration = text.match(/(\d+(?:\.\d+)?|[一二两三四五六七八九十]+)\s*个?小时/);
   if (duration) patch.duration = /^\d/.test(duration[1]) ? Number(duration[1]) : number(duration[1]);
   const participantText=text.replace(/(?:每组|一组)\s*[一二两三四五六七八九十\d]+\s*人/g,"");
-  const people = participantText.match(/([零〇一二两三四五六七八九十百千\d]+)\s*(?:个|位|名)?\s*(?:大学生|研究生|成年人|成人|初中生|高中生|小学生|学生|同学|小朋友|孩子|老人|老年人|人|位|名)/)
+  const people = participantText.match(/(?<![\d.负−-])([零〇一二两三四五六七八九十百千\d]+)\s*(?:个|位|名)?\s*(?:大学生|研究生|成年人|成人|初中生|高中生|小学生|学生|同学|小朋友|孩子|老人|老年人|人|位|名)/)
     || (known.activityType && !known.participants ? text.match(/^\s*([零〇一二两三四五六七八九十百千\d]+)\s*个?[。！]?\s*$/) : null);
   if (people) patch.participants = number(people[1]);
   if (/大学生|研究生|成年人|成人/.test(text)) patch.group = "普通人群";
@@ -202,7 +204,7 @@ export function completeIntake(previous: IntakePatch, delta: IntakePatch, today:
   let reply: string;
   const invalidRange = known.date && (known.date < today || (known.endDate && (known.endDate < known.date || known.endDate > addDays(today, 6))) || known.date > addDays(today, 6));
   const invalidWindow = !tourism && known.duration && known.duration > (known.allowedEndHour ?? 21) - (known.allowedStartHour ?? 6);
-  if (invalidRange) reply = `当前可结合真实天气规划的日期为 ${today} 至 ${addDays(today, 6)}。请调整出发或结束日期，覆盖整个行程后我再分析。`;
+  if (invalidRange) reply = `已保留${[known.cityName, `${known.date}出发/开展`, known.tripDays ? `${known.tripDays}天` : "", known.participants ? `${known.participants}人` : ""].filter(Boolean).join("，")}。当前可结合真实天气规划的日期为 ${today} 至 ${addDays(today, 6)}。请只调整出发或结束日期（也可缩短行程天数）以覆盖整个行程，其他条件不用重复提供；本次未重新计算。`;
   else if (invalidWindow) reply = `已记下活动持续${known.duration}小时，但所选${known.allowedStartHour ?? 6}:00–${known.allowedEndHour ?? 21}:00时段无法容纳完整活动。请缩短时长，或选择不限时段后重新分析。`;
   else if (missing.length) reply = `好的，${known.tripDays && tourism ? `${known.tripDays}天旅游已记下。` : "已记下你提供的条件。"}还需要了解：\n${missing.slice(0, 3).map((question, i) => `${i + 1}. ${question}？`).join("\n")}\n可以一条回复一起告诉我；人数、强度和时段也可以说“按常规推荐”。`;
   else reply = `条件齐了：${known.cityName}，${known.date}${known.endDate && known.endDate !== known.date ? ` 至 ${known.endDate}` : ""}，${known.activityType}，${known.participants}人（${known.audienceDescription || known.group}）${tourism ? "，结合天气安排景点与美食" : `，每次${known.duration}小时，${known.intensity}`}。现在查询对应地区的真实数据并生成详细规划。`;

@@ -60,7 +60,7 @@ public class DecisionService {
         List<ToolTraceItem> trace = new ArrayList<>();
 
         long started = System.nanoTime();
-        DeepSeekService.AgentPlan plan = deepSeekService.plan(request);
+        DeepSeekService.AgentPlan plan = deepSeekService.plan(request, username);
         emit(trace, eventListener, new ToolTraceItem("plan", "agent_plan",
                 plan.rationale() + "；计划调用：" + String.join("、", plan.tools()),
                 plan.modelPlanned() ? "done" : "fallback", elapsedMillis(started)));
@@ -119,7 +119,7 @@ public class DecisionService {
                 .formatted(city.getName(), city.getWeather(), dateScope, request.activityType(), best.label(), city.getUpdatedAt());
 
         started = System.nanoTime();
-        var narrative = deepSeekService.synthesize(request, best, deterministicActions, contingency, evidence, plan.tools());
+        var narrative = deepSeekService.synthesize(request, best, deterministicActions, contingency, evidence, plan.tools(), username);
         String summary = narrative.map(DeepSeekService.AgentNarrative::summary).orElse(fallbackSummary);
         List<String> actions = deterministicActions;
         String finalContingency = contingency;

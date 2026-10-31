@@ -1,6 +1,7 @@
 import type { PoiSpot } from "./poi";
 import type { TourismHourSnapshot } from "./tourism";
 import { executionFloor } from "./beijing-time.ts";
+import { airQualityNote } from "./air-quality-provenance.ts";
 
 export interface ScheduleOptions {
   dates:string[]; hours:TourismHourSnapshot[]; allowedStartHour?:number; allowedEndHour?:number;
@@ -55,14 +56,15 @@ export function visitWindows(poi:PoiSpot,date:string):{windows:Array<[number,num
 function weatherCost(poi:PoiSpot,date:string,start:number,end:number,hours:TourismHourSnapshot[]) {
   const rows=hours.filter(row=>row.date===date && row.hour*60<end && (row.hour+1)*60>start);
   const needed=Math.ceil(end/60)-Math.floor(start/60);
-  if(rows.length<needed) return {cost:35,blocked:false,text:"停留窗口预报不完整，天气待复核"};
+  const covered=new Set(rows.map(row=>row.hour));
+  if(Array.from({length:needed},(_,index)=>Math.floor(start/60)+index).some(hour=>!covered.has(hour))) return {cost:35,blocked:false,text:"停留窗口预报不完整，天气待复核"};
   const rain=Math.max(...rows.map(row=>row.rainProbability));
   const heat=Math.max(...rows.map(row=>row.heatRisk));
   const aqi=Math.max(...rows.map(row=>row.aqi));
   const outdoor=!isFood(poi) && !indoors(poi);
   return {cost:outdoor ? rain*.55+heat*.3+Math.max(0,aqi-50)*.15 : 0,
     blocked:outdoor && (rain>=80 || heat>=80 || aqi>=200),
-    text:`${clock(start)}–${clock(end)}窗口：降水概率最高${rain}%，US AQI最高${aqi}，热风险最高${heat}；${outdoor ? "户外停留已参与天气筛选" : "室内/餐饮候选，仍需确认现场条件"}`};
+    text:`${clock(start)}–${clock(end)}窗口：降水概率最高${rain}%，US AQI最高${aqi}，热风险最高${heat}；${outdoor ? "户外停留已参与天气筛选" : "室内/餐饮候选，仍需确认现场条件"}${airQualityNote(rows) ? `；${airQualityNote(rows)}` : ""}`};
 }
 
 /** Bounded deterministic search: choose feasible full visit windows and penalize
@@ -113,6 +115,7 @@ export function scheduleTourism(candidates:PoiSpot[],options:ScheduleOptions) {
     const daily=visits.filter(visit=>visit.date===date);
     if(!daily.length) warnings.push(`${date}：没有同时满足天气、时间与地点条件的行程，请放宽条件或补充室内地点。`);
     if(dayStart<13*60 && dayEnd>12*60 && !meals.has("lunch")) warnings.push(`${date}：未匹配到午餐地点，请在11:00–14:00预留用餐。`);
+    if(daily.some(visit=>visit.weatherAssessment.includes("预报不完整"))) warnings.push(`${date}：部分停留窗口预报不完整，未完成天气筛选，执行前必须补齐数据或复核。`);
     if(daily.some(visit=>visit.openingStatus.startsWith("待确认"))) warnings.push(`${date}：部分营业时间未知，使用保守时段假设，必须确认后执行。`);
   });
   if(visits.some(visit=>visit.travelMinutes>0&&visit.travelSource==="estimate")) warnings.push("部分交通时间为按坐标、绕行系数和缓冲估算，非实时路况；已计入排程。未包含首站前与末站后的住宿通勤。");

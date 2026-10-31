@@ -47,7 +47,7 @@ flowchart LR
     P --> V[地图 · 数据依据 · 轨迹 · 规划书]
 ```
 
-依赖版本以 [frontend/package-lock.json](frontend/package-lock.json) 和 [backend/pom.xml](backend/pom.xml) 为准。主要技术为 Next.js 16.4、React 19、GSAP、Spring Boot 4.1、Java 21、Spring Security、Spring Data JPA。
+依赖版本以 [frontend/pnpm-lock.yaml](frontend/pnpm-lock.yaml) 和 [backend/pom.xml](backend/pom.xml) 为准。前端采用 Next.js 16.4、React 19、TypeScript、Tailwind CSS 4、Radix Themes 与 GSAP；后端采用 Spring Boot 4.1、Java 21、Spring Security 与 Spring Data JPA。技术选型和候选能力边界见[前端技术栈](docs/FRONTEND-STACK.md)。
 
 模型负责需求理解、路线编排和文字解释；环境数值、风险评分及引用校验由程序产生。模型未配置、超时或结果校验失败时，会说明具体原因并提供可解释的规则方案。百度搜索密钥与大模型密钥是两种独立配置。
 
@@ -76,7 +76,7 @@ flowchart LR
 
 ### 1. 准备环境
 
-- Git、Node.js **22** 与 npm。
+- Git、Node.js **22** 与 pnpm **11**。Node.js 自带的 Corepack 可用于启用 pnpm。
 - JDK **21**，正确设置 `JAVA_HOME`。仓库包含 Maven Wrapper，无需单独安装 Maven。
 - 本地开发默认使用内存 H2，不要求安装 MySQL。重启后本地 H2 数据会清空。
 - 环境数据、地图、联网搜索和模型接口需要网络访问。
@@ -87,6 +87,8 @@ cd xingzhi-ai-planner
 ```
 
 ### 2. 启动后端
+
+Windows 可直接双击项目根目录的 **[start-backend.bat](start-backend.bat)**。启动器自动检查 JDK 21、读取 `backend/.env` 并检查端口；默认8080，也可执行 `start-backend.bat -Port 18080`。详细参数见 [Windows 本地启动与打包](docs/LOCAL-START.md)。
 
 Linux / macOS：
 
@@ -112,7 +114,7 @@ $env:MODEL_CONFIG_SECRET = '替换为自行生成的随机字符串'
 ./mvnw.cmd spring-boot:run
 ```
 
-后端默认端口 `8080`，健康检查：`http://localhost:8080/actuator/health`。Spring Boot 不会自动加载 `.env`；Windows 请用环境变量传入，Linux 示例已显式导入。
+后端默认端口 `8080`，健康检查：`http://localhost:8080/actuator/health`。Spring Boot 不会自动加载 `.env`；新增 Windows 启动器会显式读取该文件，直接使用 Maven 时仍需设置环境变量，Linux 示例已显式导入。
 
 ### 3. 启动前端
 
@@ -122,13 +124,14 @@ $env:MODEL_CONFIG_SECRET = '替换为自行生成的随机字符串'
 cd frontend
 cp .env.example .env.local
 # Windows 可用 Copy-Item .env.example .env.local
-npm ci
-npm run dev
+corepack enable
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
 访问 **http://localhost:3000**。开发服务器会将 `/api/*` 转发至本地后端。请将 `.env.local` 中的 `MODEL_CONFIG_SECRET` 设置为与后端相同的值。
 
-高德地图需要有效的 Web JSAPI Key 和安全配置；未配置时地图会提示不可用，不能用于完整地图演示。联网搜索和模型均为可选项，未配置时界面会说明功能限制。`npm run build` 会检查高德 Key，空值会阻止生产构建。
+高德地图需要有效的 Web JSAPI Key 和安全配置；未配置时地图会提示不可用，不能用于完整地图演示。联网搜索和模型均为可选项，未配置时界面会说明功能限制。`pnpm build` 会检查高德 Key，空值会阻止生产构建。
 
 ### 4. 评审体验路径
 
@@ -142,7 +145,7 @@ npm run dev
 
 旅游排程已纳入完整游览、排队、交通、休息及天气窗口，模型推荐也接受同样校验。工作区分为分析台、环境地图、执行方案、执行管理、资料库和活动档案，支持删点重排、项目冲突检查、费用记录与方案版本比较。六类场景的具体能力、估算边界及保存限制见[排程可靠性与组织者工作区](docs/PLANNING-RELIABILITY.md)。
 
-可在对话中提出“明天西安到榆林怎么走便宜”，或填写出发地、目的地、日期自动查询火车与航班。票价通过飞常准只读 MCP 查询，需在服务器配置 `VARIFLIGHT_MCP_KEY`；未授权时明确提示服务尚未启用，不使用手动报价或搜索摘要代替实时报价。比较范围为本次返回的成人直达候选，不代表全网最低价，不含市内接驳及额外行李。接入与真实数据验收见[票价服务配置](docs/TICKET-SEARCH.md)。
+交通查询为独立的飞机与火车比价页面，支持只读 Agent 工具和结构化表单调用。正式验收启用厦航、山航、江西航、天津航、长安航；未通过云端验收的航司不列为线上可用，货运和无有效票价的来源不抓取。火车通过12306公开查询取得车次、席别、票价及时刻；两类结果各自加载。官网展示价未保证含税或全网最低，需官方核实。配置与限制见[票价服务配置](docs/TICKET-SEARCH.md)。
 
 “资料收藏”（原资料库）保存个人链接、组织笔记和人工核对状态，可从当前方案收藏来源。它不是 Agent 的知识库，收藏内容不会自动改变计算条件；普通旅行可以跳过。
 
@@ -158,7 +161,7 @@ npm run dev
 | 后端本地配置 | [backend/.env.example](backend/.env.example) |
 | Docker 部署配置 | [.env.example](.env.example) |
 | 变量说明及故障排查 | [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) |
-| 前端依赖与锁定版本 | [package.json](frontend/package.json)、[package-lock.json](frontend/package-lock.json) |
+| 前端依赖与锁定版本 | [package.json](frontend/package.json)、[pnpm-lock.yaml](frontend/pnpm-lock.yaml) |
 | 后端依赖与 Java 版本 | [pom.xml](backend/pom.xml)、[Maven Wrapper](backend/.mvn/wrapper/maven-wrapper.properties) |
 
 模型设置页可将配置绑定到用户账户，重新登录不需要重复录入。密钥不进入下载的规划书或 Git 仓库。
@@ -167,9 +170,14 @@ npm run dev
 
 ```bash
 cd frontend
-npm run lint
+pnpm lint
+pnpm format:check
 node --experimental-strip-types --test tests/*.test.mjs
-npm run build
+pnpm build
+
+# 单独开发和验收组件
+pnpm storybook
+pnpm build-storybook
 
 cd ../backend
 bash ./mvnw test

@@ -645,3 +645,10 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .map-legend { width: 142px; }
   .city-search-results { max-height: 210px; }
 }
+@media (max-width: 480px) {
+  .hour-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .hour-cell { padding: 12px 8px; gap: 5px; }
+  .hour-label, .hour-temp, .hour-detail div, .hour-level { font-size: 12px; }
+  .hour-score { font-size: 18px; }
+  .hour-detail { gap: 4px; }
+}

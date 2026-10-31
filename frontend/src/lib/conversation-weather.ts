@@ -15,15 +15,37 @@ export function weatherDestination(message: string, extracted?: string, previous
   // (e.g. 西安市 rather than the ambiguous keyword 西安).
   return named && /(?:市|县|区)$/.test(named) ? named : extracted || named || previous;
 }
+
+const inRange = (value: unknown, min: number, max: number) => typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
+
+/** Reject partial, duplicated, cross-day, or physically implausible hourly payloads. */
+export function validateWeatherHours(hours: EnvironmentalForecastPoint[], expectedDate: string): EnvironmentalForecastPoint[] {
+  if (!Array.isArray(hours)) throw new Error("invalid-weather-hours");
+  const seen = new Set<number>();
+  const valid = hours.map((row) => {
+    if (!row || row.date !== expectedDate || !Number.isInteger(row.hour) || row.hour < 0 || row.hour > 23 || seen.has(row.hour)
+      || !inRange(row.temperature, -90, 60) || !inRange(row.humidity, 0, 100)
+      || !inRange(row.rainProbability, 0, 100) || !inRange(row.aqi, 0, 500)
+      || !inRange(row.pm25, 0, 2000) || !inRange(row.heatRisk, 0, 100)) throw new Error("invalid-weather-hours");
+    seen.add(row.hour);
+    return row;
+  });
+  if (seen.size !== 24 || Array.from({ length: 24 }, (_, hour) => hour).some(hour => !seen.has(hour))) throw new Error("incomplete-weather-hours");
+  return valid.sort((left, right) => left.hour - right.hour);
+}
+
 export function summarizeWeather(city: string, date: string, hours: EnvironmentalForecastPoint[]): string {
-  const valid = hours.filter((h) => Number.isFinite(h.temperature) && Number.isFinite(h.rainProbability));
-  if (!valid.length) throw new Error("no-weather");
+  const valid = validateWeatherHours(hours, date);
   const temperatures = valid.map((h) => h.temperature);
   const aqi = valid.map((h) => h.aqi).filter(Number.isFinite);
   const periods = [["上午", 8, 11], ["下午", 12, 17], ["晚上", 18, 23]] as const;
+  const reusedAirDates = [...new Set(valid.filter(row => row.airQualityReused || row.airQualitySourceDate && row.airQualitySourceDate !== date).map(row => row.airQualitySourceDate).filter((value): value is string => Boolean(value)))];
+  const airNotice = valid.some(row => row.airQualityReused || row.airQualitySourceDate && row.airQualitySourceDate !== date)
+    ? `\n空气质量接口未覆盖该日，US AQI 与 PM2.5 使用${reusedAirDates.length ? ` ${reusedAirDates.join("、")} ` : "最近可用日期"}相同小时的预报值，仅供风险参考。`
+    : "";
   return `${city} · ${date} 天气预报（北京时间）\n全天温度 ${Math.min(...temperatures).toFixed(1)}–${Math.max(...temperatures).toFixed(1)}℃，最高逐小时降水概率 ${Math.max(...valid.map((h) => h.rainProbability))}%。\n${periods.flatMap(([name, from, to]) => {
     const rows = valid.filter((h) => h.hour >= from && h.hour <= to);
     return rows.length ? [`${name}：${Math.min(...rows.map((h) => h.temperature)).toFixed(1)}–${Math.max(...rows.map((h) => h.temperature)).toFixed(1)}℃，最高降水概率 ${Math.max(...rows.map((h) => h.rainProbability))}%。`] : [];
-  }).join("\n")}${aqi.length ? `\nUS AQI 预报范围：${Math.min(...aqi)}–${Math.max(...aqi)}（不是 PM2.5 浓度）。` : ""}\n预报会更新，请在出发前再次核对；以上不是气象预警。`;
+  }).join("\n")}${aqi.length ? `\nUS AQI 预报范围：${Math.min(...aqi)}–${Math.max(...aqi)}（不是 PM2.5 浓度）。` : ""}${airNotice}\n预报会更新，请在出发前再次核对；以上不是气象预警。`;
 }
 

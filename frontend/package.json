@@ -2,12 +2,21 @@
   "name": "amap-jsapi",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=11"
+  },
   "scripts": {
     "dev": "next dev",
     "prebuild": "node scripts/validate-env.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "format": "prettier --write package.json \".storybook/**/*.{ts,tsx}\" \"src/**/*.stories.tsx\"",
+    "format:check": "prettier --check package.json \".storybook/**/*.{ts,tsx}\" \"src/**/*.stories.tsx\"",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
   },
   "dependencies": {
     "@amap/amap-jsapi-loader": "^1.0.1",
@@ -18,18 +27,25 @@
     "gsap": "^3.15.0",
     "jsonrepair": "^3.15.0",
     "next": "16.4.2",
+    "playwright-core": "1.64.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@amap/amap-jsapi-types": "^0.0.15",
+    "@storybook/addon-a11y": "^10.6.4",
+    "@storybook/nextjs-vite": "^10.6.4",
     "@tailwindcss/turbopack": "^4",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
+    "prettier": "^3.9.10",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "storybook": "^10.6.4",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

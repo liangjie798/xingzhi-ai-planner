@@ -1,7 +1,7 @@
 import type { ActivityInput,DecisionResult,TourismRoute } from "./types";
 import type { ExecutionEvent,CostItem } from "./scenario-plans";
 import type { JourneyQuote } from "./journey";
-export interface SavedPlan {id:string;createdAt:string;label:string;input:ActivityInput;result:DecisionResult|null;route:TourismRoute|null;archived?:boolean;review?:string}
+export interface SavedPlan {id:string;createdAt:string;label:string;input:ActivityInput;result:DecisionResult|null;route:TourismRoute|null;archived?:boolean;review?:string;revision?:unknown}
 export interface Material {id:string;title:string;url:string;note:string;status:"待确认"|"已人工核对";updatedAt:string}
 export interface WorkspaceData {journeyParticipants?:number;journeyTimeValue?:number;journeyQuotes?:JourneyQuote[];events:ExecutionEvent[];costs:Array<CostItem&{placeName?:string;planKey?:string}>;materials:Material[];plans:SavedPlan[]}
 export const emptyWorkspace:WorkspaceData={events:[],costs:[],materials:[],plans:[]};

@@ -33,19 +33,40 @@ public class DeepSeekService {
 
     private final DeepSeekProperties properties;
     private final ObjectMapper objectMapper;
+    private final UserModelConfigService accountConfigs;
 
     public DeepSeekService(DeepSeekProperties properties, ObjectMapper objectMapper) {
+        this(properties, objectMapper, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public DeepSeekService(DeepSeekProperties properties, ObjectMapper objectMapper, UserModelConfigService accountConfigs) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.accountConfigs = accountConfigs;
+    }
+
+    private DeepSeekProperties configuration(String username) {
+        var env = System.getenv();
+        DeepSeekProperties defaults = properties;
+        if (!env.getOrDefault("MODEL_API_KEY", "").isBlank()) defaults = new DeepSeekProperties(env.get("MODEL_API_KEY"), env.getOrDefault("MODEL_BASE_URL", ""), env.getOrDefault("MODEL_NAME", ""), "", "");
+        else if (!env.getOrDefault("SILICONFLOW_API_KEY", "").isBlank()) defaults = new DeepSeekProperties(env.get("SILICONFLOW_API_KEY"), env.getOrDefault("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1"), env.getOrDefault("SILICONFLOW_MODEL", "Qwen/Qwen2.5-7B-Instruct"), "", "");
+        if (username == null || accountConfigs == null) return defaults;
+        var user = accountConfigs.requireUser(username);
+        if (user.getModelBaseUrl() == null || user.getModelBaseUrl().isBlank()
+                || user.getModelName() == null || user.getModelName().isBlank()) return defaults;
+        return new DeepSeekProperties(accountConfigs.decryptApiKey(user), user.getModelBaseUrl(), user.getModelName(), "", "");
     }
 
     /** Lets the model request concrete tools through the OpenAI-compatible Function Calling protocol. */
-    public AgentPlan plan(ActivityDecisionRequest request) {
-        // The no-key provider is rate-limited to one request per 30 seconds. Reserve
-        // that request for grounded synthesis; a configured DeepSeek key runs the
-        // full model-planned Function Calling path.
+    public AgentPlan plan(ActivityDecisionRequest request) { return plan(request, null); }
+    public AgentPlan plan(ActivityDecisionRequest request, String username) {
+        DeepSeekProperties properties;
+        try { properties = configuration(username); }
+        catch (RuntimeException exception) { return AgentPlan.fallback(REQUIRED_TOOLS, "账户模型配置读取失败，使用规则安全计划"); }
+        // Missing configuration must fail before any network request.
         if (!properties.primaryConfigured())
-            return AgentPlan.fallback(REQUIRED_TOOLS, "未配置DeepSeek密钥，使用受控安全计划并保留模型调用用于证据化生成");
+            return AgentPlan.fallback(REQUIRED_TOOLS, "未配置可用模型，立即使用规则安全计划");
         try {
             Map<String, Object> body = Map.of(
                     "model", properties.activeModel(),
@@ -57,20 +78,22 @@ public class DeepSeekService {
                     "tools", toolDefinitions(),
                     "tool_choice", "auto"
             );
-            JsonNode message = call(body).at("/choices/0/message");
+            JsonNode completion = call(body, properties);
+            JsonNode message = completion.at("/choices/0/message");
             LinkedHashSet<String> names = new LinkedHashSet<>();
             JsonNode calls = message.path("tool_calls");
             if (calls.isArray()) calls.forEach(call -> {
                 String name = call.at("/function/name").asText("");
                 if (ALLOWED_TOOLS.contains(name)) names.add(name);
             });
+            if (names.isEmpty()) return AgentPlan.fallback(REQUIRED_TOOLS, "模型未返回有效工具调用，执行安全必选工具");
             // Safety tools are mandatory even when a model omits one.
             names.addAll(REQUIRED_TOOLS);
             String rationale = message.path("content").asText("模型已通过 Function Calling 规划工具链");
             return new AgentPlan(List.copyOf(names), rationale.isBlank() ? "模型已通过 Function Calling 规划工具链" : rationale,
-                    true, properties.activeProvider() + " / " + properties.activeModel());
+                    true, properties.activeProvider() + " / " + completion.path("model").asText(properties.activeModel()));
         } catch (Exception exception) {
-            log.warn("Agent tool planning failed: {}", exception.getMessage());
+            log.warn("Agent tool planning failed: {}", exception.getClass().getSimpleName());
             return AgentPlan.fallback(REQUIRED_TOOLS, "模型规划失败，执行安全必选工具");
         }
     }
@@ -79,8 +102,13 @@ public class DeepSeekService {
     public Optional<AgentNarrative> synthesize(ActivityDecisionRequest request, TimeSlotScore bestSlot,
                                                 List<String> deterministicActions, String contingency,
                                                 List<EvidenceItem> evidence, List<String> plan) {
-        if (!properties.configured()) return Optional.empty();
+        return synthesize(request, bestSlot, deterministicActions, contingency, evidence, plan, null);
+    }
+    public Optional<AgentNarrative> synthesize(ActivityDecisionRequest request, TimeSlotScore bestSlot,
+            List<String> deterministicActions, String contingency, List<EvidenceItem> evidence, List<String> plan, String username) {
         try {
+            var properties = configuration(username);
+            if (!properties.configured()) return Optional.empty();
             List<Map<String, Object>> citedEvidence = evidence.stream().map(item -> Map.<String, Object>of(
                     "id", item.id(), "title", item.title(), "publisher", item.publisher(),
                     "section", item.section(), "excerpt", item.excerpt(), "url", item.sourceUrl())).toList();
@@ -110,7 +138,8 @@ public class DeepSeekService {
                     Map.of("role", "system", "content", "你是受控户外活动决策Agent。输出合法json，不输出Markdown。"),
                     Map.of("role", "user", "content", prompt)
             ));
-            String content = call(body).at("/choices/0/message/content").asText("");
+            JsonNode completion = call(body, properties);
+            String content = completion.at("/choices/0/message/content").asText("");
             JsonNode json = objectMapper.readTree(stripFence(content));
             String summary = json.path("summary").asText("").trim();
             if (summary.isBlank() || summary.length() > 900) return Optional.empty();
@@ -122,17 +151,22 @@ public class DeepSeekService {
             return Optional.of(new AgentNarrative(summary,
                     actions.isEmpty() ? deterministicActions : actions,
                     safeContingency.isBlank() ? contingency : safeContingency,
-                    confidence, citations, properties.activeProvider() + " / " + properties.activeModel()));
+                    confidence, citations, properties.activeProvider() + " / " + completion.path("model").asText(properties.activeModel())));
         } catch (Exception exception) {
-            log.warn("Grounded decision synthesis failed: {}", exception.getMessage());
+            log.warn("Grounded decision synthesis failed: {}", exception.getClass().getSimpleName());
             return Optional.empty();
         }
     }
 
-    private JsonNode call(Map<String, Object> body) throws Exception {
+    JsonNode call(Map<String, Object> body, DeepSeekProperties properties) throws Exception {
         String baseUrl = properties.activeBaseUrl().replaceAll("/+$", "");
-        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(baseUrl + "/chat/completions"))
-                .timeout(Duration.ofSeconds(28))
+        URI endpoint = URI.create(baseUrl);
+        if (!"https".equals(endpoint.getScheme())) throw new IllegalArgumentException("模型地址必须使用HTTPS");
+        for (var address : java.net.InetAddress.getAllByName(endpoint.getHost()))
+            if (address.isAnyLocalAddress() || address.isLoopbackAddress() || address.isLinkLocalAddress() || address.isSiteLocalAddress())
+                throw new IllegalArgumentException("模型地址不能指向内网");
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(baseUrl.endsWith("/chat/completions") ? baseUrl : baseUrl + "/chat/completions"))
+                .timeout(Duration.ofSeconds(10))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)));
@@ -142,7 +176,7 @@ public class DeepSeekService {
         HttpResponse<byte[]> response = client.send(request.build(), HttpResponse.BodyHandlers.ofByteArray());
         String raw = new String(response.body(), java.nio.charset.StandardCharsets.UTF_8);
         if (response.statusCode() < 200 || response.statusCode() >= 300)
-            throw new IllegalStateException("模型接口HTTP " + response.statusCode() + ": " + raw.substring(0, Math.min(300, raw.length())));
+            throw new IllegalStateException("模型接口HTTP " + response.statusCode());
         return objectMapper.readTree(raw);
     }
 

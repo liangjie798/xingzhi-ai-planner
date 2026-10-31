@@ -61,8 +61,17 @@ export function cityIntroductionQuery(city: string) {
 
 export function selectCityIntroductionSources(items: SocialItem[], city: string): SocialItem[] {
   const name = city.replace(/(?:特别行政区|市|县|区)$/, "");
-  return items.filter((item) => `${item.title} ${item.excerpt}`.includes(name)
-    && (/简介|概况|城市介绍|历史文化|旅游景点|特色美食|游览指南/.test(item.title)
-      || (item.excerpt.includes(name) && /位于|地处|古称|省会|古都/.test(item.excerpt))))
-    .slice(0, 5);
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const title = item.title.replace(/\s/g, "");
+    if (!title.includes(name) || /街|景区|景点|公园|博物馆|酒店|餐厅/.test(title)) return false;
+    // A city's name in a topical news article does not make it a city overview.
+    const cityAt = title.indexOf(name);
+    const subject = title.slice(cityAt + name.length).replace(/^市(?!情)/, "");
+    if (!/^(?:城市)?(?:简介|介绍|概况|概览|市情|基本情况|地理概况|历史沿革|饮食文化|特色美食)/.test(subject)
+      && !/^(?:市情|城市)(?:简介|概况|概览)[：:·—-]?/.test(title)) return false;
+    if (seen.has(item.url) || seen.has(item.excerpt)) return false;
+    seen.add(item.url); seen.add(item.excerpt);
+    return true;
+  }).slice(0, 5);
 }

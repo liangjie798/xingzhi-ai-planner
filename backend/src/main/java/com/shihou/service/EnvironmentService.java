@@ -15,6 +15,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -44,17 +45,22 @@ public class EnvironmentService {
     private final CityEnvironmentRepository repository;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
+    private final Clock clock;
     private final Map<String, CachedForecast> cache = new ConcurrentHashMap<>();
     private final Map<String, CachedSources> sourceCache = new ConcurrentHashMap<>();
     private final Map<String, Object> sourceLocks = new ConcurrentHashMap<>();
 
+    @org.springframework.beans.factory.annotation.Autowired
     public EnvironmentService(CityEnvironmentRepository repository, ObjectMapper objectMapper) {
+        this(repository, objectMapper, HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8))
+                .followRedirects(HttpClient.Redirect.NORMAL).build(), Clock.system(CHINA_ZONE));
+    }
+
+    EnvironmentService(CityEnvironmentRepository repository, ObjectMapper objectMapper, HttpClient httpClient, Clock clock) {
         this.repository = repository;
         this.objectMapper = objectMapper;
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(8))
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+        this.httpClient = httpClient;
+        this.clock = clock.withZone(CHINA_ZONE);
     }
 
     public List<CityEnvironmentEntity> listCities() {
@@ -62,13 +68,13 @@ public class EnvironmentService {
     }
 
     public CityEnvironmentEntity getCity(String cityId) {
-        return forecast(cityId, LocalDate.now(CHINA_ZONE)).city();
+        return forecast(cityId, LocalDate.now(clock)).city();
     }
 
     public CityEnvironmentEntity getCity(String cityId, String name, String province, String adcode,
                                          double longitude, double latitude) {
         return forecast(customDefinition(cityId, name, province, adcode, longitude, latitude),
-                LocalDate.now(CHINA_ZONE), false).city();
+                LocalDate.now(clock), false).city();
     }
 
     public List<EnvironmentalForecastPoint> getForecast(String cityId, LocalDate date) {
@@ -123,9 +129,11 @@ public class EnvironmentService {
     }
 
     private ForecastBundle forecast(CityDefinition definition, LocalDate date, boolean persistSnapshot) {
-        String cacheKey = definition.id() + ":" + definition.latitude() + ":" + definition.longitude() + ":" + date;
+        LocalDate today = LocalDate.now(clock);
+        cache.entrySet().removeIf(entry -> !entry.getValue().fetchedAt().atZone(CHINA_ZONE).toLocalDate().equals(today));
+        String cacheKey = definition.id() + ":" + definition.latitude() + ":" + definition.longitude() + ":" + date + ":" + today;
         CachedForecast cached = cache.get(cacheKey);
-        if (cached != null && cached.fetchedAt().plus(CACHE_TTL).isAfter(Instant.now())) {
+        if (cached != null && cached.fetchedAt().plus(CACHE_TTL).isAfter(clock.instant())) {
             return cached.bundle();
         }
 
@@ -134,7 +142,7 @@ public class EnvironmentService {
             // 搜索得到的区县和地图网格点属于临时计算坐标，多个采样点可能共享同一行政区代码。
             // 只持久化内置城市中心快照，避免临时坐标争用 adcode 唯一键并让实时请求返回 503。
             if (persistSnapshot) repository.save(bundle.city());
-            cache.put(cacheKey, new CachedForecast(bundle, Instant.now()));
+            cache.put(cacheKey, new CachedForecast(bundle, clock.instant()));
             return bundle;
         } catch (IllegalArgumentException exception) {
             throw exception;
@@ -165,15 +173,15 @@ public class EnvironmentService {
         JsonNode currentWeather = weather.path("current");
         JsonNode currentAir = air.path("current");
         String currentTime = currentWeather.path("time").asText();
-        double temperature = requiredDouble(currentWeather, "temperature_2m");
-        int humidity = requiredInt(currentWeather, "relative_humidity_2m");
-        double apparent = requiredDouble(currentWeather, "apparent_temperature");
-        int aqi = requiredInt(currentAir, "us_aqi");
-        int pm25 = (int) Math.round(requiredDouble(currentAir, "pm2_5"));
+        double temperature = boundedDouble(currentWeather, "temperature_2m", -90, 60);
+        int humidity = boundedInt(currentWeather, "relative_humidity_2m", 0, 100);
+        double apparent = boundedDouble(currentWeather, "apparent_temperature", -100, 70);
+        int aqi = boundedInt(currentAir, "us_aqi", 0, 500);
+        int pm25 = (int) Math.round(boundedDouble(currentAir, "pm2_5", 0, 2000));
         String currentHour = currentTime.substring(0, 13) + ":00";
-        int rain = hourlyIntAt(weather.path("hourly"), "precipitation_probability", currentHour);
-        int weatherCode = requiredInt(currentWeather, "weather_code");
-        double windSpeed = requiredDouble(currentWeather, "wind_speed_10m");
+        int rain = hourlyIntAt(weather.path("hourly"), "precipitation_probability", currentHour, 0, 100);
+        int weatherCode = boundedInt(currentWeather, "weather_code", 0, 99);
+        double windSpeed = boundedDouble(currentWeather, "wind_speed_10m", 0, 500);
         Instant observedAt = LocalDateTime.parse(currentTime).atZone(CHINA_ZONE).toInstant();
 
         CityEnvironmentEntity snapshot = new CityEnvironmentEntity(
@@ -204,40 +212,48 @@ public class EnvironmentService {
                 airIndex -= 24;
             }
             if (airIndex < 0) throw new IllegalStateException("缺少可用的空气质量逐小时数据");
-            double hourlyTemperature = arrayDouble(weatherHourly, "temperature_2m", weatherIndex);
-            int hourlyHumidity = arrayInt(weatherHourly, "relative_humidity_2m", weatherIndex);
-            double hourlyApparent = arrayDouble(weatherHourly, "apparent_temperature", weatherIndex);
+            double hourlyTemperature = boundedArrayDouble(weatherHourly, "temperature_2m", weatherIndex, -90, 60);
+            int hourlyHumidity = boundedArrayInt(weatherHourly, "relative_humidity_2m", weatherIndex, 0, 100);
+            double hourlyApparent = boundedArrayDouble(weatherHourly, "apparent_temperature", weatherIndex, -100, 70);
+            String airSourceTime = airHourly.path("time").path(airIndex).asText("");
+            if (airSourceTime.length() < 10) throw new IllegalStateException("缺少空气质量数据时间");
+            String airSourceDate = airSourceTime.substring(0, 10);
+            boolean airQualityReused = !time.equals(airSourceTime);
             points.add(new EnvironmentalForecastPoint(
                     date.toString(), hour, round1(hourlyTemperature), hourlyHumidity,
-                    arrayInt(weatherHourly, "precipitation_probability", weatherIndex),
-                    arrayInt(airHourly, "us_aqi", airIndex),
-                    (int) Math.round(arrayDouble(airHourly, "pm2_5", airIndex)),
-                    heatRisk(hourlyTemperature, hourlyHumidity, hourlyApparent)
+                    boundedArrayInt(weatherHourly, "precipitation_probability", weatherIndex, 0, 100),
+                    boundedArrayInt(airHourly, "us_aqi", airIndex, 0, 500),
+                    (int) Math.round(boundedArrayDouble(airHourly, "pm2_5", airIndex, 0, 2000)),
+                    heatRisk(hourlyTemperature, hourlyHumidity, hourlyApparent),
+                    airQualityReused, airSourceDate
             ));
         }
         return new ForecastBundle(snapshot, List.copyOf(points));
     }
 
     private CachedSources fetchSources(CityDefinition city) {
-        String sourceKey = city.latitude() + ":" + city.longitude();
+        LocalDate today = LocalDate.now(clock);
+        sourceCache.entrySet().removeIf(entry -> !entry.getValue().fetchedAt().atZone(CHINA_ZONE).toLocalDate().equals(today));
+        String sourceKey = city.latitude() + ":" + city.longitude() + ":" + today;
         CachedSources cached = sourceCache.get(sourceKey);
-        if (cached != null && cached.fetchedAt().plus(CACHE_TTL).isAfter(Instant.now())) return cached;
+        if (cached != null && cached.fetchedAt().plus(CACHE_TTL).isAfter(clock.instant())) return cached;
         Object lock = sourceLocks.computeIfAbsent(sourceKey, ignored -> new Object());
         synchronized (lock) {
             cached = sourceCache.get(sourceKey);
-            if (cached != null && cached.fetchedAt().plus(CACHE_TTL).isAfter(Instant.now())) return cached;
+            if (cached != null && cached.fetchedAt().plus(CACHE_TTL).isAfter(clock.instant())) return cached;
         String coordinate = "latitude=" + city.latitude() + "&longitude=" + city.longitude();
         String weatherUrl = "https://api.open-meteo.com/v1/forecast?" + coordinate
                 + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m"
                 + "&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m"
-                + "&timezone=Asia%2FShanghai&forecast_days=8";
+                // Keep yesterday's last hour for current observations lagging across midnight.
+                + "&timezone=Asia%2FShanghai&start_date=" + today.minusDays(1) + "&end_date=" + today.plusDays(7);
         String airUrl = "https://air-quality-api.open-meteo.com/v1/air-quality?" + coordinate
                 + "&current=pm2_5,us_aqi&hourly=pm2_5,us_aqi&timezone=Asia%2FShanghai&forecast_days=7";
 
             try {
                 CompletableFuture<JsonNode> weatherFuture = fetchJson(weatherUrl);
                 CompletableFuture<JsonNode> airFuture = fetchJson(airUrl);
-                CachedSources loaded = new CachedSources(weatherFuture.join(), airFuture.join(), Instant.now());
+                CachedSources loaded = new CachedSources(weatherFuture.join(), airFuture.join(), clock.instant());
                 sourceCache.put(sourceKey, loaded);
                 return loaded;
             } catch (RuntimeException exception) {
@@ -263,16 +279,16 @@ public class EnvironmentService {
     }
 
     private void validateForecastDate(LocalDate date) {
-        LocalDate today = LocalDate.now(CHINA_ZONE);
+        LocalDate today = LocalDate.now(clock);
         if (date.isBefore(today) || date.isAfter(today.plusDays(7))) {
             throw new IllegalArgumentException("活动日期仅支持今天至未来7天");
         }
     }
 
-    private int hourlyIntAt(JsonNode hourly, String field, String time) {
+    private int hourlyIntAt(JsonNode hourly, String field, String time, int min, int max) {
         int index = indexOf(hourly.path("time"), time);
         if (index < 0) throw new IllegalStateException("缺少当前小时数据");
-        return arrayInt(hourly, field, index);
+        return boundedArrayInt(hourly, field, index, min, max);
     }
 
     private int indexOf(JsonNode array, String value) {
@@ -292,6 +308,18 @@ public class EnvironmentService {
         return (int) Math.round(requiredDouble(node, field));
     }
 
+    private double boundedDouble(JsonNode node, String field, double min, double max) {
+        double value = requiredDouble(node, field);
+        if (!Double.isFinite(value) || value < min || value > max) throw new IllegalStateException("字段超出合理范围 " + field);
+        return value;
+    }
+
+    private int boundedInt(JsonNode node, String field, int min, int max) {
+        int value = requiredInt(node, field);
+        if (value < min || value > max) throw new IllegalStateException("字段超出合理范围 " + field);
+        return value;
+    }
+
     private double arrayDouble(JsonNode node, String field, int index) {
         JsonNode value = node.path(field).path(index);
         if (!value.isNumber()) throw new IllegalStateException("缺少逐小时字段 " + field);
@@ -300,6 +328,18 @@ public class EnvironmentService {
 
     private int arrayInt(JsonNode node, String field, int index) {
         return (int) Math.round(arrayDouble(node, field, index));
+    }
+
+    private double boundedArrayDouble(JsonNode node, String field, int index, double min, double max) {
+        double value = arrayDouble(node, field, index);
+        if (!Double.isFinite(value) || value < min || value > max) throw new IllegalStateException("逐小时字段超出合理范围 " + field);
+        return value;
+    }
+
+    private int boundedArrayInt(JsonNode node, String field, int index, int min, int max) {
+        int value = arrayInt(node, field, index);
+        if (value < min || value > max) throw new IllegalStateException("逐小时字段超出合理范围 " + field);
+        return value;
     }
 
     private int heatRisk(double temperature, int humidity, double apparentTemperature) {

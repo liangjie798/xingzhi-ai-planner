@@ -34,8 +34,13 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
-      { detail: error instanceof Error ? error.message : "大模型调用失败" },
+      { success: false, code: modelFailureCode(error), detail: error instanceof Error ? error.message : "大模型调用失败" },
       { status: 502 },
     );
   }
+}
+
+function modelFailureCode(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  return /未配置/.test(message) ? "not_configured" : /密钥无效|权限不足/.test(message) ? "authentication_failed" : /额度不足|请求受限/.test(message) ? "quota_or_rate_limit" : /超时/.test(message) ? "timeout" : /不存在/.test(message) ? "model_or_endpoint_not_found" : "provider_error";
 }

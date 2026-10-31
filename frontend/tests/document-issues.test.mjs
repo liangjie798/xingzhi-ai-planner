@@ -10,7 +10,7 @@ test("plotting is an explicit metric request, never a new city or a shorter date
   const phrase="把两天的气温和降雨概率放在一起比较，画出对比图。";
   const original=structuredClone(known);
   assert.equal(extractIntake(phrase,today,known).cityName,undefined);
-  assert.deepEqual(weatherChartRequest(phrase,known),{kind:"weather-comparison",cityName:"杭州市",dates:["2026-10-27","2026-10-28"],metrics:["temperature","rainProbability"]});
+  assert.deepEqual(weatherChartRequest(phrase,known,today),{kind:"weather-comparison",cityName:"杭州市",dates:["2026-10-27","2026-10-28"],metrics:["temperature","rainProbability"]});
   assert.deepEqual(known,original);
 });
 test("explicit 14 to 16 bounds constrain the complete session and exported agenda",()=>{

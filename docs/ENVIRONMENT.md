@@ -8,7 +8,7 @@
 | 后端开发 | `backend/.env.example` → `backend/.env` | 通过 shell 导入环境变量后启动；Spring Boot 不自动加载 `.env` |
 | Docker Compose | 根目录 `.env.example` → `.env` | Compose 插值并传入指定容器；不能仅填写前端本地文件 |
 
-安装版本：Node.js 22、npm、JDK 21。Maven 版本由 `backend/.mvn/wrapper/maven-wrapper.properties` 锁定，前端精确依赖见 `frontend/package-lock.json`。生产数据库 MySQL 8.4；本地默认内存 H2。
+安装版本：Node.js 22、pnpm 11、JDK 21。Maven 版本由 `backend/.mvn/wrapper/maven-wrapper.properties` 锁定，前端精确依赖见 `frontend/pnpm-lock.yaml`。生产数据库 MySQL 8.4；本地默认内存 H2。
 
 ## 地图与地点
 

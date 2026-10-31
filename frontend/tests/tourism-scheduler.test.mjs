@@ -4,7 +4,7 @@ import {scheduleTourism,validateSchedule,estimatedTransfer,visitWindows,transfer
 const date="2026-10-28";
 const poi=(name,longitude=120,category="景点",extra={})=>({name,longitude,latitude:30,category,tag:category,blurb:name,...extra});
 const hours=rain=>Array.from({length:24},(_,hour)=>({date,hour,temperature:20,humidity:60,aqi:50,heatRisk:10,rainProbability:typeof rain==="function"?rain(hour):rain}));
-const options={dates:[date],hours:hours(0),allowedStartHour:9,allowedEndHour:20};
+const options={now:new Date("2026-10-27T00:00:00Z"),dates:[date],hours:hours(0),allowedStartHour:9,allowedEndHour:20};
 test("fallback puts meals in meal windows and never a wetland at 18:00",()=>{
   assert.equal(visitWindows(poi("西溪国家湿地公园",120,"景点",{tag:"热门街区"}),date).windows[0][1],17*60);
   assert.equal(sameTourismPlace(poi("杭州博物馆"),poi("杭州博物馆南馆",120.001)),true);

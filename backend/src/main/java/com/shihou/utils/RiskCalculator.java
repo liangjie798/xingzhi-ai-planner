@@ -7,6 +7,7 @@ import com.shihou.dto.TimeSlotScore;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -45,7 +46,12 @@ public final class RiskCalculator {
         int earliest = input.allowedStartHour() == null ? 6 : input.allowedStartHour();
         int latestEnd = input.allowedEndHour() == null ? 21 : input.allowedEndHour();
         if (latestEnd <= earliest) throw new IllegalArgumentException("允许结束时间必须晚于开始时间");
+        Map<String, Integer> occurrences = new HashMap<>();
         for (EnvironmentalForecastPoint point : forecast) {
+            if (validPoint(point)) occurrences.merge(point.date() + "#" + point.hour(), 1, Integer::sum);
+        }
+        for (EnvironmentalForecastPoint point : forecast) {
+            if (!validPoint(point) || occurrences.getOrDefault(point.date() + "#" + point.hour(), 0) != 1) continue;
             if (point.hour() < earliest || point.hour() + input.duration() > latestEnd) continue;
             String date = point.date() == null ? input.date() : point.date();
             // Exported preparation/check-in needs one hour before the event.
@@ -54,7 +60,11 @@ public final class RiskCalculator {
             List<EnvironmentalForecastPoint> window = new ArrayList<>();
             for (int offset = 0; offset < input.duration(); offset++) {
                 final int hour = point.hour() + offset;
-                forecast.stream().filter(p -> java.util.Objects.equals(p.date(), point.date()) && p.hour() == hour).findFirst().ifPresent(window::add);
+                List<EnvironmentalForecastPoint> matches = forecast.stream()
+                        .filter(RiskCalculator::validPoint)
+                        .filter(p -> java.util.Objects.equals(p.date(), point.date()) && p.hour() == hour)
+                        .toList();
+                if (matches.size() == 1) window.add(matches.getFirst());
             }
             if (window.size() != input.duration()) continue;
             int maximumHeat = window.stream().mapToInt(EnvironmentalForecastPoint::heatRisk).max().orElseThrow();
@@ -87,6 +97,17 @@ public final class RiskCalculator {
         if (score >= 72) return "适宜";
         if (score >= 48) return "谨慎";
         return "不建议";
+    }
+
+    private static boolean validPoint(EnvironmentalForecastPoint point) {
+        return point != null && point.date() != null && point.date().matches("\\d{4}-\\d{2}-\\d{2}")
+                && point.hour() >= 0 && point.hour() <= 23
+                && Double.isFinite(point.temperature()) && point.temperature() >= -90 && point.temperature() <= 60
+                && point.humidity() >= 0 && point.humidity() <= 100
+                && point.rainProbability() >= 0 && point.rainProbability() <= 100
+                && point.aqi() >= 0 && point.aqi() <= 500
+                && point.pm25() >= 0 && point.pm25() <= 2000
+                && point.heatRisk() >= 0 && point.heatRisk() <= 100;
     }
 
     private static double clamp(double value) {

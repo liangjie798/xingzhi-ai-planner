@@ -11,6 +11,7 @@ import type { CitySearchResult } from "@/lib/types";
 import { searchChinaDistricts } from "@/lib/amap-lbs";
 import { beijingTime } from "@/lib/beijing-time";
 import { addDays } from "@/lib/conversation-intake";
+import { airQualityNote } from "@/lib/air-quality-provenance";
 
 function dateString(offsetDays = 0) {
   return addDays(beijingTime().date, offsetDays);
@@ -47,12 +48,19 @@ export default function HourlyPage() {
   }
 
   useEffect(() => {
+    const syncRange = () => {
+      const min = dateString(), max = addDays(min, 7);
+      setDateRange(previous => previous.min === min && previous.max === max ? previous : { min, max });
+      setDate(current => !current || current < min || current > max ? min : current);
+    };
     queueMicrotask(() => {
       const selected = readSelectedCity() as CityOption;
       setCityOption(selected);
-      setDate(dateString());
-      setDateRange({ min: dateString(), max: dateString(7) });
+      syncRange();
     });
+    const timer = window.setInterval(syncRange, 60000);
+    window.addEventListener("focus", syncRange);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", syncRange); };
   }, []);
 
   const loadData = useCallback(async (targetCity: CityOption, targetDate: string, signal: AbortSignal) => {
@@ -103,6 +111,7 @@ export default function HourlyPage() {
   }, [cityOption, date, loadData]);
 
   const selectedCity = cityOption;
+  const airNote = airQualityNote(hours.map(row => row.point));
   const bestHours = useMemo(
     () => hours.slice().sort((a, b) => b.score - a.score).slice(0, 4).map((row) => row.point.hour),
     [hours],
@@ -157,9 +166,10 @@ export default function HourlyPage() {
             <div className="hourly-summary">
               <strong>最佳活动时段：</strong>
               {bestHours.map((hour) => `${String(hour).padStart(2, "0")}:00`).join(" · ")}
-              <span className="hourly-hint">（按适宜度得分排序，点击下方时段列可查看详情）</span>
+              <span className="hourly-hint">（按适宜度得分排序，下方展示各时段的环境明细）</span>
             </div>
 
+            {airNote && <p className="data-note standalone" role="status"><WarningCircle size={18} /><span>{airNote}</span></p>}
             <div className="hour-grid" role="list">
               {hours.map((row) => (
                 <div className={`hour-cell level-${row.level} ${bestHours.includes(row.point.hour) ? "is-best" : ""}`} role="listitem" key={row.point.hour}>

@@ -1,71 +1,24 @@
-import test from "node:test";
-import assert from "node:assert/strict";
-import { decodeRpc,providerObjects } from "../src/lib/variflight-mcp-server.ts";
-import { cityCode,flightOptions,trainOptions,trainCandidates,flightSql,searchTickets,summarizeTickets } from "../src/lib/ticket-search-server.ts";
-import { isTransportQuestion,journeyLocations } from "../src/lib/journey.ts";
-
-test("cheap journey requests enter transport and preserve their direction",()=>{
-  for(const phrase of ["西安到榆林怎么出发便宜","西安到榆林怎么走便宜","查询明天的机票","高铁和航班哪个便宜"])assert.equal(isTransportQuestion(phrase),true,phrase);
-  assert.deepEqual(journeyLocations("西安到榆林怎么出发便宜"),{originCity:"西安",destination:"榆林"});
-  for(const prefix of ["明天","一周后","11月1日","2026-11-01"]){assert.deepEqual(journeyLocations(`${prefix}西安到榆林怎么走便宜`),{originCity:"西安",destination:"榆林"});}
-  assert.equal(isTransportQuestion("明天西安气温"),false);
-});
-test("MCP SSE and embedded table rows are parsed without treating prose as price",()=>{
-  assert.equal(decodeRpc('event: message\ndata: {"jsonrpc":"2.0","method":"notice"}\n\nevent: message\ndata: {"id":1,"result":{"ok":true}}\n\n').result.ok,true);
-  assert.ok(providerObjects({columns:[{name:"adult_total"},{name:"option_id"}],rows:[[360,"real-option"]]}).some(row=>row.adult_total===360));
-  assert.equal(flightOptions("网页说机票100元").length,0);
-  assert.equal(flightOptions({adult_total:null,option_id:"x"}).length,0);
-  assert.equal(flightOptions({adult_total:0,option_id:"x"}).length,0);
-  assert.equal(flightOptions({adult_total:350,option_id:"real"})[0].price,350);
-});
-test("airport ambiguity, SQL injection, unavailable seats and stale train dates fail closed",()=>{
-  assert.equal(cityCode([{cityName:"西安",cityCode:"SIA"}],"西安市"),"SIA");
-  assert.equal(cityCode({kind:"collection",items:[{type:"city",code:"SIA",name:"西安",cityCode:"",cityName:""},{type:"airport",code:"XIY",name:"西安咸阳"}]},"西安"),"SIA");
-  assert.equal(cityCode([{cityName:"西安",cityCode:"SIA"},{cityName:"西安",cityCode:"XIY"}],"西安"),undefined);
-  assert.throws(()=>flightSql("SIA';DROP","UYN","2026-10-27"));
-  assert.equal(trainOptions({seatName:"硬座",price:80,remaining:0},"K1").length,0);
-  assert.equal(trainOptions({seatName:"硬座",price:80},"K1").length,0);
-  assert.equal(trainOptions({seatName:"硬座",price:80,remaining:"候补"},"K1").length,0);
-  assert.equal(trainOptions({seatName:"硬座",price:"80.50",remaining:"有"},"K1")[0].price,80.5);
-  const live=trainOptions({kind:"entity",item:{trainNumber:"7006",fromStation:"西安",toStation:"榆林",fromTime:"08:12",toTime:"17:53",useTime:581,seatLists:[{seatName:"硬座",seatPrice:6400,ticketLeft:195},{seatName:"硬卧",seatPrice:13900,ticketLeft:0}]}},"7006");
-  assert.equal(live.length,1);assert.equal(live[0].price,64);assert.equal(live[0].durationMinutes,581);assert.equal(live[0].originStation,"西安");
-  assert.equal(trainOptions({seatName:"商务座",seatPrice:150000,ticketLeft:3},"G1")[0].price,1500);
-  assert.equal(trainCandidates({trainNumber:"K1",depDate:"2026-10-26",depStationCode:"XAY",arrStationCode:"ALY"},"2026-10-27").length,0);
-  assert.match(summarizeTickets([{mode:"火车",price:80,service:"K1",seat:"硬座"}],[]),/尚不能判断/);
-});
-
-test("missing authorization never fetches or reuses manually entered prices",async()=>{
-  const key=process.env.VARIFLIGHT_MCP_KEY,fetcher=global.fetch;
-  delete process.env.VARIFLIGHT_MCP_KEY;
-  global.fetch=async()=>{throw new Error("must not fetch");};
-  try{const result=await searchTickets("西安","榆林","2099-01-01");assert.equal(result.status,"not-configured");assert.deepEqual(result.options,[]);assert.match(result.reply,/尚未启用/);}
-  finally{global.fetch=fetcher;if(key===undefined)delete process.env.VARIFLIGHT_MCP_KEY;else process.env.VARIFLIGHT_MCP_KEY=key;}
-});
-
-test("authorized pipeline uses only read-only MCP tools and preserves quotes in both modes",async()=>{
-  // Contract fixtures are not claims about a live provider response; real-key acceptance is separate.
-  const key=process.env.VARIFLIGHT_MCP_KEY,fetcher=global.fetch,calls=[];
-  process.env.VARIFLIGHT_MCP_KEY="test-only-not-a-real-key";
-  global.fetch=async(url,options)=>{
-    assert.equal(String(url),"https://c-gw.variflight.com/chat_message/mcp/api");
-    const body=JSON.parse(options.body);calls.push(body);
-    if(body.method==="notifications/initialized")return new Response(null,{status:202});
-    let result={protocolVersion:"2025-03-26"};
-    if(body.method==="tools/list")result={tools:[{name:"getFlightTicketPrice",inputSchema:{required:["sql"],properties:{sql:{type:"string"}}}}]};
-    if(body.method==="tools/call"){
-      const {name,arguments:args}=body.params;
-      assert.ok(["searchAirport","getFlightTicketPrice","domesticDirectTrainSearch","trainDetail"].includes(name));
-      if(name==="searchAirport")result={structuredContent:{cityName:args.name,cityCode:args.name==="西安"?"SIA":"UYN"}};
-      if(name==="getFlightTicketPrice")result={content:[{type:"resource",resource:{mimeType:"application/json",text:JSON.stringify({columns:["option_id","adult_total"],rows:[["flight-option",350]]})}}]};
-      if(name==="domesticDirectTrainSearch")result={structuredContent:{trains:[{trainNumber:"K1",depDate:args.depDate,depStationCode:"XAY",arrStationCode:"ALY"}]}};
-      if(name==="trainDetail")result={structuredContent:{seats:[{seatName:"硬座",price:80,remaining:6},{seatName:"无座",price:60,remaining:0}]}};
-    }
-    return Response.json({jsonrpc:"2.0",id:body.id,result},{headers:{"Mcp-Session-Id":"test-session"}});
-  };
-  try{
-    const result=await searchTickets("西安","榆林","2099-01-01");
-    assert.equal(result.status,"available");assert.equal(result.options.length,2);assert.equal(result.options[0].price,80);assert.match(result.reply,/火车 K1/);assert.match(result.reply,/350/);
-    assert.equal(calls.filter(row=>row.params?.name==="trainDetail").length,1);
-    const before=calls.length;const repeated=await searchTickets("西安","榆林","2099-01-01");assert.equal(calls.length,before);assert.equal(repeated.checkedAt,result.checkedAt);
-  }finally{global.fetch=fetcher;if(key===undefined)delete process.env.VARIFLIGHT_MCP_KEY;else process.env.VARIFLIGHT_MCP_KEY=key;}
-});
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {positiveFare,parseAirlinePage,airlinePageBarrier} from '../src/lib/airline-parsing.ts';
+import {AIRLINE_PROVIDERS,ACTIVE_AIRLINE_CODES} from '../src/lib/airline-providers.ts';
+import {validateFlightQuery} from '../src/lib/airline-search-server.ts';
+import {airlineCoverage,executeAirlineTool,FLIGHT_SEARCH_TOOL} from '../src/lib/airline-tools-server.ts';
+import {runAirlineAgent} from '../src/lib/airline-agent-server.ts';
+import {searchTickets,summarizeTickets} from '../src/lib/ticket-search-server.ts';
+import {isTransportQuestion,journeyLocations} from '../src/lib/journey.ts';
+const input={origin:'厦门',destination:'北京',date:'2026-10-31'};
+const query=validateFlightQuery(input,'2026-10-30');
+const provider=AIRLINE_PROVIDERS.find(p=>p.code==='MF');
+const page={url:provider.url(query),text:'具体航班',pageDate:input.date,originLabel:'厦门',destinationLabel:'北京大兴',rows:[{text:'MF8103\n21:00\n厦门\n直飞\n23:40\n北京大兴\n经济舱\n¥680',flightNumber:'MF8103',priceText:'680',cabin:'经济舱'}]};
+test('transport direction and date prefixes remain correct',()=>{assert.deepEqual(journeyLocations('明天厦门到北京查询机票'),{originCity:'厦门',destination:'北京'});assert.equal(isTransportQuestion('查询明天的机票'),true);assert.deepEqual(journeyLocations('明天西安到榆林怎么走便宜'),{originCity:'西安',destination:'榆林'});});
+test('directory, sample success and active adapters are distinct',()=>{const c=airlineCoverage();assert.equal(c.totalEntities,65);assert.equal(c.sampleQuoteObserved,16);assert.deepEqual(ACTIVE_AIRLINE_CODES,['MF','SC','RY','GS','9H']);assert.equal(c.airlines.find(r=>r.code==='CA').adapterRegistered,false);});
+test('strict query validation rejects arbitrary URLs, unknown airports and date overflow',()=>{assert.throws(()=>validateFlightQuery({...input,url:'http://127.0.0.1'},'2026-10-30'));assert.throws(()=>validateFlightQuery({...input,date:'2026-02-30'},'2026-01-01'));assert.throws(()=>validateFlightQuery({...input,origin:'某县'},'2026-10-30'));assert.throws(()=>validateFlightQuery({...input,airlineCodes:['CA']},'2026-10-30'));assert.throws(()=>validateFlightQuery({...input,date:'2027-10-31'},'2026-10-30'));});
+test('finite positive fares only; calendar numbers are never accepted as a quote',()=>{for(const v of ['Infinity',Infinity,0,-1,'¥100','100元','1e3',null])assert.equal(positiveFare(v),undefined);assert.equal(positiveFare('1,234.50'),1234.5);assert.equal(parseAirlinePage(provider,query,{...page,rows:[]},new Date().toISOString()).quotes.length,0);});
+test('row quote requires matching date, route, cabin and official origin',()=>{assert.equal(parseAirlinePage(provider,query,page,new Date().toISOString()).quotes[0].price,680);for(const change of [{pageDate:'2026-11-01'},{destinationLabel:'上海'},{url:'https://evil.example/'},{rows:[{...page.rows[0],priceText:'Infinity'}]}])assert.equal(parseAirlinePage(provider,query,{...page,...change},new Date().toISOString()).quotes.length,0);assert.equal(parseAirlinePage(provider,query,page,new Date().toISOString()).quotes[0].priceBasis,'unknown');});
+test('access barriers win over prices, while a captcha help article is not a challenge',()=>{assert.equal(airlinePageBarrier('关于登录滑块验证码操作的提示','https://example.com'),undefined);for(const text of ['请依次点击','请先登录官网再进行操作','会话已过期'])assert.equal(parseAirlinePage(provider,query,{...page,text},new Date().toISOString()).quotes.length,0);});
+test('a neighbouring business fare or another flight cannot replace an unavailable economy seat',()=>{const mu=AIRLINE_PROVIDERS.find(p=>p.code==='MU');const q=validateFlightQuery({origin:'上海',destination:'北京',date:input.date},'2026-10-30');const p={...page,url:mu.url(q),originLabel:'上海',rows:[{text:'MU5099\n07:00\n09:20\n航班详情\n— —\n¥2100'}]};assert.equal(parseAirlinePage(mu,q,p,new Date().toISOString()).quotes.length,0);assert.equal(parseAirlinePage(provider,query,{...page,rows:[{...page.rows[0],text:page.rows[0].text+'\nMF8105'}]},new Date().toISOString()).quotes.length,0);});
+test('disabled browser and train-only requests do not invent quotes',async()=>{const old=process.env.AIRLINE_BROWSER_ENABLED;process.env.AIRLINE_BROWSER_ENABLED='0';try{const date=new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'Asia/Shanghai'});const r=await searchTickets('厦门','北京',date);assert.equal(r.status,'not-configured');assert.deepEqual(r.options,[]);const train=await searchTickets('厦门','北京',date,{mode:'火车'});assert.deepEqual(train.options,[]);assert.match(train.reply,/12306/);}finally{if(old===undefined)delete process.env.AIRLINE_BROWSER_ENABLED;else process.env.AIRLINE_BROWSER_ENABLED=old;}});
+test('tool dispatcher is read-only and rejects unknown tools and arguments',async()=>{await assert.rejects(executeAirlineTool('buy_ticket',{}));await assert.rejects(executeAirlineTool('list_airline_coverage',{url:'x'}));assert.equal((await executeAirlineTool('list_airline_coverage',{})).totalEntities,65);});
+test('real function-calling protocol is used, and changed confirmed slots fail closed',async()=>{const original=global.fetch,key=process.env.DEEPSEEK_API_KEY;process.env.DEEPSEEK_API_KEY='test-only';const date=new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'Asia/Shanghai'});let sent,executed;const current={origin:'厦门',destination:'北京',date};const executor=async q=>{executed=q;return { ...q,status:'unavailable',quotes:[],providers:[],notes:[],checkedAt:new Date().toISOString()};};try{global.fetch=async(url,init)=>{sent=JSON.parse(init.body);return Response.json({model:'actual-returned-model',choices:[{finish_reason:'tool_calls',message:{tool_calls:[{type:'function',function:{name:FLIGHT_SEARCH_TOOL.function.name,arguments:JSON.stringify(current)}}]}}]});};const r=await runAirlineAgent(current,{useModel:true,executor});assert.equal(sent.tools[0].function.name,'search_domestic_flights');assert.equal(r.modelCall.model,'actual-returned-model');assert.equal(r.modelCall.success,true);assert.deepEqual(executed,current);global.fetch=async()=>Response.json({choices:[{message:{tool_calls:[{type:'function',function:{name:'search_domestic_flights',arguments:JSON.stringify({...current,destination:'上海'})}}]}}]});const rejected=await runAirlineAgent(current,{useModel:true,executor});assert.equal(rejected.modelCall.success,false);assert.deepEqual(executed,current);}finally{global.fetch=original;if(key===undefined)delete process.env.DEEPSEEK_API_KEY;else process.env.DEEPSEEK_API_KEY=key;}});
+test('unknown taxes and missing train data never become a cheapest-total claim',()=>{const text=summarizeTickets([{mode:'航班',service:'MF8103',seat:'官网展示',price:680,priceBasis:'unknown'}],[]);assert.match(text,/不能据此判断含税最低价/);assert.match(text,/不能判断航班比火车更便宜/);});

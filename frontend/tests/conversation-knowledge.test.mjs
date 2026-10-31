@@ -50,15 +50,12 @@ test("weather summaries use actual observations and never fabricate absent perio
   assert.equal(weatherDestination("告诉我明天西安的天气", "西安市", "杭州市"), "西安市");
   assert.equal(weatherDestination("成都武侯区明天天气", "成都市", "杭州市"), "成都武侯区");
   assert.equal(weatherDestination("明天太原的天气", undefined, "杭州市"), "太原");
-  const summary = summarizeWeather("西安市", "2026-10-26", [
-    { hour: 9, temperature: 15.2, rainProbability: 20 },
-    { hour: 14, temperature: 23.1, rainProbability: 40 },
-    { hour: 20, temperature: null, rainProbability: 0 },
-  ]);
+  const hours = Array.from({length:24}, (_,hour)=>({date:"2026-10-26",hour,temperature:hour<12?15.2:23.1,humidity:60,aqi:30,pm25:10,heatRisk:10,rainProbability:40}));
+  const summary = summarizeWeather("西安市", "2026-10-26", hours);
   assert.match(summary, /15.2–23.1℃/);
   assert.match(summary, /40%/);
-  assert.doesNotMatch(summary, /晚上：/);
-  assert.throws(() => summarizeWeather("西安市", "2026-10-26", []), /no-weather/);
+  assert.throws(() => summarizeWeather("西安市", "2026-10-26", []), /incomplete-weather-hours/);
+
 });
 
 test("general search sends the actual question and keeps safe attributed sources", async () => {

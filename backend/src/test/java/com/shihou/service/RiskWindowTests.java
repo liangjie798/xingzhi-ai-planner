@@ -16,7 +16,7 @@ class RiskWindowTests {
     List<EnvironmentalForecastPoint> forecast() {
         var points = new ArrayList<EnvironmentalForecastPoint>();
         for (String date : List.of("2026-10-26", "2026-10-27")) for (int hour=6; hour<=20; hour++)
-            points.add(new EnvironmentalForecastPoint(date, hour, 20, 50, hour==15?90:0, hour==15?180:30, 10, hour==15?80:10));
+            points.add(new EnvironmentalForecastPoint(date, hour, 20, 50, hour==15?90:0, hour==15?180:30, 10, hour==15?80:10, false, date));
         return points;
     }
     @Test void completeWindowIncludesWorseSecondHourAndHonorsAfternoonEndBoundary() {
@@ -43,5 +43,17 @@ class RiskWindowTests {
         var remaining = RiskCalculator.calculateSlots(forecast(),input(2,"普通人群",6,21),evening);
         assertTrue(remaining.stream().filter(slot->slot.date().equals("2026-10-26")).allMatch(slot->slot.hour()>=19));
         assertTrue(remaining.stream().anyMatch(slot->slot.date().equals("2026-10-27")&&slot.hour()==6));
+    }
+    @Test void duplicateOrAbnormalHoursNeverCountAsCompleteCoverage() {
+        var duplicated = new ArrayList<>(forecast());
+        duplicated.add(duplicated.stream().filter(point -> point.date().equals("2026-10-26") && point.hour() == 15).findFirst().orElseThrow());
+        var duplicateSlots = RiskCalculator.calculateSlots(duplicated, input(2,"普通人群",12,18), clock);
+        assertFalse(duplicateSlots.stream().anyMatch(slot -> slot.date().equals("2026-10-26") && (slot.hour() == 14 || slot.hour() == 15)));
+
+        var abnormal = new ArrayList<>(forecast());
+        abnormal.removeIf(point -> point.date().equals("2026-10-26") && point.hour() == 15);
+        abnormal.add(new EnvironmentalForecastPoint("2026-10-26", 15, 999, 50, 0, 30, 10, 10, false, "2026-10-26"));
+        var abnormalSlots = RiskCalculator.calculateSlots(abnormal, input(2,"普通人群",12,18), clock);
+        assertFalse(abnormalSlots.stream().anyMatch(slot -> slot.date().equals("2026-10-26") && (slot.hour() == 14 || slot.hour() == 15)));
     }
 }

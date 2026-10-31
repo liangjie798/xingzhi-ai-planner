@@ -10,6 +10,8 @@ import { buildScheduledStops } from "@/lib/tourism-scheduled-route";
 import { matchedSearchEvidence, mergePlaceEvidence } from "@/lib/place-evidence";
 import { executionFloor } from "@/lib/beijing-time";
 import { isRecord } from "@/lib/request-validation";
+import { isCalendarDate, isTourismHour } from "@/lib/planning-input-validation";
+import { loadPromptContext, ConversationStoreError } from "@/lib/conversation-context-server";
 
 export const maxDuration = 60;
 type TourismRequestBody = TourismRequestPayload;
@@ -186,10 +188,13 @@ export async function POST(request: Request) {
   let body: TourismRequestBody;
   try { body = await request.json() as TourismRequestBody; }
   catch { return NextResponse.json({ detail: "请求体不是合法 JSON" }, { status: 400 }); }
-  const validDate=(value:unknown):value is string=>typeof value==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value;
-  if (!isRecord(body) || typeof body.cityName!=="string" || !body.cityName.trim() || body.cityName.length>80 || !validDate(body.date) || body.endDate!==undefined&&!validDate(body.endDate) || body.endDate&&(body.endDate<body.date || Date.parse(body.endDate)-Date.parse(body.date)>6*86400000) || !Array.isArray(body.hours)||body.hours.length>168||body.hours.some(hour=>!isRecord(hour)||!validDate(hour.date)||!Number.isInteger(hour.hour)||hour.hour<0||hour.hour>23||![hour.temperature,hour.humidity,hour.rainProbability,hour.aqi,hour.heatRisk].every(Number.isFinite))) return NextResponse.json({ detail: "城市、日期范围或逐小时数据无效（最多7天）" }, { status: 400 });
+  const validDate = isCalendarDate;
+  if (!isRecord(body) || typeof body.cityName!=="string" || !body.cityName.trim() || body.cityName.length>80 || !validDate(body.date) || body.endDate!==undefined&&!validDate(body.endDate) || body.endDate&&(body.endDate<body.date || Date.parse(body.endDate)-Date.parse(body.date)>6*86400000) || !Array.isArray(body.hours)||body.hours.length>168||body.hours.some(hour=>!isTourismHour(hour))) return NextResponse.json({ detail: "城市、日期范围或逐小时数据无效（最多7天；湿度、降雨概率与热风险为0至100，AQI为0至500）" }, { status: 400 });
   if ([body.group,body.intensity,body.audienceDescription,body.province].some(value=>value!==undefined&&typeof value!=="string") || body.referenceUrls!==undefined&&(!Array.isArray(body.referenceUrls)||body.referenceUrls.some(url=>typeof url!=="string")) || body.participants!==undefined&&(!Number.isInteger(body.participants)||body.participants<1)) return NextResponse.json({detail:"同行条件或参考链接格式不正确"},{status:400});
   if (body.allowedStartHour !== undefined && (!Number.isFinite(body.allowedStartHour) || body.allowedStartHour < 6 || body.allowedStartHour > 20) || body.allowedEndHour !== undefined && (!Number.isFinite(body.allowedEndHour) || body.allowedEndHour > 21 || body.allowedEndHour <= (body.allowedStartHour ?? 6))) return NextResponse.json({ detail: "允许时段无效" }, { status: 400 });
+  let context;
+  try { context = await loadPromptContext(request, body.conversationId); }
+  catch (error) { return NextResponse.json({ detail: error instanceof ConversationStoreError ? error.message : "无法读取当前对话" }, { status: error instanceof ConversationStoreError ? error.status : 503 }); }
   body.hours = (body.hours || []).filter(hour => hour.hour >= (body.allowedStartHour ?? 6) && hour.hour < (body.allowedEndHour ?? 21));
 
   const dates = tripDates(body.date, body.endDate);
@@ -222,7 +227,7 @@ export async function POST(request: Request) {
   const modelStarted = performance.now();
   try {
     const config = await resolveAccountModelConfig(request);
-    const result = await callLlm({ system, prompt, config, maxTokens: 3200, jsonMode: true,timeoutMs:18000 });
+    const result = await callLlm({ system, prompt, config, context, maxTokens: 3200, jsonMode: true,timeoutMs:18000 });
     const plan = extractJson<LlmRoutePlan>(result.text);
     if (!Array.isArray(plan?.stops) || !plan.stops.length) throw new Error(`模型未返回可解析的路线 JSON（${plan ? "返回字段：" + Object.keys(plan).slice(0, 8).join("、") : "格式无效，响应" + result.text.length + "字符"}），已拒绝将规则补全标记为模型生成。`);
     const selected=plan.stops.map(stop=>pois.find(poi=>poi.name===stop.name)).filter((poi):poi is PoiSpot=>Boolean(poi));

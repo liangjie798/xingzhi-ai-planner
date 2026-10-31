@@ -8,6 +8,8 @@ public record EnvironmentalForecastPoint(
         int rainProbability,
         int aqi,
         int pm25,
-        int heatRisk
+        int heatRisk,
+        boolean airQualityReused,
+        String airQualitySourceDate
 ) {
 }

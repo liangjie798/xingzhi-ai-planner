@@ -14,5 +14,5 @@ export function WelcomeGreeting({ user }: { user?: AccountUser | null }) {
   const account = user === undefined ? sessionUser : user;
   if (!account) return null;
   const admin = ["ADMIN", "SUPER_ADMIN"].includes(account.role);
-  return <div className="welcome-greeting"><strong className="welcome-brush">{admin ? "观数知行，欢迎归来" : account.role === "GUEST" ? "初次相见，幸会行知" : "山海有约，欢迎归来"}</strong><p>{admin ? `${account.displayName || account.username}，在这里查看平台的注册、搜索与使用情况。` : account.role === "GUEST" ? "把出行想法告诉我，我们一起开始规划。" : `${account.displayName || account.username}，一起把今天的想法，写成下一份计划。`}</p><span className="welcome-seal" aria-hidden="true">行知</span></div>;
+  return <div className="welcome-greeting"><strong className="welcome-brush">{admin ? "平台概览，尽在这里。" : "下一次出发，想去哪里？"}</strong><p>{admin ? `${account.displayName || account.username}，在这里查看平台的注册、搜索与使用情况。` : account.role === "GUEST" ? "先说一个想法，目的地、日期和同行人，我们一起慢慢确认。" : `${account.displayName || account.username}，说说你的目的地，或今天想组织的活动。`}</p></div>;
 }

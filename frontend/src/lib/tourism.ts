@@ -9,9 +9,12 @@ export interface TourismHourSnapshot {
   rainProbability: number;
   aqi: number;
   heatRisk: number;
+  airQualityReused?: boolean;
+  airQualitySourceDate?: string;
 }
 
 export interface TourismRequestPayload {
+  conversationId?: string;
   audienceDescription?: string;
   budgetPerPerson?: number;
   cityName: string;

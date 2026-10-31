@@ -1,7 +1,7 @@
 /** Reviewed product knowledge. Keep volatile prices, opening hours and forecasts out. */
 export const knowledgeBase = [
   { id: "forecast", title: "天气与预报", match: /天气预报|预报.*准确|降水概率|降雨概率/, text: "预报会随观测和模型更新而变化，出发前应再次核对。降水概率是预报概率，不等于下雨持续时间或降水量。查询具体天气只需城市和日期，不需要活动人数。", source: "https://open-meteo.com/en/docs" },
-  { id: "air", title: "空气质量指标", match: /AQI|PM2[.．]?5|空气质量.*(?:是什么|区别)|美标|国标/i, text: "本站展示 US AQI。不同空气质量指数体系的阈值不同，比较数据时要先核对标准、时间和地点。PM2.5 是颗粒物浓度，不能直接当作 AQI 分数。", source: "https://open-meteo.com/en/docs/air-quality-api" },
+  { id: "air", title: "空气质量指标", match: /AQI|PM2[.．]?5|空气质量.*(?:是什么|区别)|美标|国标/i, text: "AQI是空气质量指数，用于把污染物浓度转换成便于比较的空气污染水平指标。本站展示 US AQI。不同空气质量指数体系的阈值不同，比较数据时要先核对标准、时间和地点。PM2.5 是细颗粒物浓度，不能直接当作 AQI 分数。", source: "https://open-meteo.com/en/docs/air-quality-api" },
   { id: "trip", title: "旅行安排与预约", match: /预约|门票|闭馆|营业时间|开放时间/, text: "景点门票、预约与开放时间可能变化，应以场馆或景区官方公布的信息为准。规划中的站点时间是建议安排，不代表已预约或已购票。无法核验实时信息时会明确提示。" },
   { id: "food", title: "餐饮与预算", match: /美食|餐饮|过敏|预算|费用|花费/, text: "可在规划中说明人均预算、饮食禁忌、过敏原和偏好。餐饮安排应与游览区域衔接，并留出排队和休息时间。未核实的菜单价格、消费评价和热度不能作为事实。" },
   { id: "event", title: "活动组织", match: /运动会.*(?:准备|物资)|筹备|人员分工|应急预案|活动组织/, text: "活动执行方案应列出准备、签到、开展、补水休息、结束清场等环节，同时明确负责人、物资、人员规模和天气变化时的调整办法。校园和社区活动还需按主办方要求确认场地与保障条件。" },
@@ -20,6 +20,7 @@ export const knowledgeBase = [
 export type ConversationIntent = "weather" | "planning" | "knowledge";
 const sourceQuestion = /来源|出处|依据|从哪|哪里来|哪来的|真实吗|可靠吗|可信|准确吗/;
 export function classifyConversation(message: string, hasPendingPlan = false): ConversationIntent {
+  if (/(?:什么是|是什么|何为|含义|定义|区别|解释|科普)/.test(message) && /AQI|PM2[.．]?5|空气质量|降雨概率|降水概率|湿度/i.test(message)) return "knowledge";
   if (/比较.*候选时段|规划活动并比较/.test(message)) return "planning";
   if (/适合.*(?:去|地方|城市)|推荐.*(?:景点|地方|城市)|(?:亲子|老人|学生|轮椅).*(?:去哪|哪里|怎么玩)/.test(message)) return "knowledge";
   if (/介绍|城市简介|城市概况/.test(message) && !/帮我规划|制定|生成.*方案/.test(message)) return "knowledge";

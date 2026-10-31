@@ -71,6 +71,8 @@ export interface EnvironmentalForecastPoint {
   aqi: number;
   pm25: number;
   heatRisk: number;
+  airQualityReused?: boolean;
+  airQualitySourceDate?: string;
 }
 
 export interface HourlyEnvironmentResponse {

@@ -28,12 +28,21 @@ export function SlidingSelection({ value }: { value: string }) {
   return <span ref={marker} className="sliding-selection" aria-hidden="true" />;
 }
 
-export function useSwitchEntrance(value: string) {
+export function useSwitchEntrance(value: string, enterChildren?: string) {
   const root = useRef<HTMLDivElement>(null);
   useGSAP(() => {
-    if (!root.current || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    gsap.fromTo(root.current, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: .3, ease: "power2.out", clearProps: "opacity,transform" });
-  }, { dependencies: [value], revertOnUpdate: true });
+    const media = gsap.matchMedia();
+    media.add("(prefers-reduced-motion: no-preference)", () => {
+      if (!root.current) return;
+      gsap.fromTo(root.current, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: .42, ease: "power3.out", clearProps: "opacity,transform" });
+      // Reused workspaces need their newly rendered content animated on every view change.
+      const children = enterChildren ? root.current.querySelectorAll(enterChildren) : [];
+      if (children.length) {
+        gsap.fromTo(children, { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: .46, delay: .04, stagger: { amount: .14 }, ease: "power3.out", clearProps: "opacity,transform" });
+      }
+    });
+    return () => media.revert();
+  }, { scope: root, dependencies: [value, enterChildren], revertOnUpdate: true });
   return root;
 }
 

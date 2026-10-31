@@ -60,10 +60,10 @@ async function readPlaces(region: Region, context: DestinationContext): Promise<
   return [...new Map(batches.flat().map((place) => [place.name, place])).values()];
 }
 
-function excerptFor(items: SocialItem[], pattern: RegExp): string {
+function excerptFor(items: SocialItem[], pattern: RegExp, used = new Set<string>()): string {
   for (const [index, item] of items.entries()) {
-    const sentences = item.excerpt.split(/(?<=[。！？])/).map((sentence) => sentence.trim()).filter((sentence) => sentence.length >= 10 && sentence.length <= 180 && pattern.test(sentence) && !/本文|小编|将为您|文末|小九|为你推荐|带你|精彩攻略/.test(sentence));
-    if (sentences.length) return `${sentences.slice(0, 2).join("")} [${index + 1}]`;
+    const sentences = item.excerpt.split(/(?<=[。！？])/).map((sentence) => sentence.trim()).filter((sentence) => !used.has(sentence) && sentence.length >= 10 && sentence.length <= 180 && pattern.test(sentence) && !/本文|小编|将为您|文末|小九|为你推荐|带你|精彩攻略/.test(sentence));
+    if (sentences.length) { const chosen = sentences.slice(0, 2); chosen.forEach(sentence => used.add(sentence)); return `${chosen.join("")} [${index + 1}]`; }
   }
   return "当前资料尚不足以可靠补充这一部分，可以继续检索官方介绍。";
 }
@@ -131,7 +131,9 @@ export async function answerDestination(message: string, rawContext: unknown, pl
   if (!places.length && builtIn.length) sources.push({ title: "行知城市地点候选库", detail: "本次实时地点查询未返回可用结果，内置候选待核实" });
   if (isIntro) {
     const sights = candidates.slice(0, 4);
-    return { reply: `${region.name}｜城市认识指南\n\n城市概况\n${excerptFor(items, /位于|地处|省会|古称|城市|中心/)}\n\n历史与文化\n${excerptFor(items, /历史|文化|古都|遗址|古称|博物馆/)}\n\n可以了解的地点\n${sights.length ? sights.map((place, i) => `${i + 1}. ${place.name}（${place.tag.split(";").slice(-1)[0]}）。`).join("\n") : "暂未获得可核对的当地地点，不能为你编造景点。"}\n\n饮食与本地生活\n${excerptFor(items, /美食|饮食|小吃|菜肴|菜系|面食/)}\n\n以上按公开摘要和地点类别整理，不包含实时票价、营业或预约承诺。你更想了解历史、美食，还是针对同行人群推荐去处？`, sources, kind: "城市介绍", knowledgeContext: context };
+    if (!items.length) return { reply: `${region.name}｜城市资料待补充\n\n目前没有足够的城市概况资料，无法可靠介绍完整的地理、历史与饮食背景。\n\n${sights.length ? `可以先了解这些当地地点：\n${sights.map((place, i) => `${i + 1}. ${place.name}（${place.tag.split(";").slice(-1)[0]}）。`).join("\n")}` : "本轮也未取得可核对的当地地点，暂不提供未经证实的推荐。"}\n\n地点候选不代表已核实开放或预约。你更想了解城市历史、地理，还是具体出游地点？`, sources, kind: "城市资料待补充", knowledgeContext: context };
+    const used = new Set<string>();
+    return { reply: `${region.name}｜城市认识指南\n\n城市概况\n${excerptFor(items, /位于|地处|省会|古称|城市|中心/, used)}\n\n历史与文化\n${excerptFor(items, /历史|文化|古都|遗址|古称|博物馆/, used)}\n\n可以了解的地点\n${sights.length ? sights.map((place, i) => `${i + 1}. ${place.name}（${place.tag.split(";").slice(-1)[0]}）。`).join("\n") : "暂未获得可核对的当地地点，不能为你编造景点。"}\n\n饮食与本地生活\n${excerptFor(items, /美食|饮食|小吃|菜肴|菜系|面食/, used)}\n\n以上按公开摘要和地点类别整理，不包含实时票价、营业或预约承诺。你更想了解历史、美食，还是针对同行人群推荐去处？`, sources, kind: "城市介绍", knowledgeContext: context };
   }
   if (!compare && (context.focus === "history" || context.focus === "food" || (context.focus === "sights" && !context.audiences?.length))) {
     const heading = context.focus === "history" ? "历史与文化" : context.focus === "food" ? "美食与本地生活" : "游览去处";

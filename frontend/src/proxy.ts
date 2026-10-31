@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function proxy(request: NextRequest) {
   const cookie = request.headers.get("cookie");
   if (!cookie) return NextResponse.next();
-  const pages = ["/XingZhi", "/dashboard", "/hourly", "/settings", "/account"];
+  const pages = ["/transport", "/transport-search", "/XingZhi", "/dashboard", "/hourly", "/settings", "/account"];
   const isPage = pages.includes(request.nextUrl.pathname);
   try {
     const backend = process.env.BACKEND_INTERNAL_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8080";
@@ -26,5 +26,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/XingZhi", "/dashboard", "/hourly", "/settings", "/account", "/conversation-planner", "/tourism-planner", "/activity-venues", "/planning-evidence", "/model-gateway", "/social-research", "/location-gateway", "/national-environment", "/region-data/:path*", "/plan-media"],
+  matcher: ["/transport", "/transport-search", "/XingZhi", "/dashboard", "/hourly", "/settings", "/account", "/conversation-planner", "/journey-search", "/agent-tools", "/tourism-planner", "/activity-venues", "/planning-evidence", "/model-gateway", "/social-research", "/location-gateway", "/national-environment", "/region-data/:path*", "/plan-media"],
 };

@@ -4,6 +4,7 @@ import { Archive, Bookmarks, ChatCircleDots, ClipboardText, Compass, List, MapTr
 import { Dialog } from "@radix-ui/themes";
 import Link from "next/link";
 import { useState } from "react";
+import { SlidingSelection } from "./switch-motion";
 
 type View = "studio" | "map" | "plan" | "execution" | "library" | "archive";
 const views = [
@@ -30,7 +31,8 @@ export function WorkspaceSidebar({ view, sessions, sessionId, disabled, onView, 
     return <>
       <Link href="/welcome" className="workspace-brand"><span><Compass size={25} weight="duotone" /></span><div><strong>行知</strong><small>AI 活动与旅行规划</small></div></Link>
       <button className="new-conversation" disabled={disabled} onClick={() => { onOpen(); setOpen(false); }}><Plus size={18} />新建对话</button>
-      <nav className="workspace-navigation" aria-label="工作区导航">{views.map(item => <button key={item.id} type="button" aria-current={view === item.id ? "page" : undefined} className={view === item.id ? "is-active" : ""} onClick={() => { onView(item.id); setOpen(false); }}><item.icon size={20} weight={view === item.id ? "duotone" : "regular"} />{item.label}</button>)}</nav>
+      <nav className="workspace-navigation" aria-label="工作区导航"><SlidingSelection value={view} />{views.map(item => <button key={item.id} type="button" aria-current={view === item.id ? "page" : undefined} className={view === item.id ? "is-active" : ""} onClick={() => { onView(item.id); setOpen(false); }}><item.icon size={20} weight={view === item.id ? "duotone" : "regular"} />{item.label}</button>)}</nav>
+      <Link href="/transport" className="transport-nav-link"><MapTrifold size={20}/>交通比价 <span>飞机 / 火车 ↗</span></Link>
       <div className="session-list-heading"><span>历史对话</span><small>{sessions.length}</small></div>
       <div className="session-history" aria-label="历史对话">{sessions.map(item => <button key={item.id} type="button" disabled={disabled} aria-current={sessionId === item.id ? "true" : undefined} onClick={() => { onOpen(item.id); setOpen(false); }}><ChatCircleDots size={16} /><span>{item.title || "新对话"}<time>{new Date(item.updatedAt).toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai", month: "long", day: "numeric" })}</time></span></button>)}{!sessions.length && <p>新的想法，从一次对话开始。</p>}</div>
       <div className="sidebar-bottom"><button type="button" disabled={disabled} onClick={() => { onDelete(); if (mobile) setOpen(false); }}><Trash size={16} />删除此对话</button><Link href="/welcome">了解行知 <span aria-hidden="true">↗</span></Link><small>每条对话独立保存条件与方案</small></div>

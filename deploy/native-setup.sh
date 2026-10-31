@@ -66,8 +66,9 @@ chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
 cd "$APP_DIR/frontend"
 export NEXT_TELEMETRY_DISABLED=1
 export NODE_OPTIONS=--max-old-space-size=1024
-npm ci --no-audit --no-fund
-npm run build
+corepack enable
+pnpm install --frozen-lockfile
+pnpm build
 install -d -o "$APP_USER" -g "$APP_USER" .next/standalone/.next
 cp -a .next/static .next/standalone/.next/static
 cp -a public .next/standalone/public
