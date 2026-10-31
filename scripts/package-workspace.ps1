@@ -7,7 +7,7 @@ if (-not $OutputDirectory) { $OutputDirectory = Join-Path $workspaceRoot 'packag
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $outputRoot = (Resolve-Path -LiteralPath $OutputDirectory).Path
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$archivePath = Join-Path $outputRoot "xingzhi-local-$stamp.zip"
+$archivePath = Join-Path $outputRoot "xingzhi-review-$stamp.zip"
 $entries = New-Object 'System.Collections.Generic.Dictionary[string,string]'
 
 function Add-PackageFile([string]$File, [string]$Entry) {
@@ -15,33 +15,35 @@ function Add-PackageFile([string]$File, [string]$Entry) {
     $normalized = $Entry.Replace('\', '/')
     if ($normalized -match '(^|/)(\.git|\.tools|node_modules|\.next|target|\.runtime|\.runtime-config|__pycache__|\.playwright-cli)(/|$)') { return }
     if ($normalized -match '(^|/)\.env($|\.)' -and $normalized -notmatch '(^|/)\.env\.example$') { return }
-    if ($normalized -match '\.(key|pem|p12|pfx|jks|mv\.db|trace\.db|h2\.db|log|zip|tar\.gz)$') { return }
-    $entries['xingzhi-local/' + $normalized] = (Resolve-Path -LiteralPath $File).Path
+    if ($normalized -match '\.(md|pdf|docx?|pptx?|key|pem|p12|pfx|jks|mv\.db|trace\.db|h2\.db|log|zip|tar\.gz)$' -or $normalized -match '(^|/)\.gitkeep$') { return }
+    $entries['xingzhi-source/' + $normalized] = (Resolve-Path -LiteralPath $File).Path
 }
 
-function Add-Repository([string]$Root, [string]$Prefix) {
-    if (-not (Test-Path -LiteralPath (Join-Path $Root '.git'))) { return }
-    $paths = & git -c core.quotepath=false -C $Root ls-files --cached
-    if ($LASTEXITCODE -ne 0) { throw "Cannot list tracked files in $Root" }
-    foreach ($relative in $paths) { Add-PackageFile (Join-Path $Root $relative) ($Prefix + '/' + $relative) }
+function Test-ReviewSource([string]$Path) {
+    if ($Path -match '^backend/(src/|\.mvn/)') { return $true }
+    if ($Path -match '^frontend/(src/|public/|scripts/|tests/|\.storybook/)') { return $true }
+    return $Path -in @(
+        'start-backend.bat',
+        'scripts/start-backend.ps1', 'scripts/backend-environment.ps1',
+        'backend/pom.xml', 'backend/mvnw', 'backend/mvnw.cmd', 'backend/run-dev.ps1', 'backend/.env.example',
+        'frontend/package.json', 'frontend/pnpm-lock.yaml', 'frontend/pnpm-workspace.yaml',
+        'frontend/tsconfig.json', 'frontend/next.config.ts', 'frontend/eslint.config.mjs',
+        'frontend/.env.example', 'frontend/.prettierrc.json', 'frontend/.prettierignore'
+    )
 }
 
 $oldEncoding = [Console]::OutputEncoding
 try {
     [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
-    Add-Repository $repoRoot 'amap-jsapi'
-    Add-Repository (Join-Path $workspaceRoot 'xingzhi-ai-planner-qa') 'xingzhi-ai-planner-qa'
-    foreach ($folder in @('deliverables', 'ecs-deploy', 'tools/documents')) {
-        $root = Join-Path $workspaceRoot $folder
-        if (-not (Test-Path -LiteralPath $root)) { continue }
-        Get-ChildItem -LiteralPath $root -Recurse -File | ForEach-Object {
-            $relative = $_.FullName.Substring($workspaceRoot.Length + 1)
-            Add-PackageFile $_.FullName $relative
-        }
+    $paths = & git -c core.quotepath=false -C $repoRoot ls-files --cached
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot list tracked application source files.' }
+    foreach ($relative in $paths) {
+        if (Test-ReviewSource $relative) { Add-PackageFile (Join-Path $repoRoot $relative) $relative }
     }
-    Add-PackageFile (Join-Path $workspaceRoot 'README.md') 'README.md'
-    Add-PackageFile (Join-Path $workspaceRoot 'start-backend.bat') 'start-backend.bat'
     if ($entries.Count -eq 0) { throw 'No files found. Commit or stage the project files before packaging.' }
+    foreach ($required in @('start-backend.bat','scripts/start-backend.ps1','scripts/backend-environment.ps1','backend/pom.xml','backend/mvnw.cmd','backend/.mvn/wrapper/maven-wrapper.properties','frontend/package.json','frontend/pnpm-lock.yaml')) {
+        if (-not $entries.ContainsKey('xingzhi-source/' + $required)) { throw "Required source file is missing: $required" }
+    }
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [System.IO.Compression.ZipFile]::Open($archivePath, [System.IO.Compression.ZipArchiveMode]::Create)
@@ -49,21 +51,11 @@ try {
         foreach ($entry in ($entries.Keys | Sort-Object)) {
             [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $entries[$entry], $entry, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
         }
-        $metadata = $zip.CreateEntry('xingzhi-local/PACKAGE-INFO.txt')
-        $writer = New-Object System.IO.StreamWriter($metadata.Open(), (New-Object System.Text.UTF8Encoding($false)))
-        try {
-            $writer.WriteLine('Xingzhi local source package')
-            $writer.WriteLine('Created: ' + (Get-Date -Format o))
-            $writer.WriteLine('Application commit: ' + (& git -C $repoRoot rev-parse HEAD))
-            $writer.WriteLine('Source entry: amap-jsapi/start-backend.bat')
-            $writer.WriteLine('The BAT automatically prepares matching JDK and Maven if missing. Internet is required for initial setup and dependencies.')
-            $writer.WriteLine('Excluded: actual .env files, credentials, databases, caches, installed dependencies and historical archives.')
-        } finally { $writer.Dispose() }
     } finally { $zip.Dispose() }
     $hash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
     [IO.File]::WriteAllText($archivePath + '.sha256', ($hash + '  ' + [IO.Path]::GetFileName($archivePath) + "`n"), (New-Object System.Text.UTF8Encoding($false)))
     Write-Output "Archive: $archivePath"
-    Write-Output "Files: $($entries.Count + 1)"
+    Write-Output "Files: $($entries.Count)"
     Write-Output "SHA256: $hash"
 } catch {
     if (Test-Path -LiteralPath $archivePath) { Remove-Item -LiteralPath $archivePath -Force }
