@@ -292,13 +292,12 @@ Windows BAT 会显式加载这个 `.env`；直接执行 Maven 不会自动加载
 
 ### 6.3 开发代理与端口
 
-默认开发环境中，浏览器访问前端3000端口；`frontend/next.config.ts` 将 `/api/*` 转发到 `http://localhost:8080/api/*`，Next.js 服务端还会使用 `BACKEND_INTERNAL_URL`。
+默认开发环境中，浏览器访问前端3000端口；`frontend/next.config.ts` 将 `/api/*` 转发到 `BACKEND_INTERNAL_URL` 指定的后端，默认 `http://127.0.0.1:8080`；Next.js 服务端调用使用同一地址。
 
 如改为 `-Port 18080`，请同时修改：
 
 1. `frontend/.env.local` 的 `BACKEND_INTERNAL_URL=http://127.0.0.1:18080`。
-2. `frontend/next.config.ts` 开发 rewrite 的目标端口为18080。
-3. 重启前端服务。
+2. 重启前端服务，使代理读取新地址，无需修改 `next.config.ts`。
 
 仅修改 BAT 端口不会自动修改前端代理。为方便审核体验，优先保持8080和3000均未被其他程序占用。
 
@@ -390,7 +389,7 @@ $runtime = Initialize-BackendEnvironment -Repository $PWD.Path
 
 只有已经自行配置 JDK 21时，才可直接在 `backend` 中运行 `mvnw.cmd test`。BAT 安装的 JDK 不会永久写入其他终端的 `JAVA_HOME`。
 
-2026年10月31日开发验收记录包括128项前端测试、22项后端测试，以及8项启动环境回归检查通过；记忆修复另通过既有18项规则检查与3项路由模型模拟检查。具体历史报告在独立 QA 仓库；这些记录不替代新机器上的实际运行和外部服务验收。审核包保留前后端单测源码，不附带截图或报告。
+2026年10月31日开发验收记录包括132项前端测试、22项后端测试，以及8项启动环境回归检查通过；记忆修复另通过既有18项规则检查与3项路由模型模拟检查。具体历史报告在独立 QA 仓库；这些记录不替代新机器上的实际运行和外部服务验收。审核包保留前后端单测源码，不附带截图或报告。
 
 ## 10 Linux 与 macOS 本地运行
 
