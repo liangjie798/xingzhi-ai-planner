@@ -1,3 +1,4 @@
+import { affirmativePlanningText, confirmationOnly, indoorAlternative, casualGreeting } from "@/lib/conversation-semantics";
 import { NextResponse } from "next/server";
 import { callLlm, extractJson } from "@/lib/llm-server";
 import { resolveAccountModelConfig } from "@/lib/account-model-config-server";
@@ -16,6 +17,7 @@ import { isRecord } from "@/lib/request-validation";
 import { hasValidConversationContext } from "@/lib/planning-input-validation";
 import { CONTEXT_LIMITS, appendContextMessage, applyMemoryIntent, contextUserMessage, promptContext, restoreContext, type PromptContext } from "@/lib/conversation-context";
 import { ConversationStoreError, loadConversation, saveConversationContext, type ConversationSnapshotData } from "@/lib/conversation-context-server";
+import { applyMemoryPolicy, memoryLabel, stripKnownQuestions } from "@/lib/conversation-memory";
 
 export const maxDuration = 60;
 interface ConversationRequest {
@@ -35,6 +37,7 @@ export async function POST(request: Request) {
     const incoming = await request.json();
     if (!isRecord(incoming) || typeof incoming.message !== "string" || !incoming.message.trim() || incoming.conversationId !== undefined && typeof incoming.conversationId !== "string") return NextResponse.json({ detail: "请输入消息和有效的对话编号" }, { status: 400 });
     if (!hasValidConversationContext(incoming)) return NextResponse.json({ detail: "对话上下文或图表参数格式不正确" }, { status: 400 });
+    if (incoming.message.trim().length > 4000) return NextResponse.json({ detail: "消息最多4000字，请精简或拆分发送；本次未保存" }, { status: 400 });
     const id = incoming.conversationId as string | undefined;
     const saved: ConversationSnapshotData = id ? await loadConversation(request, id) : { messages: incoming.history };
     let context = restoreContext(saved.conversationContext, saved.messages);
@@ -48,13 +51,17 @@ export async function POST(request: Request) {
     const response = action.reply ? NextResponse.json({ reply: action.reply, kind: "当前对话记忆（规则处理）", command: "answer", patch: {}, intake: body.intake || { known: {} }, missing: [], sources: [], activeTopic: body.activeTopic, weatherContext: body.weatherContext, knowledgeContext: body.knowledgeContext, modelCall: { success: false, attempted: false, reason: "memory-rule" } }) : await planConversation(request, body, modelContext);
     if (!response.ok) return response;
     const result = await response.json();
+    // 统一附带「已记住的条件」摘要，前端用于展示对话记忆状态。
+    const remembered = memoryLabel(result.intake?.known);
+    result.memoryLabel = remembered;
+    result.memory = { ...(result.memory || {}), label: remembered, known: result.intake?.known || {} };
     if (!id && action.reply) result.reply += "\n当前请求没有独立对话编号，事项未持久保存；请在网站的独立对话中使用。";
     appendContextMessage(context, contextUserMessage(action.sanitizedMessage || message, crypto.randomUUID()));
     appendContextMessage(context, { id: crypto.randomUUID(), role: "assistant", content: result.reply, kind: result.kind, sources: result.sources });
     context.revision++;
     const next = { ...(action.clear ? { version: 1 } : saved), messages: context.recent, conversationContext: context, intake: result.intake, weatherContext: result.weatherContext || {}, knowledgeContext: result.knowledgeContext || {}, activeTopic: result.activeTopic || "" };
-    if (id) await saveConversationContext(request, id, next);
-    return NextResponse.json({ ...result, conversationContext: context, conversationMessages: context.recent, clearConversation: !!action.clear, memoryPersistence: id ? "saved" : "request-only" });
+    const snapshotVersion = id ? await saveConversationContext(request, id, next) : undefined;
+    return NextResponse.json({ ...result, snapshotVersion, conversationContext: context, conversationMessages: context.recent, clearConversation: !!action.clear, memoryPersistence: id ? "saved" : "request-only" });
   } catch (error) {
     if (error instanceof SyntaxError) return NextResponse.json({ detail: "请求体不是合法JSON" }, { status: 400 });
     if (error instanceof ConversationStoreError) return NextResponse.json({ detail: error.message }, { status: error.status });
@@ -66,10 +73,11 @@ async function planConversation(request: Request, body: ConversationRequest, con
   if (!isRecord(body) || typeof body.message !== "string" || !body.message.trim()) return NextResponse.json({ detail: "请输入规划要求，请求体必须为 JSON 对象" }, { status: 400 });
   if (!hasValidConversationContext(body as unknown as Record<string, unknown>)) return NextResponse.json({detail:"对话上下文或图表参数格式不正确"},{status:400});
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
-  let known = cleanIntake(body.intake?.known);
   const message = body.message.trim().slice(0, 4000);
   const history = Array.isArray(body.history) ? body.history.filter((item) => item && ["user", "assistant"].includes(item.role) && typeof item.content === "string").slice(-CONTEXT_LIMITS.recentMessages).map((item) => ({ role: item.role, content: item.content.slice(0, 4000) })) : [];
-  known = recoverRejectedIntake(history, today, known);
+  // 对话记忆：先从整段历史回捞条件，再对上一轮已问过且未回答的字段套用常规默认，避免重复追问。
+  const memory = applyMemoryPolicy(cleanIntake(body.intake?.known), history, today);
+  let known = recoverRejectedIntake(history, today, memory.known);
   const pending = Object.keys(known).length > 0 || /还需要了解|哪天|哪个城市|几个人/.test(history.filter((h) => h.role === "assistant").at(-1)?.content || "");
   const lastAssistant = history.filter((h) => h.role === "assistant").at(-1)?.content || "";
   const savedWeather = cleanIntake(body.weatherContext && typeof body.weatherContext === "object" ? body.weatherContext : {});
@@ -82,6 +90,15 @@ async function planConversation(request: Request, body: ConversationRequest, con
     return state;
   }, {});
   const unchanged = { command: "answer", patch: {}, intake: { known }, missing: [], activeTopic: body.activeTopic, weatherContext: body.weatherContext, knowledgeContext: body.knowledgeContext };
+  if(casualGreeting(message)) return NextResponse.json({...unchanged,reply:"你好呀！很高兴听到你心情不错，想聊点什么？",kind:"行知助手"});
+  if(indoorAlternative(message)) return NextResponse.json({...unchanged,reply:`可以为${known.cityName||"目的地"}${known.date?` ${known.date}`:""}的行程准备室内备选：把露天游览换成博物馆、展馆或室内文化体验，减少户外步行并预留交通时间。具体场馆的预约、营业时间和价格需另行核实；这是假设下雨时的建议，不代表当天一定下雨。原安排保持不变。`,kind:"旅行备选建议"});
+  if(confirmationOnly(message)){
+    const delta=extractIntake(message,today,known);
+    const confirmed=completeIntake(known,delta,today).intake;
+    const k=confirmed.known;
+    const summary=[k.cityName&&`目的地：${k.cityName}`,k.originCity&&`出发地：${k.originCity}`,k.date&&`出发日期：${k.date}`,k.tripDays&&`天数：${k.tripDays}天`,k.participants&&`人数：${k.participants}人`,k.totalBudget&&`总预算：${k.totalBudget}元`,k.budgetPerPerson&&`人均预算：${k.budgetPerPerson}元`,k.audienceDescription&&`同行人群：${k.audienceDescription}`].filter(Boolean).join("\n");
+    return NextResponse.json({...unchanged,intake:confirmed,reply:`仅确认条件，本次不生成方案、不查询票价：\n${summary||"尚未确认具体条件。"}`,kind:"条件确认"});
+  }
   if (isCourtesy(message)) return NextResponse.json({ ...unchanged, reply: "不客气！已保留当前城市、日期和活动条件，可以继续提问或告诉我想修改什么。", kind: "行知" });
   if (isModelQuestion(message)) {
     const started = Date.now();
@@ -118,7 +135,7 @@ async function planConversation(request: Request, body: ConversationRequest, con
     const selectedMode = /只看|仅看|只考虑/.test(message) ? /火车|高铁|动车/.test(message) ? "火车" : /飞机|航班/.test(message) ? "航班" : undefined : undefined;
     const found=missing.length?undefined:await searchTickets(origin!,destination!,departureDate!,{signal:request.signal,config:await resolveAccountModelConfig(request),useModel:true,mode:selectedMode});
     const ticketSearch = found && selectedMode ? {...found, options:found.options.filter(option=>option.mode===selectedMode), reply:summarizeTickets(found.options.filter(option=>option.mode===selectedMode), found.notes)} : found;
-    const reply=ticketSearch?`${origin} → ${destination} · ${departureDate}\n${ticketSearch.reply}`:`我来查询航司官网展示价。请补充：${missing.join("、")}。火车票暂请前往12306官网查询。`;
+    const reply=ticketSearch?`${origin} → ${destination} · ${departureDate}\n${ticketSearch.reply}`:`我来查询航司官网展示价。请补充：${missing.join("、")}。日期确认后可同时查询飞机与火车；火车余票以12306官方为准。`;
     const sources=[...new Map((ticketSearch?.options||[]).filter(option=>option.sourceUrl).map(option=>[option.sourceUrl,{title:option.sourceName||"航司官网",url:option.sourceUrl!,detail:`采集时间 ${option.checkedAt}；展示价，最终含税总额待核验`}])).values()];
     return NextResponse.json({reply,ticketSearch,kind:"航司官网工具查询",command:"answer",patch,intake:{known:{...known,...patch}},missing,activeTopic:"transport",sources,modelCall:ticketSearch?.modelCall,toolCalls:ticketSearch?.toolCalls});
   }
@@ -138,7 +155,7 @@ async function planConversation(request: Request, body: ConversationRequest, con
     const city = body.activeTopic === "weather" ? savedWeather.cityName : knowledgeContext.city || savedWeather.cityName;
     if (city) known = { ...known, cityName: city };
   }
-  if (intent === "knowledge" && relativeDateFromText(message, today) && message.length < 20 && !/天气|气温|规划|旅行|旅游/.test(message)) {
+  if (intent === "knowledge" && (body.activeTopic === "weather" || body.activeTopic === "planning") && relativeDateFromText(message, today) && message.length < 20 && !/天气|气温|规划|旅行|旅游/.test(message)) {
     return NextResponse.json({ reply: "这次是想继续查询天气，还是调整活动日期？请补充一下查询内容，我会沿用已确认的城市与条件。", kind: "需要确认话题", command: "answer", patch: {}, intake: { known }, missing: [], knowledgeContext, weatherContext: savedWeather, activeTopic: body.activeTopic || "knowledge", sources: [] });
   }
   if (intent !== "planning") {
@@ -165,9 +182,10 @@ async function planConversation(request: Request, body: ConversationRequest, con
         context,
         system: "你是规划需求提取器。只提取本条消息明确给出的事实，不能补全城市、日期、人数、人群等默认值。只输出JSON。",
         prompt: [
+          "否定的旧值不可提取；只提取肯定的新值。总预算用totalBudget，不要当成人均。",
           "当前北京时间日期：" + today,
-          "用户之前已确认：" + JSON.stringify(known),
-          "本条消息：" + message,
+          "用户之前已确认（不得重复询问，也不要再次确认）：" + JSON.stringify(known),
+          "本条消息：" + affirmativePlanningText(message),
           '输出 {"patch":{}}，可用字段 cityName,activityType,date,endDate,tripDays,startHour,duration,participants,intensity,group,audienceDescription,budgetPerPerson,equipmentCount,teamSize。未提及字段不要输出。大学生等具体身份用audienceDescription保留，预算为人均元，器材为件/套，teamSize为每组人数。',
           "activityType只能为校园运动会、体育课、社区活动、户外训练、研学活动、旅游规划；intensity为低强度、中强度、高强度；group为普通人群、儿童青少年、老年人、敏感人群、外来旅游人群。",
           "三天旅游只输出tripDays:3和activityType，不输出任何日期城市。只说杭州就只输出cityName。日期使用YYYY-MM-DD。",
@@ -178,5 +196,12 @@ async function planConversation(request: Request, body: ConversationRequest, con
       provider = result.provider + " · " + result.model;
     } catch { provider = "对话条件确认 · 本地解析"; }
   }
-  return NextResponse.json({ ...completeIntake(known, delta, today), provider, knowledgeContext: {}, weatherContext: savedWeather, activeTopic: "planning", visualization: comparison ? "compare-days" : undefined });
+  const completed = completeIntake(known, delta, today);
+  const policy = applyMemoryPolicy(completed.intake.known, history, today);
+  const defaultsApplied = [...new Set([...memory.defaultsApplied, ...policy.defaultsApplied])];
+  const factsFromHistory = [...new Set([...memory.factsFromHistory, ...policy.factsFromHistory])];
+  let reply = policy.intake.reply;
+  if (defaultsApplied.length) reply += `\n（已按常规默认：${defaultsApplied.join("、")}；如需修改直接告诉我。）`;
+  reply = stripKnownQuestions(reply, policy.known);
+  return NextResponse.json({ ...policy.intake, reply, provider, knowledgeContext: {}, weatherContext: savedWeather, activeTopic: "planning", visualization: comparison ? "compare-days" : undefined, memoryLabel: policy.memoryLabel || memory.memoryLabel, memory: { known: policy.known, defaultsApplied, factsFromHistory } });
 }

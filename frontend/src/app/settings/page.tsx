@@ -1,8 +1,10 @@
 "use client";
+import { PageIllustration } from "@/components/page-illustration";
 
 import { ArrowLeft, CheckCircle, Compass, GearSix, Plugs, WarningCircle } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { currentUser } from "@/lib/auth";
 import { DEFAULT_MODEL_CONFIG, MODEL_PRESETS, readAccountModelConfig, saveAccountModelConfig } from "@/lib/model-config";
 import type { ModelConfig } from "@/lib/types";
 
@@ -17,11 +19,31 @@ export default function SettingsPage() {
   const [savedAt, setSavedAt] = useState<string>("");
   const [accountState, setAccountState] = useState({ bound: false, hasApiKey: false });
   const [loadError, setLoadError] = useState("");
+  const [signedIn, setSignedIn] = useState(false);
 
   useEffect(() => {
-    void readAccountModelConfig().then(({ config: stored, bound, hasApiKey }) => {
-      setConfig(stored); setAccountState({ bound, hasApiKey });
-    }).catch((error) => { setConfig({ ...DEFAULT_MODEL_CONFIG }); setLoadError(error instanceof Error ? error.message : "配置读取失败"); });
+    let active = true;
+    void (async () => {
+      const user = await currentUser().catch(() => null);
+      if (!active) return;
+      if (!user || user.role !== "USER") {
+        // 访客与管理员无法读写账户模型配置：直接给出提示，避免无意义的 403 请求。
+        setConfig({ ...DEFAULT_MODEL_CONFIG });
+        setLoadError("请先登录用户账户，再绑定模型配置");
+        return;
+      }
+      setSignedIn(true);
+      try {
+        const { config: stored, bound, hasApiKey } = await readAccountModelConfig();
+        if (!active) return;
+        setConfig(stored); setAccountState({ bound, hasApiKey });
+      } catch (error) {
+        if (!active) return;
+        setConfig({ ...DEFAULT_MODEL_CONFIG });
+        setLoadError(error instanceof Error ? error.message : "配置读取失败");
+      }
+    })();
+    return () => { active = false; };
   }, []);
 
   if (!config) {
@@ -48,6 +70,7 @@ export default function SettingsPage() {
   };
 
   const save = async () => {
+    if (!signedIn) { setLoadError("请先登录用户账户，再绑定模型配置"); return; }
     setLoadError("");
     try {
       await saveAccountModelConfig(config);
@@ -58,15 +81,18 @@ export default function SettingsPage() {
   };
 
   const testConnection = async () => {
-    try { await saveAccountModelConfig(config); }
-    catch (error) { setTest({ status: "error", message: error instanceof Error ? error.message : "保存失败" }); return; }
+    if (!signedIn) { setTest({ status: "error", message: "请先登录用户账户，再测试模型配置" }); return; }
     setTest({ status: "testing", message: "正在连接模型…" });
     const startedAt = Date.now();
     try {
       const response = await fetch("/model-gateway", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ system: "你是连通性测试助手。", prompt: "请只回复两个字母：OK" }),
+        body: JSON.stringify({
+          system: "你是连通性测试助手。",
+          prompt: "请只回复两个字母：OK",
+          testConfig: { baseUrl: config.baseUrl, model: config.model, apiKey: config.apiKey },
+        }),
       });
       const body = await response.json() as { text?: string; provider?: string; model?: string; detail?: string };
       if (!response.ok || !body.text) throw new Error(body.detail || `服务返回 ${response.status}`);
@@ -91,6 +117,7 @@ export default function SettingsPage() {
             <span className="section-kicker">大模型接口</span>
             <h1>配置你的 AI 模型</h1>
           </div>
+          <PageIllustration kind="settings" />
           <p className="settings-lede">
             绑定有调用权限的模型服务后，旅游编排与文字解释将使用你的账户配置。
             未配置或调用失败时会显示具体原因，并提供基于真实天气与已核对地点的规则方案。百度搜索密钥不等于模型密钥。
@@ -124,6 +151,7 @@ export default function SettingsPage() {
 
           <p className="settings-note">
             兼容 OpenAI chat/completions 协议（vLLM、Ollama、OneAPI、硅基流动、DeepSeek 等均可）。
+            可以先测试表单中的配置，再点击「绑定到账户」保存。
             配置与当前用户 ID 绑定，API 密钥加密写入数据库。以后登录该账户会自动使用，无需重复绑定。
           </p>
 

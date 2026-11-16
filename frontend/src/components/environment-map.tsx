@@ -43,6 +43,25 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character] ?? character);
 }
 
+/**
+ * 高德 JSAPI 会在容器内动态注入交互 iframe 和 logo 图片，它们没有标题/替代文本，
+ * 会让屏幕阅读器读到无名称的框架和图片。这里只补全缺失的无障碍属性。
+ */
+function labelAmapThirdPartyDom(container: HTMLElement): () => void {
+  const apply = () => {
+    container.querySelectorAll<HTMLIFrameElement>("iframe").forEach((frame) => {
+      if (!frame.getAttribute("title") && !frame.getAttribute("aria-label")) frame.setAttribute("title", "高德地图交互图层");
+    });
+    container.querySelectorAll<HTMLImageElement>("img.amap-logo, .amap-logo img").forEach((image) => {
+      if (!image.hasAttribute("alt")) image.setAttribute("alt", "高德地图");
+    });
+  };
+  apply();
+  const observer = new MutationObserver(apply);
+  observer.observe(container, { childList: true, subtree: true });
+  return () => observer.disconnect();
+}
+
 interface EnvironmentMapProps {
   city: CityEnvironment;
   layer: LayerKey;
@@ -221,6 +240,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
 
     window._AMapSecurityConfig = serviceHost ? { serviceHost } : { securityJsCode: securityCode };
     let cancelled = false;
+    let releaseAmapA11y: (() => void) | undefined;
     setMapState("loading");
 
     import("@amap/amap-jsapi-loader").then(({ default: AMapLoader }) => AMapLoader.load({
@@ -256,12 +276,14 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
         });
         amapRef.current = AMap;
         mapRef.current = map;
+        releaseAmapA11y = labelAmapThirdPartyDom(containerRef.current);
         setMapState("ready");
       })
       .catch(() => setMapState("error"));
 
     return () => {
       cancelled = true;
+      releaseAmapA11y?.();
       const mapToDestroy = mapRef.current;
       mapRef.current = null;
       amapRef.current = null;
@@ -324,10 +346,10 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
         setRegionRings(sampledRings);
         boundaryOverlays = rings.map((ring) => new AMap.Polygon({
           path: ring,
-          strokeColor: "#087f6d",
+          strokeColor: "#dfb479",
           strokeWeight: 1.5,
           strokeOpacity: 0.66,
-          fillColor: "#dff3ed",
+          fillColor: "#805624",
           fillOpacity: national ? 0.24 : 0.025,
           zIndex: 5,
         }));
@@ -411,7 +433,7 @@ export function EnvironmentMap({ city, layer, onPointSelected, onRegionBounds, g
     const path = stops.map((stop) => [stop.longitude, stop.latitude]);
     const routeLine = new AMap.Polyline({
       path,
-      strokeColor: "#056655",
+      strokeColor: "#dfb479",
       strokeWeight: 5,
       strokeOpacity: 0.92,
       lineJoin: "round",

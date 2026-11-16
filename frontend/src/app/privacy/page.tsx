@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { PublicInfo } from "@/components/public-info";
-export const metadata:Metadata={title:"隐私与数据说明 · 行知"};
-export default function PrivacyPage(){return <PublicInfo title="隐私与数据说明" intro="在开始规划前，了解哪些信息会参与处理，以及你可以怎样管理当前对话。" sections={[
+export const metadata:Metadata={title:"隐私与数据说明 · 行知",description:"了解行知会处理哪些账户、对话与位置信息，以及你可以怎样管理当前对话与已保存记录。",alternates:{canonical:"/privacy"}};
+export default function PrivacyPage(){return <PublicInfo illustration="privacy" title="隐私与数据说明" intro="在开始规划前，了解哪些信息会参与处理，以及你可以怎样管理当前对话。" sections={[
   {title:"账户与规划记录",body:"注册和登录会向服务端提交账户信息。注册用户的对话和规划记录按账户保存；浏览器也会保存部分界面状态。访客以当前会话使用服务，不应把访客模式理解为完全匿名或不产生服务日志。"},
   {title:"对话与外部服务",body:"生成回答时，相关需求和对话上下文可能发送到你配置的模型服务。天气、地点、路线和机票查询会向相应数据来源发送查询所需条件。请勿在对话中提交身份证号、银行卡号、密码等敏感信息。"},
   {title:"位置与浏览器权限",body:"城市可手动选择。使用自动定位时，浏览器会请求位置权限；你可以拒绝授权，并继续通过城市搜索使用规划功能。"},

@@ -1,4 +1,6 @@
 "use client";
+import { TransportPanel } from "./transport-panel";
+import { acceptConversationVersion } from "@/lib/auth";
 
 import {
   ArrowClockwise, Clock, CloudSun,
@@ -16,6 +18,8 @@ import { ActivityComparison } from "./activity-comparison";
 import { WeatherComparison,type WeatherComparisonData } from "./weather-comparison";
 import type { WeatherChartSpec } from "@/lib/visualization-request";
 import { validateWeatherHours } from "@/lib/conversation-weather";
+import { memoryLabel } from "@/lib/conversation-memory";
+import { animateIn, animateOut, smoothSwap } from "./smooth-motion";
 import { emptyContext, restoreContext, type ConversationContext } from "@/lib/conversation-context";
 import { csrf, currentUser } from "@/lib/auth";
 import { explainScoreDifference, isScoreQuestion } from "@/lib/score-explanation";
@@ -43,7 +47,7 @@ import type { MapSelection } from "./environment-map";
 import { reverseGeocode, searchChinaDistricts } from "@/lib/amap-lbs";
 import { cityById, saveSelectedCity } from "@/lib/cities";
 import type { CityOption } from "@/lib/cities";
-import { addDays, intakeChoices, type IntakeState } from "@/lib/conversation-intake";
+import { cleanIntake, addDays, intakeChoices, type IntakeState } from "@/lib/conversation-intake";
 import { beijingTime } from "@/lib/beijing-time";
 import { restoredWorkspaceView, type WorkspaceView } from "@/lib/workspace-view";
 import type { DestinationContext } from "@/lib/destination-knowledge";
@@ -119,6 +123,7 @@ interface ConversationSnapshot {version?:number;messages?:ChatMessage[];conversa
 const greeting:ChatMessage[]=[{role:"assistant",content:"你好，我是行知。可以查询天气、咨询知识，或一起规划旅行和活动。",kind:"从这里开始"}];
 const emptyConversation=():ConversationSnapshot=>({version:1,messages:greeting,intake:{known:{}},knowledgeContext:{},weatherContext:{},activeTopic:"",input:{...initialInput},result:null,route:null,compareDays:false,workspaceData:{...emptyWorkspace},weatherComparison:null,workspaceView:"studio"});
 interface ConversationResponse {
+  snapshotVersion?: number;
   conversationContext?: ConversationContext;
   conversationMessages?: ChatMessage[];
   clearConversation?: boolean;
@@ -135,6 +140,8 @@ interface ConversationResponse {
   provider?: string;
   intake: IntakeState;
   missing: string[];
+  memoryLabel?: string;
+  memory?: { label?: string; known?: Record<string, unknown>; defaultsApplied?: string[]; factsFromHistory?: string[] };
 }
 
 export function DecisionDashboard() {
@@ -156,6 +163,8 @@ export function DecisionDashboard() {
   const [liveTrace, setLiveTrace] = useState<ToolTraceItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<"plan" | "evidence" | "trace">("plan");
+  const activePanelRef = useRef(activePanel);
+  useEffect(() => { activePanelRef.current = activePanel; }, [activePanel]);
   const [intake, setIntake] = useState<IntakeState>({ known: {} });
   const hasDestination = !!intake.known.cityName;
   const [searchQuery, setSearchQuery] = useState("");
@@ -191,10 +200,16 @@ export function DecisionDashboard() {
   const isTourism = input.activityType === "旅游规划";
 
   const restoreConversation=useCallback((saved:ConversationSnapshot, honorUrl=false)=>{
+    // 切换/删除/清空前的退场动画会把消息容器设为 opacity:0；恢复时必须复位，否则新消息不可见。
+    const messagesElement = document.querySelector<HTMLElement>(".conversation-messages");
+    if (messagesElement) {
+      messagesElement.style.removeProperty("opacity");
+      messagesElement.style.removeProperty("transform");
+    }
     followLatest.current = true;
     setShowLatest(false);
     setConversationContext(restoreContext(saved.conversationContext, saved.messages));
-    setChatMessages(saved.messages?.length?saved.messages:greeting);setIntake(saved.intake||{known:{}});setKnowledgeContext(saved.knowledgeContext||{});setWeatherContext(saved.weatherContext||{});setActiveTopic(saved.activeTopic||"");
+    setChatMessages(saved.messages?.length?saved.messages:greeting);setIntake({ known: cleanIntake(saved.intake?.known || {}) });setKnowledgeContext(saved.knowledgeContext||{});setWeatherContext(saved.weatherContext||{});setActiveTopic(saved.activeTopic||"");
     setInput(saved.input||{...initialInput});setResult(saved.result||null);setRoute(saved.route||null);setCompareDays(Boolean(saved.compareDays));setWorkspaceData({...emptyWorkspace,...saved.workspaceData});setWeatherComparison(saved.weatherComparison||null);setWorkspaceView(restoredWorkspaceView(honorUrl?window.location.search:"",saved.workspaceView));
     setCity(null);setGrid([]);setRegionBounds(null);setSearchQuery("");setSearchResults([]);setError(null);setLiveTrace([]);setChatText("");setTicketSearch(null);setJourneyExpanded(false);setActivePanel("plan");
   },[]);
@@ -241,6 +256,19 @@ export function DecisionDashboard() {
     return () => window.clearTimeout(timer);
   }, [memoryReady,sessionId,chatBusy,isAnalyzing,isPlanning,chartLoading,snapshot,saveConversation]);
 
+  async function saveWorkspaceData(data: WorkspaceData) {
+    if (!memoryReady || !sessionId || chatBusy || isAnalyzing || isPlanning || chartLoading) {
+      throw new Error("当前对话正在处理，请稍后重试");
+    }
+    setMemoryReady(false);
+    try {
+      await saveConversation(sessionId, { ...snapshot, workspaceData: data });
+      setWorkspaceData(data);
+    } finally {
+      setMemoryReady(true);
+    }
+  }
+
   async function openConversation(id?:string){
     if(!memoryReady||chatBusy||isAnalyzing||isPlanning||chartLoading)return;
     setMemoryReady(false);
@@ -250,6 +278,7 @@ export function DecisionDashboard() {
       let saved:ConversationSnapshot;
       if(id){saved=await authenticatedRequest<ConversationSnapshot>(`/api/v1/conversation-sessions/${id}`);next=sessions.find(item=>item.id===id)!;}
       else{saved=emptyConversation();next=await authenticatedRequest<SessionSummary>("/api/v1/conversation-sessions","POST",saved);setSessions(current=>[next,...current]);}
+      await animateOut(document.querySelector(".conversation-messages"), { y: 6, duration: 0.12 });
       restoreConversation(saved);setSessionId(next.id);try{sessionStorage.setItem("xingzhi-active-conversation",next.id);}catch{}
       window.history.replaceState({},"",saved.workspaceView&&saved.workspaceView!=="studio"?`/XingZhi?view=${saved.workspaceView}`:"/XingZhi");setMemoryStatus("已切换对话，条件与结果独立保存");
     }catch{setMemoryStatus("保存或切换失败，当前内容已保留，请稍后重试");}
@@ -262,6 +291,7 @@ export function DecisionDashboard() {
     try {
       const cleared = { ...emptyConversation(), conversationContext: emptyContext(conversationContext.revision + 1) };
       await saveConversation(sessionId, cleared);
+      await animateOut(document.querySelector(".conversation-messages"), { y: 6, duration: 0.12 });
       restoreConversation(cleared);setMemoryStatus("当前对话记忆已清空并保存，其他对话保留");
     } catch { setMemoryStatus("清空保存失败，请刷新核对；未确认清空成功"); }
     finally { setMemoryReady(true); }
@@ -277,9 +307,49 @@ export function DecisionDashboard() {
       let next=list[0];let saved:ConversationSnapshot;
       if(next)saved=await authenticatedRequest<ConversationSnapshot>(`/api/v1/conversation-sessions/${next.id}`);
       else{saved=emptyConversation();next=await authenticatedRequest<SessionSummary>("/api/v1/conversation-sessions","POST",saved);list.push(next);}
+      await animateOut(document.querySelector(".conversation-messages"), { y: 6, duration: 0.12 });
       setSessions(list);setSessionId(next.id);restoreConversation(saved);try{sessionStorage.setItem("xingzhi-active-conversation",next.id);}catch{}setMemoryStatus("已删除所选对话，其他记录保留");
     }catch{setMemoryStatus("删除或加载对话失败，请刷新核对记录");}
     finally{setMemoryReady(true);}
+  }
+
+  async function deleteSelectedConversations(ids: string[]): Promise<boolean> {
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (!unique.length) return false;
+    if (!memoryReady || chatBusy || isAnalyzing || isPlanning || chartLoading) return false;
+    const currentSelected = unique.includes(sessionId);
+    if (!window.confirm(currentSelected
+      ? `删除选中的 ${unique.length} 条对话？当前对话也在其中，删除后会打开剩余最近的一条；若没有剩余对话则新建一条。消息、方案与记录将一并删除。`
+      : `删除选中的 ${unique.length} 条对话？消息、方案、图表与记录将一并删除，其他对话保留。`)) return false;
+    setMemoryReady(false);
+    try {
+      await memoryQueue.current.catch(() => undefined);
+      const result = await authenticatedRequest<{ requested: number; deleted: number }>("/api/v1/conversation-sessions/batch-delete", "POST", { ids: unique });
+      const list = await authenticatedRequest<SessionSummary[]>("/api/v1/conversation-sessions");
+      const currentStillExists = list.some(item => item.id === sessionId);
+      if (!currentStillExists) {
+        let next = list[0];
+        let saved: ConversationSnapshot;
+        let createdNew = false;
+        if (next) saved = await authenticatedRequest<ConversationSnapshot>(`/api/v1/conversation-sessions/${next.id}`);
+        else { saved = emptyConversation(); next = await authenticatedRequest<SessionSummary>("/api/v1/conversation-sessions", "POST", saved); list.push(next); createdNew = true; }
+        await animateOut(document.querySelector(".conversation-messages"), { y: 6, duration: 0.12 });
+        setSessions(list);
+        setSessionId(next.id);
+        restoreConversation(saved);
+        try { sessionStorage.setItem("xingzhi-active-conversation", next.id); } catch { }
+        setMemoryStatus(createdNew ? `已删除 ${result.deleted} 条对话，已新建空对话` : `已删除 ${result.deleted} 条对话，已切换到最近一条`);
+      } else {
+        setSessions(list);
+        setMemoryStatus(`已删除 ${result.deleted} 条对话，其他记录保留`);
+      }
+      return true;
+    } catch {
+      setMemoryStatus("批量删除失败，请刷新核对记录；未确认删除结果");
+      return false;
+    } finally {
+      setMemoryReady(true);
+    }
   }
 
   useEffect(() => {
@@ -306,10 +376,33 @@ export function DecisionDashboard() {
   }, []);
 
 
+  /** 报告标签切换：正文先柔和退场，再切换并确保入场动画一定执行（避免重复切换导致正文停在透明态）。 */
+  function switchPanel(panel: "plan" | "evidence" | "trace") {
+    if (panel === activePanelRef.current) return;
+    activePanelRef.current = panel;
+    void smoothSwap(document.querySelector(".report-body"), () => setActivePanel(panel)).then(() => {
+      requestAnimationFrame(() => animateIn(document.querySelector(".report-body"), { y: 8, duration: 0.32 }));
+    });
+  }
+
+  /** 地图图层切换：地图视图先退场再入场，避免颜色和点位硬切。 */
+  function switchLayer(key: LayerKey) {
+    if (key === layer) return;
+    const stage = document.querySelector(".map-view-stage");
+    void animateOut(stage, { y: 6, duration: 0.14 }).then(() => {
+      setLayer(key);
+      requestAnimationFrame(() => animateIn(stage, { y: 8, duration: 0.3 }));
+    });
+  }
+
   const switchWorkspace = (view: WorkspaceView) => {
-    setWorkspaceView(view);
-    const url = view === "studio" ? "/XingZhi" : `/XingZhi?view=${view}`;
-    window.history.pushState({ view }, "", url);
+    if (view === workspaceView) return;
+    // 视图切换：旧内容先柔和退场，新内容由 useSwitchEntrance 接手入场，避免硬切。
+    void smoothSwap(workspaceMotion.current, () => {
+      setWorkspaceView(view);
+      const url = view === "studio" ? "/XingZhi" : `/XingZhi?view=${view}`;
+      window.history.pushState({ view }, "", url);
+    });
   };
   function restorePlan(plan:SavedPlan){setError(null);setInput(plan.input);setResult(plan.result);setRoute(plan.route);setIntake({known:{...plan.input}});switchWorkspace("plan");}
   function removeStop(name:string){
@@ -552,9 +645,8 @@ export function DecisionDashboard() {
     setError(null);
     setResult(null);
     setLiveTrace([]);
-    setActivePanel("trace");
-    setAgentPhase("正在读取环境与执行分析工具");
-    const startedAt = Date.now();
+    switchPanel("trace");
+    setAgentPhase("正在读取环境与执行分析工具");    const startedAt = Date.now();
     try {
       const response = await fetch(`${apiBase}/api/v2/agent/stream`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(activity),
@@ -566,7 +658,7 @@ export function DecisionDashboard() {
       setLiveTrace([]);
       setRoute(null);
       await loadCity(targetMeta);
-      setActivePanel("plan");
+      switchPanel("plan");
       return decision;
     } catch (caught) {
       setResult(null);
@@ -621,7 +713,7 @@ export function DecisionDashboard() {
       data.trace = data.trace.map((item) => item.id === "tour-forecast" ? { ...item, durationMs: item.durationMs + environmentMs, detail: `已读取 ${hourlyDays.length}/${dates.length} 天的逐小时环境数据，并计算推荐出行时段。` } : item);
       setRoute(data);
       setResult(null);
-      setActivePanel("plan");
+      switchPanel("plan");
       setLiveTrace(data.trace);
       return data;
     } catch (caught) {
@@ -648,6 +740,7 @@ export function DecisionDashboard() {
     const conversationStarted = performance.now();
     const message = (choice || chatText).trim();
     if (!message || chatBusy || !memoryReady) return;
+    if (message.length > 4000) { setError("消息最多4000字，请精简或拆分发送；尚未发送"); return; }
     const userMessage: ChatMessage = { id: crypto.randomUUID(), role: "user", content: message };
     const history = [...chatMessages, userMessage];
     setChatMessages(history);
@@ -676,6 +769,7 @@ export function DecisionDashboard() {
       });
       if (!response.ok) throw new Error(await apiError(response));
       const plan = await response.json() as ConversationResponse;
+      acceptConversationVersion(sessionId, plan.snapshotVersion);
       if (plan.clearConversation) {
         restoreConversation({ ...emptyConversation(), conversationContext: plan.conversationContext, messages: plan.conversationMessages });
         setMemoryStatus("当前对话记忆已清空并保存，其他对话保留");
@@ -792,12 +886,13 @@ export function DecisionDashboard() {
   const visibleSlots = result
     ? result.slots.filter((slot) => compareDays || !result.bestSlot.date || slot.date === result.bestSlot.date)
     : [];
+  const memoryNotice = /^(已删除|批量删除)/.test(memoryStatus) ? memoryStatus : memoryReady && chatMessages.length <= 1 ? "新对话已就绪 · 条件在当前对话内逐步确认" : memoryStatus;
 
   return (
     <main className={`app-shell product-workspace ${workspaceStyles.scope}`}>
-      <WorkspaceSidebar view={workspaceView} sessions={sessions} sessionId={sessionId} disabled={!memoryReady||chatBusy||isAnalyzing||isPlanning||chartLoading} onView={switchWorkspace} onOpen={id=>void openConversation(id)} onDelete={()=>void deleteConversation()} />
+      <WorkspaceSidebar view={workspaceView} sessions={sessions} sessionId={sessionId} disabled={!memoryReady||chatBusy||isAnalyzing||isPlanning||chartLoading} onView={switchWorkspace} onOpen={id=>void openConversation(id)} onDelete={()=>void deleteConversation()} onDeleteSelected={ids=>deleteSelectedConversations(ids)} />
       <header className="topbar">
-        <div className="workspace-context"><strong>{{studio:"分析台",map:"环境地图",plan:"执行方案",execution:"执行管理",library:"资料收藏",archive:"活动档案"}[workspaceView]}</strong><span>{sessions.find(item=>item.id===sessionId)?.title || "新的一份计划"}</span></div>
+        <div className="workspace-context"><strong>{{studio:"分析台",map:"环境地图",plan:"执行方案",execution:"执行管理",library:"资料收藏",archive:"活动档案",transport:"交通比价"}[workspaceView]}</strong><span>{sessions.find(item=>item.id===sessionId)?.title || "新的一份计划"}</span></div>
         <div className="topbar-actions">
           <span className={`system-status ${error ? "has-error" : ""}`}><i /> {error ? "数据连接异常" : !hasDestination ? "全国环境总览" : isLoadingCity ? "正在同步实时数据" : `实时数据 · ${updatedAt}`}</span>
           <Link className="icon-button" href="/hourly" title="逐小时数据" aria-label="逐小时数据页面"><Clock size={18} /></Link>
@@ -808,7 +903,8 @@ export function DecisionDashboard() {
       </header>
 
       <div ref={workspaceMotion} className="workspace-stage">
-      {workspaceView==="execution"||workspaceView==="library"||workspaceView==="archive" ? <OperationsWorkspace view={workspaceView} input={input} result={result} route={route} data={workspaceData} onChange={setWorkspaceData} onRestore={restorePlan} onNavigate={switchWorkspace}/> : <section className={`workspace workspace-${workspaceView}`}>
+      <div hidden={workspaceView!=="transport"}><TransportPanel /></div>
+      {workspaceView==="transport" ? null : workspaceView==="execution"||workspaceView==="library"||workspaceView==="archive" ? <OperationsWorkspace view={workspaceView} input={input} result={result} route={route} data={workspaceData} onChange={data=>{if(memoryReady)setWorkspaceData(data);}} onSave={saveWorkspaceData} onRestore={restorePlan} onNavigate={switchWorkspace}/> : <section className={`workspace workspace-${workspaceView}`}>
         <WorkspaceHeading view={workspaceView} actionLabel={workspaceView==="studio"?"写下我的想法":"在对话中完善需求"} onAction={()=>{switchWorkspace("studio");requestAnimationFrame(()=>document.getElementById("conversation-input")?.focus());}}/>
         <aside className="control-rail">
           <div className="rail-heading">
@@ -868,11 +964,11 @@ export function DecisionDashboard() {
               {intake.known.tripDays && <div><dt>天数</dt><dd>{intake.known.tripDays}天</dd></div>}
               {intake.known.participants && <div><dt>人数</dt><dd>{intake.known.participants}人 · {intake.known.audienceDescription || intake.known.group || '人群待确认'}</dd></div>}
               {intake.known.budgetPerPerson && <div><dt>人均预算</dt><dd>{intake.known.budgetPerPerson}元</dd></div>}
-              {intake.known.equipmentCount && <div><dt>器材数量</dt><dd>{intake.known.equipmentCount}件/套</dd></div>}
-              {intake.known.duration && <div><dt>单次时长</dt><dd>{intake.known.duration}小时</dd></div>}
-              {intake.known.intensity && <div><dt>强度</dt><dd>{intake.known.intensity}</dd></div>}
-              {intake.known.startHour !== undefined && <div><dt>偏好时段</dt><dd>{String(intake.known.startHour).padStart(2, '0')}:00 起</dd></div>}
-              {intake.known.allowedStartHour !== undefined && <div><dt>时段限制</dt><dd>{intake.known.allowedStartHour}:00–{intake.known.allowedEndHour}:00（覆盖全程）</dd></div>}
+              {intake.known.activityType !== "旅游规划" && intake.known.equipmentCount && <div><dt>器材数量</dt><dd>{intake.known.equipmentCount}件/套</dd></div>}
+              {intake.known.activityType !== "旅游规划" && intake.known.duration && <div><dt>单次时长</dt><dd>{intake.known.duration}小时</dd></div>}
+              {intake.known.activityType !== "旅游规划" && intake.known.intensity && <div><dt>强度</dt><dd>{intake.known.intensity}</dd></div>}
+              {intake.known.activityType !== "旅游规划" && intake.known.startHour !== undefined && <div><dt>偏好时段</dt><dd>{String(intake.known.startHour).padStart(2, '0')}:00 起</dd></div>}
+              {intake.known.activityType !== "旅游规划" && intake.known.allowedStartHour !== undefined && <div><dt>时段限制</dt><dd>{intake.known.allowedStartHour}:00–{intake.known.allowedEndHour}:00（覆盖全程）</dd></div>}
             </dl>}
             <button type="button" onClick={() => document.getElementById('conversation-input')?.focus()}>在对话中补充或修改 <ChatCircleDots size={15} /></button>
           </section>
@@ -886,7 +982,7 @@ export function DecisionDashboard() {
               <div><span className="conversation-icon"><ChatCircleDots size={19} weight="duotone" /></span><div><strong>与行知对话</strong><small>查天气 · 问知识 · 做规划，回答附资料依据</small></div></div>
               <span className="conversation-count">{chatMessages.length} 条消息 · 独立保存</span>
             </div>
-            <div className="memory-toolbar conversation-memory-toolbar"><small role="status">{memoryReady&&chatMessages.length<=1?"新对话已就绪 · 条件在当前对话内逐步确认":memoryStatus}{activeTopic === "weather" && weatherContext.cityName ? ` · 天气：${weatherContext.cityName}` : ""}</small><button type="button" disabled={chatBusy || !memoryReady || chartLoading} onClick={clearConversationMemory}>清除当前对话记忆</button></div>
+            <div className="memory-toolbar conversation-memory-toolbar"><small role="status">{memoryNotice}{activeTopic === "weather" && weatherContext.cityName ? ` · 天气：${weatherContext.cityName}` : ""}{memoryLabel(intake?.known) ? ` · 已记住：${memoryLabel(intake.known)}` : ""}</small><button type="button" disabled={chatBusy || !memoryReady || chartLoading} onClick={clearConversationMemory}>清除当前对话记忆</button></div>
             <details className="conversation-memory-help"><summary>当前对话会记住什么？</summary><p>可说“记住暗号是…”“忘记暗号”或“清空记忆”。明确保存的事项仅在当前对话召回，较早消息保留限长摘录摘要。访客退出或会话失效后不能恢复；注册用户重新登录可恢复自己的对话。</p></details>
             {knowledgeContext.topic && <div className="knowledge-context" aria-label="已确认问答偏好"><span>正在讨论：{knowledgeContext.city || "选择目的地"}{describeDestinationPreferences(knowledgeContext) ? ` · ${describeDestinationPreferences(knowledgeContext)}` : ""}</span><button type="button" disabled={chatBusy} onClick={() => setKnowledgeContext({})}>清除偏好</button></div>}
             {chatMessages.length<=1&&<WorkspaceStarters disabled={!memoryReady||chatBusy} onChoose={text=>{setChatText(text);document.getElementById("conversation-input")?.focus();}}/>}
@@ -895,7 +991,7 @@ export function DecisionDashboard() {
             <IntakeChoiceButtons known={intake.known} onAnswer={submitConversation} enabled={!chatBusy && memoryReady && activeTopic === "planning"} />
             <div className="agent-actions" aria-label="Agent 分析工具"><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("explain")}>解释推荐依据</button><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("compare")}>对比候选时段</button><button type="button" disabled={chatBusy || isAnalyzing || isPlanning} onClick={() => runAgentAction("checklist")}>生成筹备清单</button></div>
             <form className="analysis-console-form chat-form" onSubmit={(event) => { event.preventDefault(); followLatest.current = true; void submitConversation(); }}>
-              <textarea id="conversation-input" aria-label="问题或规划需求" disabled={!memoryReady} value={chatText} onChange={(event) => setChatText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submitConversation(); } }} placeholder="问一个问题，或告诉我你的旅行与活动想法…" rows={2} />
+              <small aria-live="polite">{chatText.length}/4000 字{chatText.length>4000 ? " · 请精简后发送" : ""}</small><textarea id="conversation-input" aria-label="问题或规划需求" disabled={!memoryReady} value={chatText} onChange={(event) => setChatText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submitConversation(); } }} placeholder="问一个问题，或告诉我你的旅行与活动想法…" rows={2} />
               <button type="submit" disabled={!chatText.trim() || chatBusy || !memoryReady} aria-label="发送分析要求">{chatBusy ? <span className="button-loader" /> : <PaperPlaneTilt size={18} weight="fill" />}<span>发送</span></button>
             </form>
             <p className="conversation-disclosure chat-disclosure">实时信息以查询结果为准，搜索摘要附原文链接；无法确认的内容会明确说明。Enter 发送 · Shift+Enter 换行</p>
@@ -919,10 +1015,12 @@ export function DecisionDashboard() {
               <Metric icon={CloudSun} value={city ? `${city.heatRisk}` : "--"} label="热风险" />
             </div>}
           </div>
-          <div className="layer-bar" aria-label="环境图层">{layers.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} aria-pressed={layer === item.key} className={layer === item.key ? "is-active" : ""} onClick={() => setLayer(item.key)}><Icon size={16} /> {item.label}</button>; })}</div>
+          <div className="layer-bar" aria-label="环境图层">{layers.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} aria-pressed={layer === item.key} className={layer === item.key ? "is-active" : ""} onClick={() => switchLayer(item.key)}><Icon size={16} /> {item.label}</button>; })}</div>
+          <div className="map-view-stage">
           {workspaceView === "map" && (!hasDestination ? <NationalEnvironmentMap layer={layer} onPointSelected={onPointSelected} /> : city
             ? <EnvironmentMap city={city} layer={layer} onPointSelected={onPointSelected} onRegionBounds={onRegionBounds} grid={grid} route={route} />
             : <div className="map-shell map-unavailable" role={error?"alert":"status"}>{error?<WarningCircle size={32}/>:<div className={workspaceStyles.mapSkeleton} aria-hidden="true"><i/><i/><i/></div>}<p>{error ? "实时数据暂不可用，请重试或更换城市。" : "正在载入城市环境数据"}</p>{error&&<button type="button" className={workspaceStyles.headingAction} onClick={()=>{setError(null);setIsLoadingCity(true);void loadCity(meta);}}>重新读取数据 <ArrowClockwise size={16}/></button>}</div>)}
+          </div>
           {workspaceView === "map" && hasDestination && city && <EnvironmentCharts city={city} date={input.date || dateString()} grid={grid} />}
           <div className="timeline-card">
             <div className="timeline-header"><div><span className="section-kicker">活动日期逐小时预测 · {input.date || "待选择日期"}</span><h3>{isTourism ? "旅游路线 · 推荐出行时段" : "候选时段活动适宜度"}</h3></div><div className="legend"><span className="good" />适宜 <span className="caution" />谨慎 <span className="bad" />不建议</div></div>
@@ -935,7 +1033,7 @@ export function DecisionDashboard() {
           </div>
         </section>
 
-        {workspaceView==="plan"&&!result&&!route&&!isPlanning&&!isAnalyzing ? <WorkspaceEmpty kind="plan" title="你的第一份规划，会出现在这里。" description="在分析台确认目的地、日期与偏好。生成后，可以在这里查看完整日程、资料依据和工具执行记录。" action="去分析台开始规划" onAction={()=>switchWorkspace("studio")}/> : <DecisionResultPanel input={input} isTourism={isTourism} route={route} result={result} liveTrace={liveTrace} activePanel={activePanel} onPanel={setActivePanel} isPlanning={isPlanning} isAnalyzing={isAnalyzing} onRemoveStop={removeStop} />}
+        {workspaceView==="plan"&&!result&&!route&&!isPlanning&&!isAnalyzing ? <WorkspaceEmpty kind="plan" title="你的第一份规划，会出现在这里。" description="在分析台确认目的地、日期与偏好。生成后，可以在这里查看完整日程、资料依据和工具执行记录。" action="去分析台开始规划" onAction={()=>switchWorkspace("studio")}/> : <DecisionResultPanel input={input} isTourism={isTourism} route={route} result={result} liveTrace={liveTrace} activePanel={activePanel} onPanel={switchPanel} isPlanning={isPlanning} isAnalyzing={isAnalyzing} onRemoveStop={removeStop} />}
       </section>}
       </div>
     </main>

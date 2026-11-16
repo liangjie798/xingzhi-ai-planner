@@ -1,5 +1,5 @@
-export type WorkspaceView = "studio" | "map" | "plan" | "execution" | "library" | "archive";
-const views: WorkspaceView[] = ["studio", "map", "plan", "execution", "library", "archive"];
+export type WorkspaceView = "studio" | "map" | "plan" | "execution" | "library" | "archive" | "transport";
+const views: WorkspaceView[] = ["studio", "map", "plan", "execution", "library", "archive", "transport"];
 /** An explicit URL wins after async hydration; absent URLs may restore a saved view. */
 export function restoredWorkspaceView(search: string, saved?: WorkspaceView): WorkspaceView {
   const params = new URLSearchParams(search);

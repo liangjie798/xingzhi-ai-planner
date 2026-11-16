@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { callLlm, extractJson } from "../src/lib/llm-server.ts";
+import { callLlm, extractJson, isBlockedModelAddress } from "../src/lib/llm-server.ts";
 
 test("structured plans tolerate gateways that escape JSON content twice", () => {
   const plan = { summary: "杭州三天", stops: [{ name: '西湖“断桥”', day: 1, time: "09:00" }] };
@@ -38,4 +38,11 @@ test("model output limits are configurable and truncated JSON is not accepted as
     globalThis.fetch = async () => new Response("sensitive-upstream-body", { status: 401 });
     await assert.rejects(callLlm({ prompt: "test" }), (error) => /密钥无效/.test(error.message) && !error.message.includes("sensitive-upstream-body"));
   } finally { globalThis.fetch = original; ["SILICONFLOW_API_KEY","DEEPSEEK_API_KEY"].forEach((key,index) => { if (saved[index] === undefined) delete process.env[key]; else process.env[key] = saved[index]; }); }
+});
+
+test("private, loopback, link-local and reserved model endpoints are rejected", () => {
+  for (const address of ["127.0.0.1", "10.0.0.8", "172.20.1.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "224.0.0.1", "::1", "::", "fd00::1", "fe80::1", "::ffff:127.0.0.1"])
+    assert.equal(isBlockedModelAddress(address), true, address);
+  for (const address of ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111", "2400:3200::1"])
+    assert.equal(isBlockedModelAddress(address), false, address);
 });

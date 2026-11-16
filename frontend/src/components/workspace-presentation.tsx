@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AirplaneTilt,
   Archive,
   ArrowRight,
   ArrowUpRight,
@@ -17,8 +18,10 @@ import {
 } from "@phosphor-icons/react";
 import type { WorkspaceView } from "@/lib/workspace-view";
 import s from "./workspace-experience.module.css";
+import { PageIllustration } from "./page-illustration";
 
 const pages = {
+  transport: { label: "交通比价", title: "同一段路，两种出发方式。", detail: "飞机与火车一起查，对照票价、出发时间和旅途时长，选一种适合自己的出发方式。", icon: AirplaneTilt },
   studio: {
     label: "分析台",
     title: "让下一次出发，有个好开始。",
@@ -79,6 +82,7 @@ export function WorkspaceHeading({
         <h1>{page.title}</h1>
         <p>{page.detail}</p>
       </div>
+      <PageIllustration kind={view} />
       {onAction && (
         <button className={s.headingAction} type="button" onClick={onAction}>
           {actionLabel || "回到分析台"}
@@ -149,8 +153,8 @@ export function WorkspaceEmpty({
   kind: "plan" | "execution" | "library" | "archive";
   title: string;
   description: string;
-  action: string;
-  onAction: () => void;
+  action?: string;
+  onAction?: () => void;
 }) {
   const Icon = { plan: MapTrifold, execution: UsersThree, library: Bookmarks, archive: Archive }[kind];
   return (
@@ -167,10 +171,10 @@ export function WorkspaceEmpty({
       <span className={s.eyebrow}>下一步，从这里开始</span>
       <h2>{title}</h2>
       <p>{description}</p>
-      <button type="button" className={s.emptyAction} onClick={onAction}>
+      {action && onAction && <button type="button" className={s.emptyAction} onClick={onAction}>
         {action}
         <ArrowRight size={18} />
-      </button>
+      </button>}
       <div className={s.emptySteps}>
         <span>
           <ChatCircleDots size={16} />

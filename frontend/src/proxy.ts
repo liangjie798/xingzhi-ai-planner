@@ -1,8 +1,32 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { INTRO_COOKIE, INTRO_MAX_AGE_SECONDS, needsIntroGate } from "@/lib/intro-gate";
 
 // Keep administrators out of user business routes, including direct API requests.
 // Java separately enforces the same boundary on /api/** endpoints.
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  // 介绍页前置：看过介绍页后才允许进入主登录页；/welcome 负责写入看完标记。
+  if (pathname === "/welcome" && !request.cookies.get(INTRO_COOKIE)?.value) {
+    const response = NextResponse.next();
+    response.cookies.set({
+      name: INTRO_COOKIE,
+      value: "1",
+      path: "/",
+      maxAge: INTRO_MAX_AGE_SECONDS,
+      sameSite: "lax",
+      httpOnly: true,
+      secure: request.nextUrl.protocol === "https:",
+    });
+    return response;
+  }
+  if (needsIntroGate(pathname, request.headers.get("cookie"))) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/welcome";
+    url.search = "";
+    url.searchParams.set("from", "login");
+    return NextResponse.redirect(url);
+  }
+  if (pathname === "/welcome" || pathname === "/login") return NextResponse.next();
   const cookie = request.headers.get("cookie");
   if (!cookie) return NextResponse.next();
   const pages = ["/transport", "/transport-search", "/XingZhi", "/dashboard", "/hourly", "/settings", "/account"];
@@ -26,5 +50,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/transport", "/transport-search", "/XingZhi", "/dashboard", "/hourly", "/settings", "/account", "/conversation-planner", "/journey-search", "/agent-tools", "/tourism-planner", "/activity-venues", "/planning-evidence", "/model-gateway", "/social-research", "/location-gateway", "/national-environment", "/region-data/:path*", "/plan-media"],
+  matcher: ["/welcome", "/login", "/transport", "/transport-search", "/XingZhi", "/dashboard", "/hourly", "/settings", "/account", "/conversation-planner", "/journey-search", "/agent-tools", "/tourism-planner", "/activity-venues", "/planning-evidence", "/model-gateway", "/social-research", "/location-gateway", "/national-environment", "/region-data/:path*", "/plan-media"],
 };

@@ -8,7 +8,7 @@ import type { WeatherChartSpec } from "@/lib/visualization-request";
 
 gsap.registerPlugin(useGSAP);
 export interface WeatherComparisonData { spec: WeatherChartSpec; points: EnvironmentalForecastPoint[]; missingDates: string[]; cityName: string }
-const colors = ["#286348", "#ad6a27", "#6573a5", "#b05b61", "#548878", "#946ba1", "#607c93"];
+const colors = ["#dfb479", "#ad6a27", "#6573a5", "#b05b61", "#bd9874", "#946ba1", "#607c93"];
 type Metric = WeatherChartSpec["metrics"][number];
 // Validate plotted values independently. Duplicate or invalid hours remain gaps.
 function usableValue(row: EnvironmentalForecastPoint, metric: Metric) {
@@ -79,13 +79,13 @@ export function WeatherComparison({ data }: { data: WeatherComparisonData }) {
     {values.length ? <figure className="weather-chart"><figcaption>{label} <span>({unit})</span><small>拖动下方滑块，查看同一时刻</small></figcaption>
       <svg role="img" aria-labelledby={`${id}-title ${id}-description`} viewBox={`0 0 ${plotWidth} ${plotHeight}`} onPointerMove={event => { const bounds = event.currentTarget.getBoundingClientRect(); const point = (event.clientX - bounds.left) / bounds.width * plotWidth; setHour(Math.max(0, Math.min(23, Math.round((point - 46) / (right - 46) * 23)))); }}>
         <title id={`${id}-title`}>{data.cityName} · {label}逐小时对比</title><desc id={`${id}-description`}>日期：{visible.map(item => item.date).join("、")}。横轴为北京时间 0 至 23 时，纵轴单位为{unit}。数据缺失处断开，可使用下方滑块读取数值。</desc>
-        {ticks.map(value => <g key={value}><line x1="46" x2={right} y1={y(value)} y2={y(value)} stroke="#e4ebe6" strokeDasharray="3 5" /><text x="34" y={y(value) + 4} textAnchor="end">{value}</text></g>)}
+        {ticks.map(value => <g key={value}><line x1="46" x2={right} y1={y(value)} y2={y(value)} stroke="#45413c" strokeDasharray="3 5" /><text x="34" y={y(value) + 4} textAnchor="end">{value}</text></g>)}
         {[0, 6, 12, 18, 23].map(value => <text key={value} x={x(value)} y={plotHeight - 16} textAnchor="middle">{String(value).padStart(2, "0")}:00</text>)}
-        <line x1={x(hour)} x2={x(hour)} y1="24" y2={bottom} stroke="#9aaea0" strokeDasharray="4 4" />
+        <line x1={x(hour)} x2={x(hour)} y1="24" y2={bottom} stroke="#8f7d66" strokeDasharray="4 4" />
         {visible.map(item => <g className="weather-series" key={item.date}>{item.rows.map((row, index) => {
           const prior = item.rows[index - 1];
           return <g key={row.hour}>{prior && prior.hour === row.hour - 1 && <line x1={x(prior.hour)} x2={x(row.hour)} y1={y(prior[metric])} y2={y(row[metric])} stroke={item.color} strokeWidth="2.8" strokeLinecap="round" />}
-            <circle cx={x(row.hour)} cy={y(row[metric])} r={row.hour === hour ? 5 : 2.5} fill={item.color} stroke="white" strokeWidth={row.hour === hour ? 2 : 0}><title>{item.date} {row.hour}:00 · {row[metric]}{unit}</title></circle></g>;
+            <circle cx={x(row.hour)} cy={y(row[metric])} r={row.hour === hour ? 5 : 2.5} fill={item.color} stroke="#1f1f1f" strokeWidth={row.hour === hour ? 2 : 0}><title>{item.date} {row.hour}:00 · {row[metric]}{unit}</title></circle></g>;
         })}</g>)}
       </svg>
     </figure> : <div className="weather-chart-empty" role="status">{visible.length ? "所选日期暂无有效数据，请稍后重试。" : "请选择至少一个日期，查看逐小时曲线。"}</div>}

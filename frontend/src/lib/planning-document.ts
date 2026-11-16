@@ -42,7 +42,8 @@ export function buildPlanningDocument(input: ActivityInput, result: DecisionResu
   return { title: route ? `${city}${route.dayCount}日旅行规划书` : `${city} · ${input.activityType}执行规划书`, subtitle: `${input.date} — ${input.endDate || input.date} · 行知规划`, sections };
 }
 
-export function stopScheduleText(stop:TourismStop) { return stop.endTime ? `${stop.time}–${stop.endTime}（游览/用餐${stop.visitMinutes}分钟，排队${stop.queueMinutes}分钟）；前序交通${stop.travelMinutes}分钟 · ${stop.travelSource==="amap-driving" ? "高德驾车预估含缓冲":"坐标估算，待核实"} · ${stop.travelDistanceKm}公里，另留休息${stop.restMinutes}分钟。${stop.openingStatus || "开放待确认"}${stop.openingHours ? `（${stop.openingHours}）`:""}。${stop.weatherAssessment || ""}` : "旧版行程缺少完整排程信息，请重新分析后执行。"; }
+const TRAVEL_SOURCE_TEXT:Record<string,string>={"amap-driving":"高德驾车预估含缓冲","amap-walking":"高德步行预估含缓冲","amap-bicycling":"高德骑行预估含缓冲","amap-transit":"高德公交预估含缓冲","amap-matrix":"高德路网预估（驾车矩阵）"};
+export function stopScheduleText(stop:TourismStop) { return stop.endTime ? `${stop.time}–${stop.endTime}（游览/用餐${stop.visitMinutes}分钟，排队${stop.queueMinutes}分钟）；前序交通${stop.travelMinutes}分钟 · ${TRAVEL_SOURCE_TEXT[stop.travelSource || ""] || "坐标估算，待核实"} · ${stop.travelDistanceKm}公里，另留休息${stop.restMinutes}分钟。${stop.openingStatus || "开放待确认"}${stop.openingHours ? `（${stop.openingHours}）`:""}。${stop.weatherAssessment || ""}` : "旧版行程缺少完整排程信息，请重新分析后执行。"; }
 function stopText(stop: TourismStop) { return [`${stop.time}｜${stop.name}（${stop.category}）`, `推荐理由：${stop.tip}`, stopScheduleText(stop), ...(stop.address ? [`地址：${stop.address}`] : []), ...stop.links.filter((link) => link.kind === "source").map((link) => `${link.label}：${link.url}`)]; }
 export function documentMarkdown(document: PlanningDocument) {
   return `# ${document.title}\n\n${document.subtitle}\n\n` + document.sections.map((section) => `## ${section.title}\n\n${section.paragraphs.join("\n\n")}` + (section.venues || []).map(venue => `\n\n### ${venue.name}\n\n地址：${venue.address}\n\n推荐理由：${venue.reason}\n\n活动任务：${venue.task}\n\n确认事项：${venue.checks}`).join("") + (section.references || []).map(reference => `\n\n[${reference.title}](${reference.url}) · ${reference.note}`).join("") + (section.diagram ? `\n\n![行程顺序示意](${section.diagram})` : "") + (section.stops ?? []).map((stop) => `\n\n### ${stop.time} · ${stop.name}\n\n${stop.imageUrl ? `![${stop.name}](${stop.imageUrl})\n\n` : ""}${stopText(stop).slice(1).join("\n\n")}`).join("") + (section.agenda ?? []).map((item) => `\n\n**${item.time} · ${item.title}**\n\n${item.action}\n\n负责岗位：${item.owner}`).join("")).join("\n\n");
@@ -60,7 +61,7 @@ export async function downloadWord(document: PlanningDocument) {
   const paragraph = (text: string) => new Paragraph({ children: text.split("\n").map((line, index) => new TextRun({ text: line, break: index ? 1 : 0 })) });
   const appendImage = async (url: string, title: string, diagram = false) => {
     const data = await documentImage(url);
-    if (data) { content.push(new Paragraph({ children: [new ImageRun({ type: "png", data, transformation: { width: 530, height: diagram ? 124 : 300 }, altText: { title, description: title, name: title } })] })); content.push(paragraph(diagram ? "行程顺序示意，非道路导航。" : title + " · 地点资料图片，实际环境以现场为准。")); }
+    if (data) { content.push(new Paragraph({ children: [new ImageRun({ type: "png", data, transformation: { width: 600, height: diagram ? 146 : 300 }, altText: { title, description: title, name: title } })] })); content.push(paragraph(diagram ? "行程顺序示意，非道路导航。" : title + " · 地点资料图片，实际环境以现场为准。")); }
   };
   for (const section of document.sections) {
     content.push(new Paragraph({ text: section.title, heading: HeadingLevel.HEADING_1 }), ...section.paragraphs.map(paragraph));

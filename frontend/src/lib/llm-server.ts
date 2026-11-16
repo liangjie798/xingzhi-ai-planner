@@ -133,15 +133,46 @@ async function callProvider(spec: ProviderSpec, messages: ChatMessage[], timeout
   return {text,model:typeof data.model === "string" && data.model.trim() ? data.model : `${spec.model}（请求模型，接口未返回模型标识）`};
 }
 
+/** 判断 IP 字面量是否属于本机/内网/保留地址（含 IPv4 映射与常见 IPv6 段）。 */
+export function isBlockedModelAddress(address: string): boolean {
+  let value = address.trim().toLowerCase();
+  if (value.startsWith("[") && value.endsWith("]")) value = value.slice(1, -1);
+  if (value.startsWith("::ffff:")) value = value.slice("::ffff:".length);
+  if (value.includes(".")) {
+    const parts = value.split(".");
+    if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255)) return true;
+    const [a, b] = parts.map(Number);
+    return a === 0 || a === 10 || a === 127 || a >= 224
+      || (a === 100 && b >= 64 && b <= 127)
+      || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && (b === 0 || b === 168))
+      || (a === 198 && (b === 18 || b === 19));
+  }
+  // IPv6：仅允许全局单播（2000::/3），其余回路、链路本地、ULA、组播、NAT64、映射段一律拒绝。
+  return !/^[23][0-9a-f]{3}:/.test(value) || value.startsWith("64:ff9b");
+}
+
 async function assertPublicEndpoint(endpoint: string) {
   const { isIP } = await import("node:net");
   const { lookup } = await import("node:dns/promises");
   const url = new URL(endpoint);
-  if (url.protocol !== "https:" && !(process.env.NODE_ENV === "development" && ["localhost", "127.0.0.1"].includes(url.hostname)))
+  const developmentLoopback = process.env.NODE_ENV === "development" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (url.protocol !== "https:" && !developmentLoopback)
     throw new Error("自定义模型地址必须使用 HTTPS");
-  const addresses = isIP(url.hostname) ? [{ address: url.hostname }] : await lookup(url.hostname, { all: true });
-  const blocked = addresses.some(({ address }) => /^(127\.|10\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1$|fc|fd|fe80)/i.test(address));
-  if (blocked) throw new Error("自定义模型地址不能指向本机或内网地址");
+  if (url.username || url.password || url.search || url.hash)
+    throw new Error("自定义模型地址不能包含账号、查询参数或片段");
+  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal") || host.endsWith(".home.arpa"))
+    throw new Error("自定义模型地址不能指向本机或内网地址");
+  let addresses: Array<{ address: string }>;
+  try {
+    addresses = isIP(host) ? [{ address: host }] : await lookup(host, { all: true });
+  } catch {
+    throw new Error("自定义模型地址无法解析");
+  }
+  if (!addresses.length || addresses.some(({ address }) => isBlockedModelAddress(address)))
+    throw new Error("自定义模型地址不能指向本机或内网地址");
 }
 
 export async function callLlm(request: LlmRequest): Promise<LlmResult> {

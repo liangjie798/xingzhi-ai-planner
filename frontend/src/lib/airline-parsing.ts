@@ -2,7 +2,7 @@ import { allowedAirlineUrl, type AirlineProvider } from "./airline-providers.ts"
 import type { AirlinePageObservation, AirlineQuote, AirlineState, FlightRowObservation, ResolvedFlightQuery } from "./airline-types.ts";
 
 export function airlinePageBarrier(text: string, url: string): AirlineState | undefined {
-  if (/请依次点击|请完成.{0,30}验证|拖动滑块|验证您是真人|访问过于频繁|拒绝访问|Access Denied|Forbidden/i.test(text)) return "verification-required";
+  if (/请依次点击|请完成.{0,30}验证|拖动滑块|验证您是真人|访问过于频繁|Try again later|拒绝访问|Access Denied|Forbidden/i.test(text)) return "verification-required";
   if (/会话已过期|会话超时|session expired/i.test(text)) return "session-expired";
   if (/请先登录官网再进行操作|请登录后.{0,15}(查询|操作)|^https?:\/\/[^/]+\/(?:[^?#]*\/)?login(?:[/?#]|$)/i.test(text + "\n" + url) || /\/#\/login(?:[/?#]|$)/.test(url)) return "login-required";
   return undefined;

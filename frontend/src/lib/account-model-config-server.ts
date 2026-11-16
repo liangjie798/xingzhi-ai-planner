@@ -2,7 +2,7 @@ import type { ClientModelConfig } from "./llm-server";
 
 interface StoredConfig extends ClientModelConfig { configured?: boolean }
 
-export async function resolveAccountModelConfig(request: Request): Promise<ClientModelConfig | undefined> {
+export async function readResolvedModelConfig(request: Request): Promise<StoredConfig | undefined> {
   const cookie = request.headers.get("cookie");
   if (cookie) {
     try {
@@ -12,10 +12,16 @@ export async function resolveAccountModelConfig(request: Request): Promise<Clien
         headers: { cookie, "X-Model-Resolver-Secret": resolverSecret }, cache: "no-store", signal: AbortSignal.timeout(3500),
       });
       if (response.ok) {
-        const stored = await response.json() as StoredConfig;
-        if (stored.configured && stored.baseUrl && stored.model) return { baseUrl: stored.baseUrl, apiKey: stored.apiKey || "", model: stored.model };
+        return await response.json() as StoredConfig;
       }
     } catch { /* use server defaults */ }
   }
   return undefined;
+}
+
+export async function resolveAccountModelConfig(request: Request): Promise<ClientModelConfig | undefined> {
+  const stored = await readResolvedModelConfig(request);
+  if (stored?.configured && stored.baseUrl && stored.model) {
+    return { baseUrl: stored.baseUrl, apiKey: stored.apiKey || "", model: stored.model };
+  }
 }

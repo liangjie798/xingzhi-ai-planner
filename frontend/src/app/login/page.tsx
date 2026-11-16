@@ -1,10 +1,11 @@
 "use client";
+import { PageIllustration } from "@/components/page-illustration";
 
 import { ArrowRight, CheckCircle, Compass, IdentificationCard, LockKey, User, UserCircle } from "@phosphor-icons/react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { currentUser, login, loginAsGuest, register } from "@/lib/auth";
 
 import { LoginPanel, SlidingSelection } from "@/components/switch-motion";
@@ -16,20 +17,83 @@ export default function LoginPage() {
   const [portal, setPortal] = useState<Portal>("USER"); const [isRegistering, setIsRegistering] = useState(false);
   const [username, setUsername] = useState(""); const [password, setPassword] = useState(""); const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false); const inFlightRef = useRef(false); const abortRef = useRef<AbortController | null>(null); const watchdog = useRef<number | undefined>(undefined);
   useEffect(() => { void currentUser().then((user) => { if (user && ["ADMIN", "SUPER_ADMIN"].includes(user.role)) router.replace("/admin"); else if (user?.role === "USER") router.replace("/XingZhi"); }).catch(() => undefined); }, [router]);
-  function choose(next: Portal) { if (busy) return; setPortal(next); setIsRegistering(false); setError(""); }
+
+  // 离开路由、bfcache 恢复或页面重新可见时：中止未完成的会话请求并复位按钮，
+  // 避免 Next 保留页面状态后出现永久「正在建立会话…」。
+  useEffect(() => {
+    const reset = (options: { recheck?: boolean } = {}) => {
+      window.clearTimeout(watchdog.current);
+      abortRef.current?.abort();
+      abortRef.current = null;
+      inFlightRef.current = false;
+      busyRef.current = false;
+      setBusy(false);
+      setError("");
+      if (options.recheck) {
+        void currentUser().then((user) => {
+          if (user && ["ADMIN", "SUPER_ADMIN"].includes(user.role)) router.replace("/admin");
+          else if (user?.role === "USER") router.replace("/XingZhi");
+        }).catch(() => undefined);
+      }
+    };
+    const onNavigate = () => { if (busyRef.current) reset(); };
+    const onPageShow = (event: PageTransitionEvent) => { if (event.persisted) reset({ recheck: true }); };
+    const onPageHide = () => reset();
+    const onVisibility = () => { if (document.visibilityState === "visible" && busyRef.current && !inFlightRef.current) reset(); };
+    const onFocus = () => { if (busyRef.current && !inFlightRef.current) reset(); };
+    window.addEventListener("xingzhi:navigate", onNavigate);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearTimeout(watchdog.current);
+      window.removeEventListener("xingzhi:navigate", onNavigate);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [router]);
+  function choose(next: Portal) { if (busyRef.current) return; setPortal(next); setIsRegistering(false); setError(""); }
   async function submit(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError("");
+    event.preventDefault();
+    if (busyRef.current) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    inFlightRef.current = true;
+    busyRef.current = true;
+    setBusy(true);
+    setError("");
+    window.clearTimeout(watchdog.current);
+    // 看门狗：即使请求/路由跳转异常，20 秒后也会恢复可操作状态而不是永久卡住。
+    watchdog.current = window.setTimeout(() => {
+      if (!busyRef.current) return;
+      controller.abort();
+      inFlightRef.current = false;
+      busyRef.current = false;
+      setBusy(false);
+      setError("会话建立时间过长，请检查网络后重试。");
+    }, 20_000);
     try {
-      if (portal === "GUEST") { await loginAsGuest(); router.replace("/XingZhi"); return; }
-      if (isRegistering) await register(username.trim(), password, displayName.trim());
-      else await login(username.trim(), password, portal);
+      if (portal === "GUEST") { await loginAsGuest(controller.signal); router.replace("/XingZhi"); return; }
+      if (isRegistering) await register(username.trim(), password, displayName.trim(), controller.signal);
+      else await login(username.trim(), password, portal, controller.signal);
       router.replace("/XingZhi");
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "登录失败"); setBusy(false); }
+    } catch (caught) {
+      if (caught instanceof DOMException && caught.name === "AbortError") return;
+      window.clearTimeout(watchdog.current);
+      inFlightRef.current = false;
+      busyRef.current = false;
+      setError(caught instanceof Error ? caught.message : "登录失败");
+      setBusy(false);
+    }
   }
   const title = portal === "GUEST" ? "访客体验" : isRegistering ? "创建用户账户" : "用户登录";
   return <main className="auth-page">
-    <section className="auth-story"><Image src="/images/xingzhi-landscape.webp" alt="" fill priority unoptimized sizes="(max-width: 800px) 100vw, 55vw" className="auth-landscape" /><Link href="/welcome" className="auth-brand"><span><Compass size={22} weight="duotone" /></span>行知</Link><div className="auth-story-copy"><span className="section-kicker">从想法到出发</span><h1>从一次对话，<br />开始一份好计划。</h1><p>登录后保留自己的规划记录，也可以先以访客身份体验，再决定下一次去哪里。</p></div><div className="auth-proof"><CheckCircle size={18} weight="fill" /><span>你的规划记录，留在自己的账户里。</span></div></section>
+    <section className="auth-story"><Image src="/images/xingzhi-landscape.webp" alt="" fill priority sizes="(max-width: 800px) 100vw, 55vw" className="auth-landscape" /><Link href="/welcome" className="auth-brand"><span><Compass size={22} weight="duotone" /></span>行知</Link><div className="auth-story-copy"><PageIllustration kind="login" /><span className="section-kicker">从想法到出发</span><h1>从一次对话，<br />开始一份好计划。</h1><p>登录后保留自己的规划记录，也可以先以访客身份体验，再决定下一次去哪里。</p></div><div className="auth-proof"><CheckCircle size={18} weight="fill" /><span>你的规划记录，留在自己的账户里。</span></div></section>
     <section className="auth-form-wrap"><form className="auth-card" onSubmit={submit}>
       <div className="portal-tabs portal-tabs-public" role="group" aria-label="登录身份"><SlidingSelection value={portal} /><button type="button" className={portal === "USER" ? "is-active" : ""} disabled={busy} onClick={() => choose("USER")}><UserCircle size={16} />用户</button><button type="button" className={portal === "GUEST" ? "is-active" : ""} disabled={busy} onClick={() => choose("GUEST")}><IdentificationCard size={16} />访客</button></div>
       <LoginPanel value={`${portal}-${isRegistering}-${error}`}><span className="section-kicker">{portal === "GUEST" ? "免注册体验" : "个人决策空间"}</span><h2>{title}</h2><p>{portal === "GUEST" ? "不保存个人决策档案，退出会话后身份失效。" : "登录后自动保存由你生成的活动决策。"}</p>

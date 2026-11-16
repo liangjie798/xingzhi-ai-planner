@@ -6,7 +6,7 @@ let cached: { expires: number; data: NationalEnvironment } | undefined;
 let pending: Promise<NationalEnvironment> | undefined;
 // The deployment's IPv6/auto-selected upstream connections can fail intermittently.
 // Fixed provider URLs use IPv4 HTTPS, bounded response size and a request deadline.
-function readSource(url: string): Promise<unknown> {
+async function readSourceOnce(url: string): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const request = get(url, { family: 4 }, (response) => {
       if (response.statusCode !== 200) { response.resume(); reject(new Error("environment-source-unavailable")); return; }
@@ -24,6 +24,14 @@ function readSource(url: string): Promise<unknown> {
     request.on("close", () => clearTimeout(timer));
     request.on("error", reject);
   });
+}
+/** 数据源偶发抖动时重试一次，减少全国环境页面的降级概率。 */
+async function readSource(url: string): Promise<unknown> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try { return await readSourceOnce(url); } catch (error) { lastError = error; }
+  }
+  throw lastError instanceof Error ? lastError : new Error("environment-source-unavailable");
 }
 async function load(): Promise<NationalEnvironment> {
   const batches = [nationalLocations.slice(0, 17), nationalLocations.slice(17)];

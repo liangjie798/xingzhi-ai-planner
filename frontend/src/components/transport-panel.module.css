@@ -1,0 +1,35 @@
+.page{min-height:100dvh;background:#1f1f1f;color:#eddbc0;padding:32px max(24px,calc((100% - 1200px)/2)) 80px}.page header{display:flex;justify-content:space-between;gap:24px;color:#b9aa96;font-size:14px}.page a{color:#dfb479;text-decoration:none;display:inline-flex;align-items:center;gap:8px}.hero{padding:64px 0 40px}.hero>span{font-size:12px;color:#b9aa96}.hero h1{font-size:48px;line-height:1;font-weight:500;letter-spacing:-.03em;margin:24px 0}.hero p,.note{font-size:14px;line-height:20px;color:#b9aa96;max-width:65ch}.form{display:grid;grid-template-columns:1fr auto 1fr 1fr auto;gap:16px;align-items:end;padding:24px;border:1px solid #45413c;border-radius:16px;background:#1f1f1f}.form label{display:grid;gap:8px;min-width:0;font-size:12px}.form input{min-width:0;width:100%;height:48px;padding:12px;border:1px solid #45413c;border-radius:8px;background:#1f1f1f;font:inherit;font-size:16px;color:#eddbc0;box-sizing:border-box}.form button{min-height:48px;padding:8px 12px;border:1px solid #45413c;background:#1f1f1f;color:#dfb479;border-radius:8px;cursor:pointer}.form button[type=submit]{background:#805624;color:#eddbc0;font-size:16px}.form button:disabled{opacity:.6;cursor:wait}.results{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px}.results>section{min-width:0;background:#1f1f1f;border:1px solid #45413c;border-radius:16px;padding:24px;overflow-x:clip}.results h2{display:flex;align-items:center;gap:8px;font-size:20px;font-weight:500;margin:0 0 24px}.results h2 small{margin-left:auto;font-size:12px;font-weight:400;color:#b9aa96}.results article{border:1px solid #45413c;border-radius:12px;padding:24px;margin-top:16px}.results article>div:first-child{display:flex;align-items:center;gap:12px}.results article b{margin-left:auto;font-size:24px;font-weight:500}.results small{font-size:12px;color:#b9aa96}.times{display:flex;justify-content:space-between;gap:16px;margin:24px 0}.times strong{font-size:24px;font-weight:500;font-variant-numeric:tabular-nums}.times small{display:block;margin-top:8px}.results footer{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;color:#b9aa96}.empty{display:grid;place-items:center;min-height:200px;background:#1f1f1f;border-radius:12px;padding:24px;color:#b9aa96;font-size:14px;line-height:24px}.official{margin-top:24px;font-size:14px}.note{margin-top:32px}.page button{transition:transform .5s cubic-bezier(.22,1,.36,1),opacity .3s cubic-bezier(.22,1,.36,1)}.page button:active{transform:scale(.98)}@media(max-width:800px){.form{grid-template-columns:1fr auto 1fr}.form label:last-of-type{grid-column:1/3}.results{grid-template-columns:1fr}.hero{padding-top:40px}.hero h1{font-size:36px;line-height:40px}}@media(max-width:400px){.page{padding:24px 16px 48px}.form{padding:16px;gap:8px}.results>section,.results article{padding:16px}.times strong{font-size:20px}}@media(prefers-reduced-motion:reduce){.page button{transition:none}}
+
+.hero,.form,.results{animation:enter .5s cubic-bezier(.22,1,.36,1) both}.form{animation-delay:60ms}.results{animation-delay:120ms}@keyframes enter{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){.hero,.form,.results{animation:none}}
+.hero { position:relative; padding-right:220px; }
+.illustration { position:absolute; right:0; top:64px; }
+@media(max-width:800px) { .hero { padding-right:0; } .illustration { position:static; margin:0 0 24px; } }
+
+.page{min-height:0;background:transparent;padding:0;min-width:0}.page>header{margin-bottom:32px}.form{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) minmax(0,1fr) auto}@media(max-width:1100px){.form{grid-template-columns:1fr auto 1fr}.form label:last-of-type{grid-column:1/3}}@media(max-width:400px){.page{padding:0}}
+.page{width:100%;max-width:1280px;box-sizing:border-box;margin:36px auto;padding:0 24px 64px}@media(max-width:640px){.page{padding:0 14px 40px}}
+@media(max-width:800px){.form label:last-of-type,.form button[type=submit]{grid-column:1/-1}}
+
+/* 渐进结果与丝滑动效：新返回的航班/车次从右向左逐条滑入，航司状态标签依次出现。 */
+.results article{animation:quoteIn .55s cubic-bezier(.16,1,.3,1) both;transition:transform .25s ease,border-color .25s ease}
+.results article:hover{transform:translateY(-2px);border-color:#6b5a44}
+@keyframes quoteIn{from{opacity:0;transform:translateX(72px) scale(.97)}60%{opacity:1}to{opacity:1;transform:none}}
+.optionList{display:contents}
+.airlines{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+.airlineChip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid #45413c;border-radius:999px;font-size:12px;line-height:18px;color:#b9aa96;animation:chipIn .38s cubic-bezier(.22,1,.36,1) both}
+.airlineChip em{font-style:normal;color:#8d8274}
+.airlineChip[data-state="quoted"]{border-color:#805624;background:rgba(128,86,36,.16);color:#eddbc0}
+.airlineChip[data-state="quoted"] em{color:#dfb479}
+.airlineChip[data-state="pending"]{border-style:dashed}
+@keyframes chipIn{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:none}}
+.count{animation:countPop .42s cubic-bezier(.22,1,.36,1) both}
+@keyframes countPop{from{opacity:.35;transform:translateY(-5px)}to{opacity:1;transform:none}}
+.loading,.streaming{display:flex;align-items:center;gap:10px;margin:10px 0;font-size:13px;color:#b9aa96}
+.streaming{animation:chipIn .3s ease both}
+.spinner{width:14px;height:14px;flex:0 0 auto;border:2px solid #45413c;border-top-color:#dfb479;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.progress{display:flex;align-items:center;gap:8px;margin:16px 0 0;padding:10px 14px;border:1px solid #45413c;border-radius:10px;background:#1f1f1f;font-size:13px;color:#b9aa96;animation:chipIn .3s ease both}
+.progressTime{margin-left:auto;font-variant-numeric:tabular-nums;color:#8d8274}
+.alert{margin:16px 0 0;color:#df9b8d;font-size:13px}
+.notes{list-style:none;padding:0;margin:16px 0 0;display:grid;gap:6px;font-size:12px;line-height:18px;color:#8d8274}
+.transferBadge{font-style:normal;font-size:11px;line-height:18px;padding:0 6px;border:1px solid #805624;border-radius:999px;color:#dfb479;background:rgba(128,86,36,.14);animation:chipIn .3s ease both}
+@media(prefers-reduced-motion:reduce){.results article,.airlineChip,.loading,.streaming,.progress,.spinner,.count,.transferBadge{animation:none!important}.results article:hover{transform:none}}

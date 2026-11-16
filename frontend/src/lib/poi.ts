@@ -8,6 +8,12 @@ export interface PoiSpot {
   tag: string;
   blurb: string;
   category?: "景点" | "美食";
+  /** 高德 POI 类型，如“科教文化服务;博物馆;综合博物馆”。 */
+  poiType?: string;
+  /** 高德商圈或片区名称。 */
+  businessArea?: string;
+  /** 候选来源，决定策划文案能否直接复用。 */
+  origin?: "catalog" | "amap" | "osm";
   sourceTitle?: string;
   sourceUrl?: string;
   searchKeyword?: string;

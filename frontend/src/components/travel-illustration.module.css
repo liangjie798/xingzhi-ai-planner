@@ -1,0 +1,7 @@
+.art { position:relative; color:#dfb479; isolation:isolate; }
+.art svg { display:block; width:100%; height:100%; overflow:hidden; }
+.scene { width:100%; height:100%; background:#272727; }
+.scene > svg { object-fit:cover; }
+.compact { flex:0 0 200px; width:200px; height:100px; margin-left:auto; }
+@media(max-width:1000px) { .compact { display:none; } }
+@media print { .art { display:none; } }

@@ -24,7 +24,7 @@ async function browser(): Promise<Browser> {
     const path = executable();
     if (!path) throw new Error("browser-not-configured");
     const { chromium } = await import("playwright-core");
-    const instance = await chromium.launch({ executablePath:path,headless:true,chromiumSandbox:true,args:["--disable-dev-shm-usage"],timeout:12_000 });
+    const instance = await chromium.launch({ executablePath:path,headless:true,chromiumSandbox:true,args:["--disable-dev-shm-usage","--disable-gpu","--disable-software-rasterizer","--blink-settings=imagesEnabled=false"],timeout:12_000 });
     const current=browserJob;
     instance.on("disconnected",()=>{if(browserJob===current)browserJob=undefined;});
     return instance;
@@ -121,22 +121,31 @@ export async function probeAirline(provider: AirlineProvider, query: ResolvedFli
     if(signal?.aborted)throw new Error("request-cancelled");
     signal?.addEventListener("abort",cancel,{once:true});
     // Only airline and explicitly named static CDN hosts can be reached by page scripts.
+    // 图片/字体/视频只影响观感，不影响航班号与价格文本，阻断后可显著加快加载。
     const staticHosts=["at.alicdn.com","g.alicdn.com","cdn.jsdelivr.net","cdnjs.cloudflare.com"];
     await context.route("**/*",route=>{
       const request=route.request();let host="";try{host=new URL(request.url()).hostname;}catch{return route.abort();}
       const allowed=allowedAirlineUrl(request.url(),provider)||staticHosts.includes(host);
-      return !allowed||["media","font"].includes(request.resourceType())?route.abort():route.continue();
+      return !allowed||["media","font","image","imageset"].includes(request.resourceType())?route.abort():route.continue();
     });
     const page=await context.newPage();page.setDefaultTimeout(1800);
     await page.goto(provider.url(query),{waitUntil:"domcontentloaded",timeout:20_000});
     const deadline=Date.now()+16_000;let observation:AirlinePageObservation|undefined;let emptyChecks=0;
+    // 部分航司页面会分批渲染航班行；等到报价数量稳定后再结束，避免只抓到首批 4 条。
+    let lastQuoteCount=0,quoteStableSince=0;
     do{
       if(signal?.aborted)throw new Error("request-cancelled");
-      const readiness=await page.evaluate(code=>{
-        const text=document.body?.textContent||"";
-        const prefix=code==="OQ"?"(?:CZ|OQ)":code;
-        return {text:text.slice(0,80000),ready:new RegExp(prefix+"\\s*\\d{3,4}").test(text)&&(text.match(/\d{2}:\d{2}/g)||[]).length>=2};
-      },provider.code);
+      let readiness:{text:string;ready:boolean};
+      try{
+        readiness=await page.evaluate(code=>{
+          const text=document.body?.textContent||"";
+          const prefix=code==="OQ"?"(?:CZ|OQ)":code;
+          return {text:text.slice(0,80000),ready:new RegExp(prefix+"\\s*\\d{3,4}").test(text)&&(text.match(/\d{2}:\d{2}/g)||[]).length>=2};
+        },provider.code);
+      }catch{
+        // 航司页面可能在加载后自行跳转，旧执行上下文被销毁时继续等待新页面。
+        await page.waitForTimeout(500);continue;
+      }
       const blocked=airlinePageBarrier(readiness.text,page.url());
       if(blocked)return {attempt:{...attempt,state:blocked},quotes:[]};
       if(!readiness.ready){
@@ -148,9 +157,14 @@ export async function probeAirline(provider: AirlineProvider, query: ResolvedFli
         await page.waitForTimeout(600);continue;
       }
       emptyChecks=0;
-      observation=await readAirlinePage(page,provider,query);
-      if(airlinePageBarrier(observation.text,observation.url)||parseAirlinePage(provider,query,observation,new Date().toISOString()).quotes.length)break;
-      await page.waitForTimeout(600);
+      try{observation=await readAirlinePage(page,provider,query);}catch{await page.waitForTimeout(500);continue;}
+      if(airlinePageBarrier(observation.text,observation.url))break;
+      const parsedCount=parseAirlinePage(provider,query,observation,new Date().toISOString()).quotes.length;
+      if(parsedCount>0){
+        if(parsedCount===lastQuoteCount&&Date.now()-quoteStableSince>=800)break;
+        if(parsedCount!==lastQuoteCount){lastQuoteCount=parsedCount;quoteStableSince=Date.now();}
+      }
+      await page.waitForTimeout(400);
     }while(Date.now()<deadline);
     if(!observation)return {attempt,quotes:[]};
     if(observe)await observe(observation);
@@ -164,6 +178,6 @@ export async function probeAirline(provider: AirlineProvider, query: ResolvedFli
   }finally{
     signal?.removeEventListener("abort",cancel);
     if(context&&!await settleWithin(context.close(),2000))void closeAirlineBrowser();
-    idleTimer=setTimeout(()=>{void closeAirlineBrowser();},30_000);idleTimer.unref?.();
+    idleTimer=setTimeout(()=>{void closeAirlineBrowser();},60_000);idleTimer.unref?.();
   }
 }

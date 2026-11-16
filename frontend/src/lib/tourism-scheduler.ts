@@ -7,12 +7,12 @@ export interface ScheduleOptions {
   dates:string[]; hours:TourismHourSnapshot[]; allowedStartHour?:number; allowedEndHour?:number;
   group?:string; intensity?:string; audienceDescription?:string;
   now?:Date;
-  transfers?:Record<string,{minutes:number;distanceKm:number;source:"amap-driving"|"estimate"}>;
+  transfers?:Record<string,{minutes:number;distanceKm:number;source:"amap-driving"|"amap-walking"|"amap-bicycling"|"amap-transit"|"amap-matrix"|"estimate"}>;
 }
 export interface ScheduledVisit {
   poi:PoiSpot; day:number; date:string; time:string; endTime:string; visitMinutes:number;
   queueMinutes:number; restMinutes:number; travelMinutes:number; travelDistanceKm:number;
-  travelSource:"amap-driving"|"estimate"; openingStatus:string; openingHours?:string; weatherAssessment:string;
+  travelSource:"amap-driving"|"amap-walking"|"amap-bicycling"|"amap-transit"|"amap-matrix"|"estimate"; openingStatus:string; openingHours?:string; weatherAssessment:string;
 }
 export const clock = (minute:number)=>`${String(Math.floor(minute/60)).padStart(2,"0")}:${String(minute%60).padStart(2,"0")}`;
 const minute = (value:string)=>Number(value.split(":")[0])*60+Number(value.split(":")[1]);

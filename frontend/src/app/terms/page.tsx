@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { PublicInfo } from "@/components/public-info";
-export const metadata:Metadata={title:"使用说明 · 行知"};
+export const metadata:Metadata={title:"使用说明 · 行知",description:"行知对规划建议、实时数据、机票与火车票查询以及自定义模型的适用范围说明。",alternates:{canonical:"/terms"}};
 export default function TermsPage(){return <PublicInfo title="使用说明" intro="行知帮助你整理活动与旅行计划。做出安排前，请了解数据与建议的适用范围。" sections={[
   {title:"规划与现场判断",body:"AI 生成的行程、活动时段与执行清单属于建议，不替代现场安全判断。涉及儿童、老人或特殊健康状况人群时，应由组织者结合实际情况作出安排。"},
   {title:"实时数据的边界",body:"天气、空气质量、地点开放和交通信息可能更新或暂时不可用。请在出发前核对官方预警、开放公告、预约条件及交通信息。未核实的内容不能视为已经确认。"},

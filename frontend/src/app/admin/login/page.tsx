@@ -1,4 +1,5 @@
 "use client";
+import { PageIllustration } from "@/components/page-illustration";
 
 import { ArrowLeft, ArrowRight, CheckCircle, Compass, LockKey, ShieldCheck, User } from "@phosphor-icons/react";
 import Link from "next/link";
@@ -36,7 +37,7 @@ export default function AdminLoginPage() {
   return <main className="auth-page admin-auth-page">
     <section className="auth-story">
       <Link href="/welcome" className="auth-brand"><span><Compass size={22} weight="duotone" /></span>行知</Link>
-      <div className="auth-story-copy"><span className="section-kicker">行知 · 运营管理</span><h1>看清平台动态，<br />做好每一次运营。</h1><p>集中查看注册用户、城市搜索与规划使用情况，为平台服务提供依据。</p></div>
+      <div className="auth-story-copy"><PageIllustration kind="admin" /><span className="section-kicker">行知 · 运营管理</span><h1>看清平台动态，<br />做好每一次运营。</h1><p>集中查看注册用户、城市搜索与规划使用情况，为平台服务提供依据。</p></div>
       <div className="auth-proof"><CheckCircle size={18} weight="fill" /><span>独立管理入口 · 仅限授权账户</span></div>
     </section>
     <section className="auth-form-wrap">

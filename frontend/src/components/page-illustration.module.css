@@ -1,0 +1,4 @@
+.art { flex:0 0 176px; width:176px; max-width:100%; height:96px; margin-left:auto; pointer-events:none; }
+.art > svg { display:block; width:100%; height:100%; overflow:visible; }
+@media(max-width:640px) { .art { flex-basis:auto; width:120px; height:64px; margin:8px 0; } }
+@media print { .art { display:none; } }

@@ -1,4 +1,5 @@
 "use client";
+import { PageIllustration } from "@/components/page-illustration";
 
 import { ChartBar, Compass, LockSimple, MagnifyingGlass, SignOut, UsersThree } from "@phosphor-icons/react";
 import { WelcomeGreeting } from "@/components/welcome-greeting";
@@ -10,7 +11,25 @@ import { adminData, currentUser, logout, type AccountUser, type AdminOverview, t
 export default function AdminPage() {
   const router = useRouter(); const [user, setUser] = useState<AccountUser | null>(null); const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [searches, setSearches] = useState<AdminSearch[]>([]); const [loading, setLoading] = useState(true);
-  useEffect(() => { void Promise.all([currentUser(), adminData()]).then(([nextUser, data]) => { if (!nextUser || !["ADMIN", "SUPER_ADMIN"].includes(nextUser.role)) return router.replace("/admin/login"); setUser(nextUser); setOverview(data[0]); setSearches(data[2]); }).catch(() => router.replace("/admin/login")).finally(() => setLoading(false)); }, [router]);
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const nextUser = await currentUser();
+        if (!active) return;
+        if (!nextUser || !["ADMIN", "SUPER_ADMIN"].includes(nextUser.role)) { router.replace("/admin/login"); return; }
+        setUser(nextUser);
+        const data = await adminData();
+        if (!active) return;
+        setOverview(data[0]); setSearches(data[2]);
+      } catch {
+        if (active) router.replace("/admin/login");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [router]);
   async function signOut() {
     await logout();
     // A full navigation clears cached credentials and pending form state after logout.
@@ -19,7 +38,7 @@ export default function AdminPage() {
   }
   const format = (value: string) => new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
   return <main className="account-page admin-page"><header className="account-topbar"><div className="admin-console-brand"><Compass size={21} weight="duotone" />行知管理平台</div><span><LockSimple size={17} />独立管理账户</span><button onClick={signOut}><SignOut size={17} />退出登录</button></header>
-    <div className="admin-body"><WelcomeGreeting user={user} /><section className="admin-heading"><div><span className="section-kicker">PLATFORM MANAGEMENT</span><h1>用户与反馈管理</h1><p>{user?.displayName} · 管理用户账户、处理用户反馈，查看注册、搜索和使用统计。</p></div></section>
+    <div className="admin-body"><WelcomeGreeting user={user} /><section className="admin-heading"><div><span className="section-kicker">PLATFORM MANAGEMENT</span><h1>用户与反馈管理</h1><p>{user?.displayName} · 管理用户账户、处理用户反馈，查看注册、搜索和使用统计。</p></div><PageIllustration kind="admin" /></section>
       <section className="admin-metrics"><article><UsersThree size={20} /><span>注册账户</span><strong>{overview?.registeredUsers ?? "--"}</strong></article><article><MagnifyingGlass size={20} /><span>城市搜索</span><strong>{overview?.searches ?? "--"}</strong></article><article><ChartBar size={20} /><span>决策生成</span><strong>{overview?.decisions ?? "--"}</strong></article></section>
       {!loading && user && <AdminManagement />}
       {loading ? <div className="history-empty"><span className="button-loader dark" />正在载入运营数据</div> : <div className="admin-search-records">

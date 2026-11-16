@@ -16,12 +16,25 @@ export const AIRLINE_PROVIDERS: AirlineProvider[] = [
   { code: "9C", name: "春秋航空", home: "https://www.ch.com/", domains: ["ch.com"], hubs: ["上海", "石家庄"], url: q => params(`https://flights.ch.com/${q.from.code}-${q.to.code}.html`,{FDate:q.date,SType:"0",MType:"0"}) },
   { code: "RY", name: "江西航空", home: "https://www.airjiangxi.com/", domains: ["airjiangxi.com"], hubs: ["南昌"], url: q => params("https://www.airjiangxi.com/jiangxiair/book/findFlights.action",{tripType:"0",queryFlightInfo:`${airport(q,"from")},${airport(q,"to")},${q.date}`,adult:"1",child:"0",infant:"0"}) },
 ];
-export const ACTIVE_AIRLINE_CODES: AirlineCode[] = ["MF", "SC", "RY", "GS", "9H"];
+export const ACTIVE_AIRLINE_CODES: AirlineCode[] = ["MF", "KN", "SC", "CZ", "RY", "GS", "9H"];
+/**
+ * 未指定航司时的自动查询顺序：按近期实测可靠度排序。
+ * 9H（长安航空）适配器仍在目录中，但多次实测无法返回可核实报价，默认不再占用查询名额。
+ */
+export const DEFAULT_AIRLINE_CODES: AirlineCode[] = ["MF", "CZ", "KN", "SC", "RY", "GS", "MU", "9H"];
+const DEFAULT_ORDER = new Map(DEFAULT_AIRLINE_CODES.map((code, index) => [code, index]));
+/** 只有近期实测可靠的航司才享受枢纽加权，避免把经常超时的航司排到前面。 */
+const HUB_PRIORITY_CODES = new Set<AirlineCode>(["MF", "CZ", "KN", "SC", "RY", "GS"]);
 export function allowedAirlineUrl(value: string, provider: AirlineProvider) {
   try { const url = new URL(value); return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password && provider.domains.some(domain => url.hostname === domain || url.hostname.endsWith(`.${domain}`)); }
   catch { return false; }
 }
-export function chooseAirlines(query: ResolvedFlightQuery): AirlineProvider[] {
+export function chooseAirlines(query: ResolvedFlightQuery, limit = 4): AirlineProvider[] {
   if (query.airlineCodes?.length) return query.airlineCodes.filter(code=>ACTIVE_AIRLINE_CODES.includes(code)).map(code => AIRLINE_PROVIDERS.find(provider => provider.code === code)!).filter(Boolean);
-  return AIRLINE_PROVIDERS.filter(provider=>ACTIVE_AIRLINE_CODES.includes(provider.code)).sort((a,b) => Number(b.hubs.includes(query.from.name) || b.hubs.includes(query.to.name)) - Number(a.hubs.includes(query.from.name) || a.hubs.includes(query.to.name))).slice(0,3);
+  // 枢纽匹配优先（仅可靠航司）；同分时按 DEFAULT_AIRLINE_CODES 的实测可靠度顺序。
+  return AIRLINE_PROVIDERS.filter(provider=>DEFAULT_AIRLINE_CODES.includes(provider.code)).sort((a,b) => {
+    const hubFor = (provider: AirlineProvider) => Number(HUB_PRIORITY_CODES.has(provider.code) && (provider.hubs.includes(query.from.name) || provider.hubs.includes(query.to.name)));
+    const hub = hubFor(b) - hubFor(a);
+    return hub || (DEFAULT_ORDER.get(a.code) ?? 99) - (DEFAULT_ORDER.get(b.code) ?? 99);
+  }).slice(0,limit);
 }

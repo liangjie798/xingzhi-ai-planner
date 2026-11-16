@@ -1,4 +1,5 @@
 "use client";
+import { PageIllustration } from "@/components/page-illustration";
 
 import { ArrowLeft, CalendarBlank, CaretDown, CloudSun, Compass, Drop, Gauge, MapPin, ThermometerSimple, WarningCircle, Wind } from "@phosphor-icons/react";
 import Link from "next/link";
@@ -148,6 +149,7 @@ export default function HourlyPage() {
             <span className="section-kicker">{selectedCity.province} · {selectedCity.adcode}</span>
             <h1>{selectedCity.name}逐小时环境预报</h1>
           </div>
+          <PageIllustration kind="weather" />
           {citySnapshot && (
             <div className="city-metrics" aria-label="当前实况">
               <Metric icon={ThermometerSimple} value={`${citySnapshot.temperature}°`} label="气温" />

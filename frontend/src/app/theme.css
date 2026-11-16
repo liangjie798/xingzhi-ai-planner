@@ -1,0 +1,77 @@
+/* Charcoal / sandstone / bronze. Shared by pages and Radix portal surfaces. */
+:root,
+.radix-themes {
+  color-scheme: dark;
+  --background: #181818;
+  --paper: #181818;
+  --surface: #1f1f1f;
+  --ink: #eddbc0;
+  --muted: #b9aa96;
+  --faint: #b9aa96;
+  --line: #45413c;
+  --line-strong: #766956;
+  --accent: #805624;
+  --accent-ink: #dfb479;
+  --accent-strong: #805624;
+  --accent-soft: #313131;
+  --primary: #805624;
+  --warning: #dfb479;
+  --danger: #df9b8d;
+  --color-background: #181818;
+  --color-panel-solid: #1f1f1f;
+  --color-panel-translucent: #1f1f1ff5;
+  --color-surface: #272727;
+  --gray-11: #b9aa96;
+  --gray-12: #eddbc0;
+  --accent-9: #805624;
+  --accent-10: #67441f;
+  --accent-11: #dfb479;
+  --accent-12: #eddbc0;
+  --accent-contrast: #eddbc0;
+}
+
+body,
+.radix-themes {
+  color: var(--ink);
+  background-color: var(--background);
+}
+
+::selection { color: #eddbc0; background: #67441f; }
+input, textarea, select { color-scheme: dark; }
+input::placeholder, textarea::placeholder { color: #b9aa96; opacity: 1; }
+:focus-visible { outline-color: #dfb479; }
+
+/* Dialogs render outside the workspace, so inherit the same palette explicitly. */
+.rt-DialogContent, .rt-AlertDialogContent, .rt-PopoverContent,
+.rt-DropdownMenuContent, .rt-SelectContent {
+  color: #eddbc0;
+  background-color: #1f1f1f;
+  border-color: #45413c;
+}
+
+.workspace-brand > span, .new-conversation,
+.product-workspace .chat-form button, .auth-submit,
+.analyze-button, .operations-form button[type="submit"] {
+  color: #eddbc0;
+  background: #805624;
+}
+.workspace-navigation button.is-active {
+  background: #313131;
+  color: #dfb479;
+}
+.product-workspace .conversation-message.is-user { background: #67441f; color: #eddbc0; }
+.product-workspace .conversation-message.is-assistant { background: #272727; color: #eddbc0; }
+.product-workspace .chat-form button:disabled { background: #45413c; color: #eddbc0; }
+.avatar, .avatar.is-authenticated { background: #67441f; color: #eddbc0; }
+.product-workspace { background: #181818; }
+
+/* Scientific maps keep their data scale. Decorative charts follow the brand. */
+.environment-line { stroke: #dfb479; }
+.environment-rain-bar { fill: #bd9874; }
+
+/* Remove the inherited square aspect ratio so the photo tint covers tall screens. */
+.auth-page .auth-story::after { aspect-ratio: auto; background: #181818b3; }
+.auth-story > img { filter: grayscale(1) sepia(.35); }
+.auth-story-copy > [data-page-art] { margin:0 0 24px; }
+.account-hero { flex-wrap:wrap; }
+.settings-lede { flex-basis:100%; }

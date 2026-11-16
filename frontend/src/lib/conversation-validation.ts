@@ -18,6 +18,7 @@ export function conversationInputIssues(message: string, today: string): InputIs
     const calendar = calendarDateFromText(token, today);
     if (calendar.error) issues.push({ fields: ["date", "endDate", "departureDate"], reply: calendar.error });
   }
+  if (/[负−-][一二两三四五六七八九十百千]+\s*(?:个|位|名)?(?:人|大人|成人|学生|孩子)/.test(message)) issues.push({fields:["participants"],reply:"人数必须为1至9999的整数，请修改人数后再分析。本次未重新计算。"});
   const people = message.match(/(?:人数|参与人数)?\s*(?:改成|改为|调整为|为|是|：|:)?\s*([负−-]?\d+(?:\.\d+)?|零)\s*(?:个|位|名)?\s*(?:大学生|研究生|成年人|成人|初中生|高中生|小学生|学生|同学|小朋友|孩子|老人|老年人|人|位|名)/);
   const peopleValue = people ? (people[1] === "零" ? 0 : Number(people[1].replace(/[负−]/, "-"))) : undefined;
   if (peopleValue !== undefined && (!Number.isInteger(peopleValue) || peopleValue < 1 || peopleValue > 9999)) issues.push({ fields: ["participants"], reply: "人数必须为1至9999的整数，请修改人数后再分析。本次未重新计算。" });

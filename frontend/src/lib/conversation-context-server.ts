@@ -24,8 +24,9 @@ export async function loadConversation(request: Request, id: string): Promise<Co
 }
 export async function saveConversationContext(request: Request, id: string, snapshot: ConversationSnapshotData) {
   const revision = Number((snapshot.conversationContext as ConversationContext).revision) - 1;
-  const response = await fetch(endpoint(id), { method: "PUT", headers: { ...headers(request), "X-Expected-Conversation-Revision": String(revision) }, body: JSON.stringify(snapshot), cache: "no-store", signal: AbortSignal.timeout(5000) });
+  const response = await fetch(endpoint(id), { method: "PUT", headers: { ...headers(request), "X-Expected-Conversation-Revision": String(revision) }, body: JSON.stringify({ ...snapshot, snapshotVersion: snapshot.snapshotVersion ?? 0 }), cache: "no-store", signal: AbortSignal.timeout(5000) });
   if (!response.ok) throw new ConversationStoreError(response.status, response.status === 409 ? "此对话已有较新记录，请刷新后继续，未覆盖新记忆" : "对话记忆保存失败，本次未确认保存，请重试");
+  return (await response.json()).snapshotVersion as number;
 }
 export async function loadPromptContext(request: Request, id?: string) {
   if (!id) return undefined;

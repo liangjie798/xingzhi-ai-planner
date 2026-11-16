@@ -1,9 +1,9 @@
 /* Workspaces share the ai-design-skills type, spacing and motion system. */
 .scope {
-  --ws-ink: #21372c;
-  --ws-muted: #5d6b62;
-  --ws-accent: #245c43;
-  --ws-line: #d9dfd5;
+  --ws-ink: #eddbc0;
+  --ws-muted: #b9aa96;
+  --ws-accent: #805624;
+  --ws-line: #45413c;
 }
 .pageHeading {
   display: flex;
@@ -20,14 +20,14 @@
   align-items: center;
   font-size: 12px;
   line-height: 16px;
-  color: #5d6b62;
+  color: #b9aa96;
   letter-spacing: 0.03em;
 }
 .eyebrow > svg {
-  color: #245c43;
+  color: #dfb479;
 }
 .eyebrow > span {
-  color: #9ca894;
+  color: #b9aa96;
 }
 .pageHeading h1 {
   font-size: 30px;
@@ -36,13 +36,13 @@
   font-weight: 500;
   margin: 16px 0 12px;
   max-width: 680px;
-  color: #21372c;
+  color: #eddbc0;
   text-wrap: balance;
 }
 .pageHeading p {
   font-size: 14px;
   line-height: 20px;
-  color: #5d6b62;
+  color: #b9aa96;
   margin: 0;
   max-width: 65ch;
   text-wrap: pretty;
@@ -52,26 +52,26 @@
   align-items: center;
   gap: 16px;
   flex-shrink: 0;
-  border: 1px solid #d9dfd5;
+  border: 1px solid #45413c;
   border-radius: 8px;
   padding: 8px 12px;
   min-height: 40px;
-  background: #fff;
-  color: #245c43;
+  background: #1f1f1f;
+  color: #dfb479;
   font-size: 14px;
   line-height: 20px;
   font-weight: 500;
   cursor: pointer;
 }
 .headingAction:hover {
-  background: #eaf0e1;
+  background: #1f1f1f;
 }
 .starters {
   padding: 24px 0;
 }
 .starters > p {
   margin: 0 0 16px;
-  color: #5d6b62;
+  color: #b9aa96;
   font-size: 14px;
   line-height: 20px;
 }
@@ -86,17 +86,17 @@
   gap: 16px;
   padding: 24px;
   min-width: 0;
-  border: 1px solid #e0e6d9;
+  border: 1px solid #45413c;
   border-radius: 12px;
-  background: #f7f8f2;
-  color: #245c43;
+  background: #1f1f1f;
+  color: #dfb479;
   text-align: left;
   cursor: pointer;
 }
 .starters button:first-child {
   grid-column: 1/-1;
-  background: #eaf0e1;
-  border-color: #eaf0e1;
+  background: #1f1f1f;
+  border-color: #45413c;
 }
 .starters button > svg {
   flex-shrink: 0;
@@ -112,14 +112,14 @@
 }
 .starters small {
   display: block;
-  color: #5d6b62;
+  color: #b9aa96;
   font-size: 12px;
   line-height: 16px;
   margin-top: 4px;
 }
 .starters button:hover:not(:disabled) {
   transform: translateY(-2px);
-  background: #eaf0e1;
+  background: #1f1f1f;
 }
 .starters button:disabled {
   opacity: 0.5;
@@ -132,23 +132,23 @@
   margin: 8px 0 32px;
 }
 .metrics > div {
-  border: 1px solid #d9dfd5;
+  border: 1px solid #45413c;
   border-radius: 12px;
   padding: 24px;
-  background: #fff;
+  background: #1f1f1f;
   min-width: 0;
 }
 .metrics dt {
   font-size: 12px;
   line-height: 16px;
-  color: #5d6b62;
+  color: #b9aa96;
 }
 .metrics dd {
   font-size: 30px;
   line-height: 36px;
   font-weight: 500;
   margin: 12px 0 0;
-  color: #21372c;
+  color: #eddbc0;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
@@ -157,7 +157,7 @@
   font-weight: 400;
   font-size: 12px;
   line-height: 16px;
-  color: #5d6b62;
+  color: #b9aa96;
   margin-top: 8px;
 }
 .empty {
@@ -165,9 +165,9 @@
   flex-direction: column;
   align-items: center;
   padding: 64px 32px;
-  border: 1px solid #d9dfd5;
+  border: 1px solid #45413c;
   border-radius: 16px;
-  background: #fff;
+  background: #1f1f1f;
   text-align: center;
 }
 .emptyArt {
@@ -176,13 +176,13 @@
   justify-content: center;
   gap: 24px;
   margin-bottom: 32px;
-  color: #245c43;
+  color: #dfb479;
 }
 .emptyArt > svg {
   padding: 24px;
   width: 112px;
   height: 112px;
-  background: #eaf0e1;
+  background: #1f1f1f;
   border-radius: 24px;
 }
 .emptyArt > span {
@@ -190,9 +190,9 @@
   place-items: center;
   width: 40px;
   height: 40px;
-  border: 1px solid #d9dfd5;
+  border: 1px solid #45413c;
   border-radius: 12px;
-  color: #718069;
+  color: #b9aa96;
 }
 .emptyArt > span:first-child {
   transform: translateY(24px) rotate(-8deg);
@@ -206,10 +206,10 @@
   margin: 16px 0 12px;
   font-weight: 500;
   text-wrap: balance;
-  color: #21372c;
+  color: #eddbc0;
 }
 .empty > p {
-  color: #5d6b62;
+  color: #b9aa96;
   font-size: 14px;
   line-height: 20px;
   max-width: 48ch;
@@ -220,8 +220,8 @@
   display: flex;
   gap: 24px;
   align-items: center;
-  background: #245c43;
-  color: #fff;
+  background: #805624;
+  color: #eddbc0;
   border: 0;
   border-radius: 8px;
   min-height: 48px;
@@ -232,7 +232,7 @@
   cursor: pointer;
 }
 .emptyAction:hover {
-  background: #193d2e;
+  background: #805624;
   transform: translateY(-2px);
 }
 .emptySteps {
@@ -248,7 +248,7 @@
   gap: 8px;
   font-size: 12px;
   line-height: 16px;
-  color: #5d6b62;
+  color: #b9aa96;
 }
 .scope:global(.product-workspace) :global(.workspace) {
   row-gap: 16px;
@@ -262,7 +262,7 @@
 .scope:global(.product-workspace) :global(.workspace-studio .control-rail) {
   top: 112px;
   padding: 24px;
-  background: #eef2e7;
+  background: #1f1f1f;
   border: 0;
 }
 .scope:global(.product-workspace) :global(.rail-heading h2) {
@@ -281,7 +281,7 @@
   padding: 8px 0;
 }
 .scope:global(.product-workspace) :global(.control-rail .input-wrap) {
-  background: #fff;
+  background: #1f1f1f;
 }
 .scope:global(.product-workspace) :global(.rail-footnote) {
   margin-top: 24px;
@@ -299,7 +299,7 @@
   margin-bottom: 0;
 }
 .scope:global(.product-workspace) :global(.conversation-messages) {
-  background: #fff;
+  background: #1f1f1f;
 }
 .scope:global(.product-workspace) :global(.analysis-console-head) {
   padding-bottom: 16px;
@@ -311,7 +311,7 @@
   max-width: 48ch;
 }
 .scope:global(.product-workspace) :global(.chat-form) {
-  background: #f7f8f2;
+  background: #1f1f1f;
 }
 .scope:global(.product-workspace) :global(.chat-form textarea) {
   min-height: 80px;
@@ -332,13 +332,13 @@
 }
 .scope:global(.product-workspace) :global(.workspace-card) {
   padding: 24px;
-  border: 1px solid #d9dfd5;
+  border: 1px solid #45413c;
   border-radius: 12px;
   box-shadow: none;
-  background: #fff;
+  background: #1f1f1f;
 }
 .scope:global(.product-workspace) :global(.workspace-card > span) {
-  background: #eaf0e1;
+  background: #1f1f1f;
   border-radius: 8px;
 }
 .scope:global(.product-workspace) :global(.workspace-card strong) {
@@ -351,9 +351,9 @@
 }
 .scope:global(.product-workspace) :global(.workspace-map .map-workbench) {
   padding: 24px;
-  border: 1px solid #d9dfd5;
+  border: 1px solid #45413c;
   border-radius: 16px;
-  background: #fff;
+  background: #1f1f1f;
 }
 .scope:global(.product-workspace) :global(.city-summary h2) {
   font-size: 24px;
@@ -364,7 +364,7 @@
   padding: 8px;
   gap: 8px;
   border: 0;
-  background: #f1f4ea;
+  background: #1f1f1f;
   border-radius: 12px;
   flex-wrap: wrap;
 }
@@ -377,7 +377,7 @@
 .scope:global(.product-workspace) :global(.national-map-status) {
   border-radius: 8px;
   padding: 16px;
-  background: #f7f8f2;
+  background: #1f1f1f;
   font-size: 14px;
   line-height: 20px;
 }
@@ -391,9 +391,9 @@
 }
 .scope:global(.product-workspace) :global(.national-sample-list article) {
   padding: 16px;
-  border: 1px solid #d9dfd5;
+  border: 1px solid #45413c;
   border-radius: 8px;
-  background: #fff;
+  background: #1f1f1f;
 }
 .scope:global(.product-workspace) :global(.workspace-plan .decision-panel) {
   min-height: 0;
@@ -402,7 +402,7 @@
 }
 .scope:global(.product-workspace) :global(.report-header) {
   padding: 32px;
-  background: #eef2e7;
+  background: #1f1f1f;
 }
 .scope:global(.product-workspace) :global(.report-header h1) {
   font-size: 30px;
@@ -411,7 +411,7 @@
 }
 .scope:global(.product-workspace) :global(.report-tabs) {
   padding: 8px 24px;
-  background: #fff;
+  background: #1f1f1f;
 }
 .scope:global(.product-workspace) :global(.report-tabs button) {
   border-radius: 8px;
@@ -431,8 +431,8 @@
   padding: 32px 24px 64px;
 }
 .scope:global(.product-workspace) :global(.operations-card) {
-  border: 1px solid #d9dfd5;
-  background: #fff;
+  border: 1px solid #45413c;
+  background: #1f1f1f;
   border-radius: 16px;
   padding: 32px;
   margin: 24px 0;
@@ -446,7 +446,7 @@
 .scope:global(.product-workspace) :global(.operations-workspace p) {
   font-size: 14px;
   line-height: 20px;
-  color: #5d6b62;
+  color: #b9aa96;
 }
 .scope:global(.product-workspace) :global(.operations-form) {
   gap: 16px;
@@ -487,9 +487,9 @@
 .scope:global(.product-workspace) :global(.operations-form > button) {
   align-self: end;
   min-height: 48px;
-  background: #245c43;
-  color: #fff;
-  border-color: #245c43;
+  background: #805624;
+  color: #eddbc0;
+  border-color: #dfb479;
 }
 .scope:global(.product-workspace) :global(.scenario-grid) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -498,7 +498,7 @@
 }
 .scope:global(.product-workspace) :global(.scenario-grid article) {
   border: 0;
-  background: #f1f4ea;
+  background: #1f1f1f;
   padding: 24px;
   border-radius: 12px;
 }
@@ -510,7 +510,7 @@
 }
 .scope:global(.product-workspace) :global(.material-card),
 .scope:global(.product-workspace) :global(.execution-list article) {
-  border: 1px solid #d9dfd5;
+  border: 1px solid #45413c;
   padding: 24px;
   border-radius: 12px;
   margin-top: 16px;
@@ -530,10 +530,10 @@
 .scope:global(.product-workspace) :global(.material-card small) {
   font-size: 12px;
   line-height: 16px;
-  color: #5d6b62;
+  color: #b9aa96;
 }
 .scope:global(.product-workspace) :global(.constraint-warning) {
-  border: 1px solid #e1cba7;
+  border: 1px solid #45413c;
   border-radius: 8px;
   padding: 16px;
 }
@@ -548,7 +548,7 @@
     opacity 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .scope button:focus-visible {
-  outline: 2px solid #245c43;
+  outline: 2px solid #dfb479;
   outline-offset: 4px;
 }
 .scope button:active:not(:disabled) {
@@ -727,9 +727,9 @@
 }
 
 .mapSkeleton { display:grid; gap:12px; width:240px; }
-.mapSkeleton i { display:block; height:16px; border-radius:8px; background:#dce6d5; animation:map-pulse 1.2s cubic-bezier(.22,1,.36,1) infinite alternate; }
+.mapSkeleton i { display:block; height:16px; border-radius:8px; background:#272727; animation:map-pulse 1.2s cubic-bezier(.22,1,.36,1) infinite alternate; }
 .mapSkeleton i:nth-child(2) { width:80%; }.mapSkeleton i:last-child { width:60%; }
 @keyframes map-pulse { to { opacity:.4; } }
-.scope:global(.product-workspace) :global(.execution-list input[type=checkbox]) { width:16px; height:16px; min-height:0; flex-shrink:0; accent-color:#245c43; }
+.scope:global(.product-workspace) :global(.execution-list input[type=checkbox]) { width:16px; height:16px; min-height:0; flex-shrink:0; accent-color:#dfb479; }
 .scope:global(.product-workspace) :global(.execution-list label:has(input[type=checkbox])) { flex-direction:row; align-items:center; gap:12px; }
 @media(prefers-reduced-motion:reduce) { .mapSkeleton i { animation:none; } }

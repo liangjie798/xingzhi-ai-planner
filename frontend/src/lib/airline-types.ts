@@ -32,6 +32,28 @@ export interface AirlineSearchResult {
   providers: AirlineAttempt[];
   notes: string[];
 }
+/** 机票流式查询事件：快航司先推给前端，慢航司陆续补齐。 */
+export interface AirlineStreamStartEvent {
+  type: "start";
+  checkedAt: string;
+  providers: Array<{ airlineCode: string; sourceName: string }>;
+  cached: boolean;
+}
+export interface AirlineStreamProviderEvent {
+  type: "provider";
+  attempt: AirlineAttempt;
+  quotes: AirlineQuote[];
+  elapsedMs: number;
+}
+export interface AirlineStreamDoneEvent {
+  type: "done";
+  status: "partial" | "unavailable";
+  checkedAt: string;
+  notes: string[];
+  quoteCount: number;
+  elapsedMs: number;
+}
+export type AirlineStreamEvent = AirlineStreamStartEvent | AirlineStreamProviderEvent | AirlineStreamDoneEvent;
 /** Browser observations are untrusted input. Only validated fields reach an Agent. */
 export interface FlightRowObservation {
   text: string;

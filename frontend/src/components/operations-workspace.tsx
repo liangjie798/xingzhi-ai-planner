@@ -7,12 +7,49 @@ import { resourceConflicts,budgetSummary,scenarioPlan } from "@/lib/scenario-pla
 import { planChanges,type WorkspaceData,type SavedPlan } from "@/lib/workspace-data";
 import { downloadBlob } from "@/lib/planning-document";
 
-export function OperationsWorkspace({view,input,result,route,data:allData,onChange:commit,onRestore,onNavigate}:{view:"execution"|"library"|"archive";input:ActivityInput;result:DecisionResult|null;route:TourismRoute|null;data:WorkspaceData;onChange:(data:WorkspaceData)=>void;onRestore:(plan:SavedPlan)=>void;onNavigate:(view:"studio")=>void}) {
+export function OperationsWorkspace({view,input,result,route,data:allData,onChange:commit,onSave,onRestore,onNavigate}:{view:"execution"|"library"|"archive";input:ActivityInput;result:DecisionResult|null;route:TourismRoute|null;data:WorkspaceData;onChange:(data:WorkspaceData)=>void;onSave:(data:WorkspaceData)=>Promise<void>;onRestore:(plan:SavedPlan)=>void;onNavigate:(view:"studio")=>void}) {
   const travel=input.activityType==="旅游规划";
   const planKey=`${input.cityName}:${input.activityType}:${input.date}:${input.endDate || input.date}`;
   const data={...allData,events:allData.events.filter(row=>!row.planKey||row.planKey===planKey),costs:allData.costs.filter(row=>!row.planKey||row.planKey===planKey)};
   const onChange=(updated:WorkspaceData)=>commit({...updated,events:[...allData.events.filter(row=>row.planKey&&row.planKey!==planKey),...updated.events.map(row=>({...row,planKey}))].slice(-100),costs:[...allData.costs.filter(row=>row.planKey&&row.planKey!==planKey),...updated.costs.map(row=>({...row,planKey}))].slice(-100)});
   const [message,setMessage]=useState("");
+  const [savingMaterial, setSavingMaterial] = useState(false);
+
+  async function saveMaterials(materials: WorkspaceData["materials"], successMessage: string) {
+    setSavingMaterial(true);
+    setMessage("正在保存资料…");
+    try {
+      await onSave({ ...allData, materials: materials.slice(-60) });
+      setMessage(successMessage);
+      return true;
+    } catch {
+      setMessage("资料保存失败，请保留当前页面并重试。");
+      return false;
+    } finally {
+      setSavingMaterial(false);
+    }
+  }
+
+  function saveMaterial(material: WorkspaceData["materials"][number]) {
+    return saveMaterials([...data.materials, material], "资料已保存，可在下方标记核对状态。");
+  }
+
+  async function submitMaterial(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const fields = new FormData(form);
+    const url = String(fields.get("url"));
+    if (!url.startsWith("https://")) {
+      setMessage("请填写HTTPS来源链接。");
+      return;
+    }
+
+    const saved = await saveMaterial({
+      id: id(), title: String(fields.get("title")), url, note: String(fields.get("note")),
+      status: "待确认", updatedAt: new Date().toISOString(),
+    });
+    if (saved) form.reset();
+  }
   const [compare,setCompare]=useState("");
   const budget=budgetSummary(data.costs,input.participants,input.budgetPerPerson);
   const conflicts=resourceConflicts(data.events);
@@ -39,7 +76,10 @@ export function OperationsWorkspace({view,input,result,route,data:allData,onChan
     {label:"已记录费用",value:`¥${budget.total}`,detail:`${budget.unconfirmed}项待确认`},
   ];
   return <section className="operations-workspace"><WorkspaceHeading view={view}/><WorkspaceMetrics items={metrics}/>{message&&<p role="status" className="report-note">{message}</p>}
-    {view==="library"&&sources.length>0&&<section className="operations-card"><h2>从当前方案收藏</h2>{sources.length?<><p>这些是方案已经引用的来源，可按需要保存，以便之后核对。</p>{sources.slice(0,12).map(item=><article className="material-card" key={item.sourceUrl}><h3><a href={item.sourceUrl} target="_blank" rel="noopener noreferrer">{item.title} ↗</a></h3><p>{item.publisher} · {item.tag}</p><button type="button" disabled={data.materials.some(row=>row.url===item.sourceUrl)} onClick={()=>onChange({...data,materials:[...data.materials,{id:id(),title:item.title,url:item.sourceUrl!,note:item.excerpt.slice(0,500),status:"待确认" as const,updatedAt:new Date().toISOString()}].slice(-60)})}>{data.materials.some(row=>row.url===item.sourceUrl)?"已收藏":"收藏此来源"}</button></article>)}</>:<p>完成一次规划后，可以在这里一键收藏方案的参考来源；也可以在下方自行保存链接。</p>}</section>}
+    {view==="library"&&sources.length>0&&<section className="operations-card"><h2>从当前方案收藏</h2>{sources.length?<><p>这些是方案已经引用的来源，可按需要保存，以便之后核对。</p>{sources.slice(0,12).map(item=><article className="material-card" key={item.sourceUrl}><h3><a href={item.sourceUrl} target="_blank" rel="noopener noreferrer">{item.title} ↗</a></h3><p>{item.publisher} · {item.tag}</p><button type="button" disabled={savingMaterial || data.materials.some(row=>row.url===item.sourceUrl)} onClick={() => {
+      if (!item.sourceUrl) return;
+      void saveMaterial({ id: id(), title: item.title, url: item.sourceUrl, note: item.excerpt.slice(0, 500), status: "待确认", updatedAt: new Date().toISOString() });
+    }}>{data.materials.some(row=>row.url===item.sourceUrl)?"已收藏":"收藏此来源"}</button></article>)}</>:<p>完成一次规划后，可以在这里一键收藏方案的参考来源；也可以在下方自行保存链接。</p>}</section>}
     {view==="execution"&&<>
       <section className="operations-card"><h2>{travel?"行前准备与旅行安排":`${input.activityType} · 专项组织任务`}</h2><div className="scenario-grid">{scenarioPlan(input,result).map(block=><article key={block.title}><h3>{block.title}</h3><p>{block.detail}</p><small>交付：{block.deliverable}</small></article>)}</div></section>
       <section className="operations-card"><h2>{travel?"行程安排与时间检查":"项目、场地与人员冲突"}</h2><p>{travel?"记录游览、用餐和交通时间；同行人或联系人可填写相同标识，检查时间重叠。开放与预约仍需自行核实。":"参赛者与负责人可填写组织编号，多个编号用逗号分隔；按同日时间重叠检查，不能替代现场确认。"}</p>
@@ -55,7 +95,10 @@ export function OperationsWorkspace({view,input,result,route,data:allData,onChan
       <button type="button" className="operations-primary" onClick={()=>downloadBlob(new Blob([`参与者说明\n${input.cityName} · ${input.activityType}\n${input.date}至${input.endDate || input.date}\n`+(route?.stops.map(stop=>`${stop.date} ${stop.time}–${stop.endTime || "待确认"} ${stop.name}`).join("\n") || data.events.map(item=>`${item.date} ${item.start}–${item.end} ${item.title} ${item.venue}`).join("\n"))+"\n集合、预约及活动变化请以组织者最终通知为准。"],{type:"text/plain;charset=utf-8"}),"参与者说明.txt")}>{travel?"下载行程说明（不含同行人信息）":"下载参与者说明（不含名单）"}</button>
     </>}
     {view==="library"&&!data.materials.length&&!sources.length&&<WorkspaceEmpty kind="library" title="把第一份有用的资料，留在这里。" description="可以保存场馆官网、预约要求或一条待确认的组织事项。生成规划后，也能直接收藏方案引用的来源。" action="添加第一份资料" onAction={()=>document.getElementById("material-title")?.focus()}/>}
-    {view==="library"&&<section className="operations-card"><h2>添加与管理资料</h2><p>保存官方链接、组织要求和核对记录；“已人工核对”由组织者确认，不是平台自动认证。</p><form className="operations-form" onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget),url=String(form.get("url"));if(!/^https:\/\//.test(url)){setMessage("请填写HTTPS来源链接。");return;}onChange({...data,materials:[...data.materials,{id:id(),title:String(form.get("title")),url,note:String(form.get("note")),status:"待确认" as const,updatedAt:new Date().toISOString()}].slice(-60)});setMessage("资料已保存，可在下方标记核对状态。");event.currentTarget.reset();}}><label>资料标题<input id="material-title" name="title" placeholder="例如：场馆预约与开放说明" required maxLength={100}/></label><label>原文链接<input name="url" placeholder="https://" type="url" required maxLength={500}/></label><label>用途与待确认事项<textarea name="note" placeholder="记下预约时间、使用要求，或出发前需要核对的内容" maxLength={1000}/></label><button type="submit">保存资料</button></form>{data.materials.map(item=><article className="material-card" key={item.id}><h3><a href={item.url} target="_blank" rel="noopener noreferrer">{item.title} ↗</a></h3><p>{item.note}</p><label>核对状态<select value={item.status} onChange={event=>onChange({...data,materials:data.materials.map(row=>row.id===item.id?{...row,status:event.target.value as typeof row.status,updatedAt:new Date().toISOString()}:row)})}><option>待确认</option><option>已人工核对</option></select></label><small>记录时间：{new Date(item.updatedAt).toLocaleString("zh-CN")}</small><button type="button" onClick={()=>onChange({...data,materials:data.materials.filter(row=>row.id!==item.id)})}>删除资料</button></article>)}</section>}
-    {view==="archive"&&<section className="operations-card"><h2>方案版本与执行复盘</h2><button type="button" className="operations-primary" disabled={!result&&!route} onClick={saveVersion}>保存当前方案版本</button><p>修改条件或删除地点前可先保存版本。档案保存方案快照；活动项目和费用在执行管理中另行记录。</p>{!data.plans.length&&<WorkspaceEmpty kind="archive" title="第一份规划，还等你来留下。" description="完成分析后保存一个版本。后续调整时间、人数或地点时，可以回看差异，并记录执行反馈。" action={result||route?"保存当前方案":"先去完成一份规划"} onAction={result||route?saveVersion:()=>onNavigate("studio")}/>}{data.plans.length>1&&<label>与最新保存版本比较<select value={compare} onChange={event=>setCompare(event.target.value)}><option value="">选择历史版本</option>{data.plans.slice(1).map(item=><option key={item.id} value={item.id}>{item.label} · {new Date(item.createdAt).toLocaleString("zh-CN")}</option>)}</select></label>}{plan&&planChanges(plan,data.plans[0]).map(text=><p key={text}>{text}</p>)}{data.plans.map(item=><article className="material-card" key={item.id}><h3>{item.label}</h3><p>{new Date(item.createdAt).toLocaleString("zh-CN")} · {item.input.participants}人 · {item.input.audienceDescription || item.input.group}</p><button type="button" onClick={()=>onRestore(item)}>载入此方案</button><button type="button" onClick={()=>onChange({...data,plans:data.plans.map(row=>row.id===item.id?{...row,archived:!row.archived}:row)})}>{item.archived?"已归档，取消归档":"标记归档"}</button><label>执行反馈与改进<textarea value={item.review || ""} maxLength={2000} onChange={event=>onChange({...data,plans:data.plans.map(row=>row.id===item.id?{...row,review:event.target.value}:row)})}/></label><button type="button" onClick={()=>onChange({...data,plans:data.plans.filter(row=>row.id!==item.id)})}>删除此版本</button></article>)}</section>}
+    {view==="library"&&<section className="operations-card"><h2>添加与管理资料</h2><p>保存官方链接、组织要求和核对记录；“已人工核对”由组织者确认，不是平台自动认证。</p><form className="operations-form" onSubmit={submitMaterial}><label>资料标题<input id="material-title" name="title" disabled={savingMaterial} placeholder="例如：场馆预约与开放说明" required maxLength={100}/></label><label>原文链接<input name="url" disabled={savingMaterial} placeholder="https://" type="url" required maxLength={500}/></label><label>用途与待确认事项<textarea name="note" disabled={savingMaterial} placeholder="记下预约时间、使用要求，或出发前需要核对的内容" maxLength={1000}/></label><button type="submit" disabled={savingMaterial}>保存资料</button></form>{data.materials.map(item=><article className="material-card" key={item.id}><h3><a href={item.url} target="_blank" rel="noopener noreferrer">{item.title} ↗</a></h3><p>{item.note}</p><label>核对状态<select value={item.status} disabled={savingMaterial} onChange={event=>{
+      const status = event.target.value as typeof item.status;
+      void saveMaterials(data.materials.map(row=>row.id===item.id?{...row,status,updatedAt:new Date().toISOString()}:row), "核对状态已保存。");
+    }}><option>待确认</option><option>已人工核对</option></select></label><small>记录时间：{new Date(item.updatedAt).toLocaleString("zh-CN")}</small><button type="button" disabled={savingMaterial} onClick={()=>void saveMaterials(data.materials.filter(row=>row.id!==item.id), "资料已删除。")}>删除资料</button></article>)}</section>}
+    {view==="archive"&&<section className="operations-card"><h2>方案版本与执行复盘</h2><button type="button" className="operations-primary" disabled={!result&&!route} onClick={saveVersion}>保存当前方案版本</button><p>修改条件或删除地点前可先保存版本。档案保存方案快照；活动项目和费用在执行管理中另行记录。</p>{!data.plans.length&&<WorkspaceEmpty kind="archive" title="第一份规划，还等你来留下。" description="完成分析后保存一个版本。后续调整时间、人数或地点时，可以回看差异，并记录执行反馈。" action={result||route?undefined:"先去完成一份规划"} onAction={()=>onNavigate("studio")}/>}{data.plans.length>1&&<label>与最新保存版本比较<select value={compare} onChange={event=>setCompare(event.target.value)}><option value="">选择历史版本</option>{data.plans.slice(1).map(item=><option key={item.id} value={item.id}>{item.label} · {new Date(item.createdAt).toLocaleString("zh-CN")}</option>)}</select></label>}{plan&&planChanges(plan,data.plans[0]).map(text=><p key={text}>{text}</p>)}{data.plans.map(item=><article className="material-card" key={item.id}><h3>{item.label}</h3><p>{new Date(item.createdAt).toLocaleString("zh-CN")} · {item.input.participants}人 · {item.input.audienceDescription || item.input.group}</p><button type="button" onClick={()=>onRestore(item)}>载入此方案</button><button type="button" onClick={()=>onChange({...data,plans:data.plans.map(row=>row.id===item.id?{...row,archived:!row.archived}:row)})}>{item.archived?"已归档，取消归档":"标记归档"}</button><label>执行反馈与改进<textarea value={item.review || ""} maxLength={2000} onChange={event=>onChange({...data,plans:data.plans.map(row=>row.id===item.id?{...row,review:event.target.value}:row)})}/></label><button type="button" onClick={()=>onChange({...data,plans:data.plans.filter(row=>row.id!==item.id)})}>删除此版本</button></article>)}</section>}
   </section>;
 }

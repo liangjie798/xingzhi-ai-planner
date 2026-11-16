@@ -177,7 +177,7 @@ export interface TourismStop {
   restMinutes?: number;
   travelMinutes?: number;
   travelDistanceKm?: number;
-  travelSource?: "amap-driving" | "estimate";
+  travelSource?: "amap-driving" | "amap-walking" | "amap-bicycling" | "amap-transit" | "amap-matrix" | "estimate";
   openingStatus?: string;
   openingHours?: string;
   weatherAssessment?: string;
