@@ -8,9 +8,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.UUID;
 
@@ -22,8 +24,9 @@ public class ConversationSessionController {
     private final UserRepository users;
     private final ObjectMapper mapper;
     public ConversationSessionController(ConversationSessionRepository sessions,UserRepository users,ObjectMapper mapper){this.sessions=sessions;this.users=users;this.mapper=mapper;}
-    public record Summary(String id,String title,Instant updatedAt) {}
-    private Summary summary(ConversationSession session){return new Summary(session.getId(),session.getTitle(),session.getUpdatedAt());}
+    public record Summary(String id,String title,Instant updatedAt,long snapshotVersion) {}
+    public record BatchDeleteResult(int requested,int deleted) {}
+    private Summary summary(ConversationSession session){return new Summary(session.getId(),session.getTitle(),session.getUpdatedAt(),mapper.readTree(session.getSnapshot()).path("snapshotVersion").asLong(0));}
     private String owner(Authentication auth,HttpServletRequest request){
         if(auth!=null&&auth.getAuthorities().stream().anyMatch(role->role.getAuthority().equals("ROLE_USER")))return "user:"+users.findByUsername(auth.getName()).orElseThrow(()->new ResponseStatusException(HttpStatus.UNAUTHORIZED)).getId();
         var session=request.getSession(true);
@@ -32,7 +35,7 @@ public class ConversationSessionController {
     private void validate(JsonNode body){if(!body.isObject()||!body.path("messages").isArray()||body.path("messages").size()>1000||body.toString().length()>1000000)throw new IllegalArgumentException("单条对话容量超限，请下载成果后精简记录。");}
     private String title(JsonNode body){for(var message:body.path("messages"))if("user".equals(message.path("role").asText())){String text=message.path("content").asText().strip();if(!text.isEmpty())return text.substring(0,Math.min(36,text.length()));}return "新对话";}
     private ConversationSession find(String id,String owner){return sessions.findByIdAndOwnerKey(id,owner).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));}
-    @GetMapping public List<Summary> list(Authentication auth,HttpServletRequest request){return sessions.findByOwnerKeyOrderByUpdatedAtDesc(owner(auth,request)).stream().map(item->new Summary(item.getId(),item.getTitle(),item.getUpdatedAt())).toList();}
+    @GetMapping public List<Summary> list(Authentication auth,HttpServletRequest request){return sessions.findByOwnerKeyOrderByUpdatedAtDesc(owner(auth,request)).stream().map(item->new Summary(item.getId(),item.getTitle(),item.getUpdatedAt(),0)).toList();}
     @PostMapping public Summary create(@RequestBody JsonNode body,Authentication auth,HttpServletRequest request){validate(body);String owner=owner(auth,request);if(sessions.countByOwnerKey(owner)>=100)throw new IllegalArgumentException("已保存100条对话，请先整理历史记录。");return summary(sessions.save(new ConversationSession(UUID.randomUUID().toString(),owner,title(body),body.toString())));}
     @GetMapping("/{id}") public JsonNode read(@PathVariable String id,Authentication auth,HttpServletRequest request) throws Exception{return mapper.readTree(find(id,owner(auth,request)).getSnapshot());}
     @PutMapping("/{id}") public synchronized Summary save(@PathVariable String id,@RequestBody JsonNode body,
@@ -40,11 +43,34 @@ public class ConversationSessionController {
             Authentication auth,HttpServletRequest request) throws Exception {
         validate(body);
         var session=find(id,owner(auth,request));
+        long snapshotVersion=mapper.readTree(session.getSnapshot()).path("snapshotVersion").asLong(0);
+        if(body.path("snapshotVersion").asLong(-1)!=snapshotVersion) throw new ResponseStatusException(HttpStatus.CONFLICT,"对话已有更新，请刷新后重试；本次未覆盖");
         long current=mapper.readTree(session.getSnapshot()).path("conversationContext").path("revision").asLong(0);
         long incoming=body.path("conversationContext").path("revision").asLong(0);
         if(incoming<current || expectedRevision!=null && expectedRevision!=current)
             throw new ResponseStatusException(HttpStatus.CONFLICT,"对话已有更新，请刷新，未覆盖较新记忆");
+        ((tools.jackson.databind.node.ObjectNode)body).put("snapshotVersion",snapshotVersion+1);
         session.update(title(body),body.toString());return summary(sessions.save(session));
     }
     @DeleteMapping("/{id}") public void delete(@PathVariable String id,Authentication auth,HttpServletRequest request){sessions.delete(find(id,owner(auth,request)));}
+
+    /** 批量删除只处理当前账户/访客自己的会话；不存在或属于他人的 ID 静默跳过。 */
+    @PostMapping("/batch-delete") @Transactional
+    public BatchDeleteResult deleteMany(@RequestBody JsonNode body,Authentication auth,HttpServletRequest request){
+        if(body==null||!body.isObject()||!body.path("ids").isArray())throw new IllegalArgumentException("请选择要删除的对话");
+        var nodes=body.path("ids");
+        if(nodes.isEmpty())throw new IllegalArgumentException("请选择要删除的对话");
+        if(nodes.size()>100)throw new IllegalArgumentException("一次最多删除100条对话");
+        var ids=new LinkedHashSet<String>();
+        for(var node:nodes){
+            if(!node.isTextual())throw new IllegalArgumentException("对话编号格式不正确");
+            String id=node.asText().strip();
+            if(id.isEmpty()||id.length()>64||!id.matches("[A-Za-z0-9-]+"))throw new IllegalArgumentException("对话编号格式不正确");
+            ids.add(id);
+        }
+        String owner=owner(auth,request);
+        int deleted=0;
+        for(String id:ids){var found=sessions.findByIdAndOwnerKey(id,owner);if(found.isPresent()){sessions.delete(found.get());deleted++;}}
+        return new BatchDeleteResult(ids.size(),deleted);
+    }
 }

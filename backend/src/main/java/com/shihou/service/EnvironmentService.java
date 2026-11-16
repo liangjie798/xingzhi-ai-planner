@@ -19,7 +19,10 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +49,9 @@ public class EnvironmentService {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final Clock clock;
+    private final String qweatherApiKey;
+    private final String qweatherHost;
+    private final int qweatherHours;
     private final Map<String, CachedForecast> cache = new ConcurrentHashMap<>();
     private final Map<String, CachedSources> sourceCache = new ConcurrentHashMap<>();
     private final Map<String, Object> sourceLocks = new ConcurrentHashMap<>();
@@ -57,10 +63,22 @@ public class EnvironmentService {
     }
 
     EnvironmentService(CityEnvironmentRepository repository, ObjectMapper objectMapper, HttpClient httpClient, Clock clock) {
+        this(repository, objectMapper, httpClient, clock,
+                System.getenv("QWEATHER_API_KEY"), System.getenv("QWEATHER_API_HOST"), System.getenv("QWEATHER_HOURS"));
+    }
+
+    EnvironmentService(CityEnvironmentRepository repository, ObjectMapper objectMapper, HttpClient httpClient, Clock clock,
+                       String qweatherApiKey, String qweatherHost, String qweatherHours) {
         this.repository = repository;
         this.objectMapper = objectMapper;
         this.httpClient = httpClient;
         this.clock = clock.withZone(CHINA_ZONE);
+        this.qweatherApiKey = qweatherApiKey == null ? "" : qweatherApiKey.strip();
+        String host = qweatherHost == null || qweatherHost.isBlank() ? "https://devapi.qweather.com" : qweatherHost.strip().replaceAll("/+$", "");
+        this.qweatherHost = host.startsWith("https://") ? host : "https://devapi.qweather.com";
+        int hours = 24;
+        try { hours = Integer.parseInt(qweatherHours == null ? "24" : qweatherHours.strip()); } catch (NumberFormatException ignored) { }
+        this.qweatherHours = hours == 72 || hours == 168 ? hours : 24;
     }
 
     public List<CityEnvironmentEntity> listCities() {
@@ -192,14 +210,18 @@ public class EnvironmentService {
 
         JsonNode weatherHourly = weather.path("hourly");
         JsonNode airHourly = air.path("hourly");
+        boolean fallback = sources.fallback();
+        String firstHourlyTime = weatherHourly.path("time").path(0).asText("");
         List<EnvironmentalForecastPoint> points = new ArrayList<>();
         for (int hour = 0; hour <= 23; hour++) {
             String time = date + "T" + "%02d:00".formatted(hour);
             int weatherIndex = indexOf(weatherHourly.path("time"), time);
-            int airIndex = indexOf(airHourly.path("time"), time);
             if (weatherIndex < 0) {
+                // 备用源从当前小时起提供预报；当天更早的小时已不可执行，不伪造数据。
+                if (fallback && date.equals(LocalDate.now(clock)) && !firstHourlyTime.isBlank() && time.compareTo(firstHourlyTime) < 0) continue;
                 throw new IllegalArgumentException("所选日期超出逐小时预报范围");
             }
+            int airIndex = indexOf(airHourly.path("time"), time);
             // 空气质量接口最多提供 7 个自然日。第 8 天使用最近一天相同小时的值，
             // 使“从明天起未来七天”的路线仍可获得保守的空气风险估计。
             if (airIndex < 0) {
@@ -228,6 +250,7 @@ public class EnvironmentService {
                     airQualityReused, airSourceDate
             ));
         }
+        if (fallback && points.isEmpty()) throw new IllegalArgumentException("备用天气预报未覆盖所选日期");
         return new ForecastBundle(snapshot, List.copyOf(points));
     }
 
@@ -253,7 +276,19 @@ public class EnvironmentService {
             try {
                 CompletableFuture<JsonNode> weatherFuture = fetchJson(weatherUrl);
                 CompletableFuture<JsonNode> airFuture = fetchJson(airUrl);
-                CachedSources loaded = new CachedSources(weatherFuture.join(), airFuture.join(), clock.instant());
+                JsonNode weather;
+                boolean fallback = false;
+                try {
+                    weather = weatherFuture.join();
+                } catch (RuntimeException exception) {
+                    // 主源气象请求失败时切换和风天气；空气质量仍由主源提供或沿用当日缓存。
+                    JsonNode backup = qweatherWeather(city);
+                    if (backup == null) throw exception;
+                    weather = backup;
+                    fallback = true;
+                }
+                JsonNode air = airFuture.join();
+                CachedSources loaded = new CachedSources(weather, air, clock.instant(), fallback);
                 sourceCache.put(sourceKey, loaded);
                 return loaded;
             } catch (RuntimeException exception) {
@@ -264,8 +299,12 @@ public class EnvironmentService {
     }
 
     private CompletableFuture<JsonNode> fetchJson(String url) {
+        return fetchJson(url, 12);
+    }
+
+    private CompletableFuture<JsonNode> fetchJson(String url, int timeoutSeconds) {
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofSeconds(12))
+                .timeout(Duration.ofSeconds(timeoutSeconds))
                 .header("User-Agent", "Shihou/1.0 lht574.cn")
                 .GET()
                 .build();
@@ -342,6 +381,79 @@ public class EnvironmentService {
         return value;
     }
 
+    /** 和风天气逐小时预报转成主源字段结构；缺少密钥或接口失败时返回 null，不伪造数据。 */
+    private JsonNode qweatherWeather(CityDefinition city) {
+        if (qweatherApiKey.isBlank()) return null;
+        String url = qweatherHost + "/v7/weather/" + qweatherHours + "h?location="
+                + city.longitude() + "," + city.latitude()
+                + "&key=" + URLEncoder.encode(qweatherApiKey, StandardCharsets.UTF_8);
+        try {
+            JsonNode payload = fetchJson(url, 6).join();
+            if (!"200".equals(payload.path("code").asText())) return null;
+            JsonNode rows = payload.path("hourly");
+            if (!rows.isArray() || rows.isEmpty()) return null;
+            var root = objectMapper.createObjectNode();
+            var hourly = root.putObject("hourly");
+            var times = hourly.putArray("time");
+            var temperatures = hourly.putArray("temperature_2m");
+            var humidities = hourly.putArray("relative_humidity_2m");
+            var apparent = hourly.putArray("apparent_temperature");
+            var rain = hourly.putArray("precipitation_probability");
+            var codes = hourly.putArray("weather_code");
+            var winds = hourly.putArray("wind_speed_10m");
+            for (JsonNode row : rows) {
+                String time = qweatherHour(row.path("fxTime").asText(""));
+                double temperature = row.path("temp").asDouble(Double.NaN);
+                if (time == null || !Double.isFinite(temperature)) continue;
+                times.add(time);
+                temperatures.add(round1(temperature));
+                humidities.add(clamp(row.path("humidity").asInt(50), 0, 100));
+                apparent.add(round1(row.path("feelsLike").asDouble(temperature)));
+                rain.add(clamp(row.path("pop").asInt(0), 0, 100));
+                codes.add(wmoCode(row.path("text").asText("")));
+                winds.add(Math.max(0, row.path("windSpeed").asDouble(0)));
+            }
+            if (times.isEmpty()) return null;
+            var current = root.putObject("current");
+            current.put("time", times.get(0).asText());
+            current.put("temperature_2m", temperatures.get(0).asDouble());
+            current.put("relative_humidity_2m", humidities.get(0).asInt());
+            current.put("apparent_temperature", apparent.get(0).asDouble());
+            current.put("weather_code", codes.get(0).asInt());
+            current.put("wind_speed_10m", winds.get(0).asDouble());
+            return root;
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private String qweatherHour(String value) {
+        if (value == null || value.length() < 16) return null;
+        try {
+            return OffsetDateTime.parse(value).atZoneSameInstant(CHINA_ZONE)
+                    .toLocalDateTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"));
+        } catch (DateTimeParseException exception) {
+            return value.substring(0, 16).replace(' ', 'T');
+        }
+    }
+
+    private int wmoCode(String text) {
+        if (text == null || text.isBlank()) return 3;
+        if (text.contains("雷")) return 95;
+        if (text.contains("雪")) return 71;
+        if (text.contains("暴雨")) return 65;
+        if (text.contains("雨")) return 61;
+        if (text.contains("雾") || text.contains("霾")) return 45;
+        if (text.contains("阴")) return 3;
+        if (text.contains("多云")) return 2;
+        if (text.contains("晴")) return 0;
+        return 3;
+    }
+
+    private int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
     private int heatRisk(double temperature, int humidity, double apparentTemperature) {
         double heatComponent = Math.max(0, apparentTemperature - 20) * 4.2;
         double humidityComponent = Math.max(0, humidity - 55) * 0.35;
@@ -383,7 +495,7 @@ public class EnvironmentService {
                                   double longitude, double latitude) { }
     private record ForecastBundle(CityEnvironmentEntity city, List<EnvironmentalForecastPoint> points) { }
     private record CachedForecast(ForecastBundle bundle, Instant fetchedAt) { }
-    private record CachedSources(JsonNode weather, JsonNode air, Instant fetchedAt) { }
+    private record CachedSources(JsonNode weather, JsonNode air, Instant fetchedAt, boolean fallback) { }
 
     public static final class LiveDataUnavailableException extends RuntimeException {
         public LiveDataUnavailableException(String message, Throwable cause) {

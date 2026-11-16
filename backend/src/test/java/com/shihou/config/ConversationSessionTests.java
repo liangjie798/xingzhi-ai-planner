@@ -43,7 +43,7 @@ class ConversationSessionTests {
     final String first="""
       {"version":1,"messages":[{"role":"user","content":"杭州运动会"}],"intake":{"known":{"cityName":"杭州市"}},"weatherContext":{"cityName":"西安"},"workspaceData":{"plans":[{"label":"原方案"}]},"weatherComparison":{"cityName":"杭州市"}}
       """;
-    final String fresh="{\"version\":1,\"messages\":[],\"intake\":{\"known\":{}}}";
+    final String fresh="{\"snapshotVersion\":0,\"version\":1,\"messages\":[],\"intake\":{\"known\":{}}}";
     @Test void historiesAreIndependentAndAnAccountCannotReadWriteOrDeleteAnotherAccountsSession() throws Exception{
         var owner=member("sessions-owner");var other=member("sessions-other");String a=create(owner,first);String b=create(owner,fresh);
         var saved=json.readTree(mvc.perform(get("/api/v1/conversation-sessions/"+a).session(owner)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
@@ -64,8 +64,43 @@ class ConversationSessionTests {
         assertEquals("西安",json.readTree(mvc.perform(get("/api/v1/conversation-sessions/"+b).session(owner)).andReturn().getResponse().getContentAsString()).at("/weatherContext/cityName").asText());
         for(String id:List.of(a,b))mvc.perform(csrf(delete("/api/v1/conversation-sessions/"+id),owner)).andExpect(status().isOk());
     }
+    @Test void staleSnapshotCannotOverwriteSameMemoryRevision() throws Exception {
+        var owner=member("cas-owner");String id=create(owner,fresh);
+        mvc.perform(csrf(put("/api/v1/conversation-sessions/"+id),owner).contentType("application/json").content(fresh)).andExpect(status().isOk());
+        mvc.perform(csrf(put("/api/v1/conversation-sessions/"+id),owner).contentType("application/json").content(fresh)).andExpect(status().isConflict());
+        mvc.perform(csrf(delete("/api/v1/conversation-sessions/"+id),owner)).andExpect(status().isOk());
+    }
     @Test void authenticatedGuestDoesNotNeedARegisteredUserRow() throws Exception{
         var owner=new MockHttpSession();var context=SecurityContextHolder.createEmptyContext();context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated("guest-test",null,List.of(new SimpleGrantedAuthority("ROLE_GUEST"))));owner.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,context);
         String id=create(owner,first);mvc.perform(get("/api/v1/conversation-sessions/"+id).session(owner)).andExpect(status().isOk());mvc.perform(csrf(delete("/api/v1/conversation-sessions/"+id),owner)).andExpect(status().isOk());
+    }
+    @Test void batchDeleteOnlyRemovesOwnedSessionsAndDeduplicatesIds() throws Exception {
+        var owner=member("batch-owner");var other=member("batch-other");
+        String a=create(owner,first);String b=create(owner,fresh);String c=create(other,fresh);
+        String payload="{\"ids\":[\""+a+"\",\""+b+"\",\""+c+"\",\""+a+"\"]}";
+        String response=mvc.perform(csrf(post("/api/v1/conversation-sessions/batch-delete"),owner).contentType("application/json").content(payload)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var result=json.readTree(response);
+        assertEquals(3,result.get("requested").asInt());
+        assertEquals(2,result.get("deleted").asInt());
+        assertEquals(0,json.readTree(mvc.perform(get("/api/v1/conversation-sessions").session(owner)).andReturn().getResponse().getContentAsString()).size());
+        assertEquals(1,json.readTree(mvc.perform(get("/api/v1/conversation-sessions").session(other)).andReturn().getResponse().getContentAsString()).size());
+        mvc.perform(get("/api/v1/conversation-sessions/"+c).session(other)).andExpect(status().isOk());
+    }
+    @Test void batchDeleteRejectsEmptyOversizedOrMalformedSelections() throws Exception {
+        var owner=member("batch-invalid");
+        mvc.perform(csrf(post("/api/v1/conversation-sessions/batch-delete"),owner).contentType("application/json").content("{\"ids\":[]}")).andExpect(status().isBadRequest());
+        StringBuilder ids=new StringBuilder("{\"ids\":[");
+        for(int index=0;index<101;index++){if(index>0)ids.append(',');ids.append("\"id-").append(index).append("\"");}
+        ids.append("]}");
+        mvc.perform(csrf(post("/api/v1/conversation-sessions/batch-delete"),owner).contentType("application/json").content(ids.toString())).andExpect(status().isBadRequest());
+        mvc.perform(csrf(post("/api/v1/conversation-sessions/batch-delete"),owner).contentType("application/json").content("{\"ids\":[1]}")).andExpect(status().isBadRequest());
+    }
+    @Test void guestBatchDeleteCannotRemoveAnotherGuestSession() throws Exception {
+        var owner=new MockHttpSession();var other=new MockHttpSession();
+        String a=create(owner,fresh);String b=create(other,fresh);
+        String payload="{\"ids\":[\""+a+"\",\""+b+"\"]}";
+        var result=json.readTree(mvc.perform(csrf(post("/api/v1/conversation-sessions/batch-delete"),owner).contentType("application/json").content(payload)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertEquals(1,result.get("deleted").asInt());
+        mvc.perform(get("/api/v1/conversation-sessions/"+b).session(other)).andExpect(status().isOk());
     }
 }

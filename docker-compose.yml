@@ -34,6 +34,9 @@ services:
       SUPER_ADMIN_USERNAME: ${SUPER_ADMIN_USERNAME:-}
       SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:-}
       SUPER_ADMIN_DISPLAY_NAME: ${SUPER_ADMIN_DISPLAY_NAME:-超级管理员}
+      QWEATHER_API_KEY: ${QWEATHER_API_KEY:-}
+      QWEATHER_API_HOST: ${QWEATHER_API_HOST:-https://devapi.qweather.com}
+      QWEATHER_HOURS: ${QWEATHER_HOURS:-24}
     depends_on:
       db:
         condition: service_healthy
@@ -59,6 +62,10 @@ services:
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
       SOCIAL_RESEARCH_ENDPOINT: ${SOCIAL_RESEARCH_ENDPOINT:-}
       SOCIAL_RESEARCH_TOKEN: ${SOCIAL_RESEARCH_TOKEN:-}
+      BAIDU_MAP_AK: ${BAIDU_MAP_AK:-}
+      BAIDU_MAP_SK: ${BAIDU_MAP_SK:-}
+      OSM_OVERPASS_URL: ${OSM_OVERPASS_URL:-}
+      WIKIVOYAGE_API_URL: ${WIKIVOYAGE_API_URL:-}
     depends_on:
       - backend
 
