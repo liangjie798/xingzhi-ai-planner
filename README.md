@@ -7,7 +7,6 @@
 - **公开仓库**：<https://github.com/liangjie798/xingzhi-ai-planner>
 - **独立测试仓库**：[测试用例、执行报告与缺陷复现](https://github.com/liangjie798/xingzhi-ai-planner-qa)（与业务源码独立维护）
 - **在线演示**：<https://lht574.cn/XingZhi>（可在登录页选择访客体验）
-- **团队**：刘瀚艇（队长）、石晗喆、郑少卓
 
 ## 项目介绍
 
